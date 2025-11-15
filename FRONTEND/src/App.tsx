@@ -1,14 +1,14 @@
-// import reactLogo from './assets/react.svg'
 import './App.css'
-// import Home from './pages/Home'
-import Beta from './pages/Beta'
+import { BrowserRouter } from 'react-router-dom'
+import { AppProviders } from './provider/AppProviders'
+import { AppRoutes } from './routes/AppRoutes'
 
 export const App = () => {
-
   return (
-    <>
-      {/* <Home /> */}
-      <Beta />
-    </>
+    <BrowserRouter>
+      <AppProviders>
+        <AppRoutes />
+      </AppProviders>
+    </BrowserRouter>
   )
 }

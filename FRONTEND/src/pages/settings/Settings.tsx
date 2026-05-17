@@ -5,6 +5,8 @@ import { useTwoFactorSetup, useTwoFactorEnable, useTwoFactorDisable } from '@hoo
 import { useAuth } from '@hooks/useAuth';
 import { useUpdateProfile, useChangePassword } from '@hooks/useProfile';
 import type { TwoFactorSetupResponse } from '@typings/auth.types';
+import { useNotifications } from '@contexts/NotificationContext';
+import type { NotifPrefs } from '@contexts/NotificationContext';
 
 type SettingsTab = 'profile' | 'notifications' | 'security' | 'monitoring' | 'system';
 
@@ -368,52 +370,136 @@ const ProfilePane = () => {
   );
 };
 
-/* ── Pane: Notificaciones ─────────────────────────────────────────── */
-const NotifPane = ({
-  notifications, setNotifications,
+/* ── Badge de canal ───────────────────────────────────────────────── */
+const ChannelBadge = ({ type }: { type: 'inapp' | 'native' }) =>
+  type === 'native' ? (
+    <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded px-1.5 py-0.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      Sistema
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-violet-300 bg-violet-400/10 border border-violet-400/20 rounded px-1.5 py-0.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 004 0"/></svg>
+      In-app
+    </span>
+  );
+
+/* ── NotifRow con botón de prueba ─────────────────────────────────── */
+const NotifRowFull = ({
+  icon, title, desc, on, onChange, channel, onTest,
 }: {
-  notifications: {
-    emailAlerts: boolean; serverOffline: boolean; highCpuUsage: boolean;
-    highMemoryUsage: boolean; highDiskUsage: boolean; securityAlerts: boolean;
-    weeklyReport: boolean; productNews: boolean;
-  };
-  setNotifications: (n: any) => void;
+  icon?: React.ReactNode; title: string; desc: string;
+  on: boolean; onChange: (v: boolean) => void;
+  channel: 'inapp' | 'native'; onTest?: () => void;
 }) => (
-  <div className="space-y-8">
-    <Group title="Alertas por Correo">
-      <NotifRow title="Alertas por correo electrónico"
-        desc="Recibir notificaciones por correo cuando ocurran eventos importantes"
-        on={notifications.emailAlerts} onChange={v => setNotifications({ ...notifications, emailAlerts: v })} />
-    </Group>
-    <Group title="Alertas de Servidores">
-      <NotifRow icon={<span className="text-rose-300"><Icon name="alert" /></span>}
-        title="Servidor desconectado" desc="Notificar cuando un servidor deje de responder"
-        on={notifications.serverOffline} onChange={v => setNotifications({ ...notifications, serverOffline: v })} />
-      <NotifRow icon={<span className="text-amber-300"><Icon name="cpu" /></span>}
-        title="Uso alto de CPU" desc="Notificar cuando el uso de CPU supere el umbral configurado"
-        on={notifications.highCpuUsage} onChange={v => setNotifications({ ...notifications, highCpuUsage: v })} />
-      <NotifRow icon={<span className="text-sky-300"><Icon name="ram" /></span>}
-        title="Uso alto de Memoria" desc="Notificar cuando el uso de memoria supere el umbral configurado"
-        on={notifications.highMemoryUsage} onChange={v => setNotifications({ ...notifications, highMemoryUsage: v })} />
-      <NotifRow icon={<span className="text-violet-300"><Icon name="disk" /></span>}
-        title="Uso alto de Disco" desc="Notificar cuando el espacio en disco supere el umbral configurado"
-        on={notifications.highDiskUsage} onChange={v => setNotifications({ ...notifications, highDiskUsage: v })} />
-    </Group>
-    <Group title="Alertas de Seguridad">
-      <NotifRow icon={<span className="text-emerald-300"><Icon name="shield" /></span>}
-        title="Alertas de seguridad" desc="Notificar sobre intentos de acceso sospechosos y eventos de seguridad"
-        on={notifications.securityAlerts} onChange={v => setNotifications({ ...notifications, securityAlerts: v })} />
-    </Group>
-    <Group title="Otros">
-      <NotifRow icon={<span className="text-fuchsia-300"><Icon name="terminal" /></span>}
-        title="Reporte semanal" desc="Resumen de actividad enviado cada lunes a las 9:00 AM"
-        on={notifications.weeklyReport} onChange={v => setNotifications({ ...notifications, weeklyReport: v })} />
-      <NotifRow icon={<span className="text-pink-300"><Icon name="gear" /></span>}
-        title="Novedades del producto" desc="Avisos sobre nuevas funciones y actualizaciones"
-        on={notifications.productNews} onChange={v => setNotifications({ ...notifications, productNews: v })} />
-    </Group>
+  <div className="flex items-start gap-4 py-3 border-b border-white/[0.05] last:border-0">
+    {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
+    <div className="flex-1 min-w-0 space-y-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-medium text-white">{title}</span>
+        <ChannelBadge type={channel} />
+      </div>
+      <p className="text-xs text-white/50">{desc}</p>
+    </div>
+    <div className="flex items-center gap-2 shrink-0">
+      {on && onTest && (
+        <button
+          onClick={onTest}
+          className="h-7 px-3 rounded-lg glass-soft text-xs text-white/65 hover:text-white hover:bg-white/[0.08] transition"
+        >
+          Probar
+        </button>
+      )}
+      <Toggle on={on} onChange={onChange} />
+    </div>
   </div>
 );
+
+/* ── Pane: Notificaciones ─────────────────────────────────────────── */
+const NotifPane = () => {
+  const { prefs, setPrefs, testToast, testNative } = useNotifications();
+  const set = (key: keyof NotifPrefs) => (v: boolean) => setPrefs({ ...prefs, [key]: v });
+
+  return (
+    <div className="space-y-8">
+      {/* Leyenda */}
+      <div className="glass-soft rounded-xl p-4 flex items-start gap-3 border border-white/[0.06]">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-violet-300 mt-0.5 shrink-0"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16v.01"/></svg>
+        <p className="text-xs text-white/60 leading-relaxed">
+          Las notificaciones <ChannelBadge type="inapp" /> aparecen como toasts dentro de la app.
+          Las notificaciones <ChannelBadge type="native" /> usan el sistema operativo y se entregan
+          incluso cuando la app está en segundo plano o minimizada.
+        </p>
+      </div>
+
+      <Group title="Alertas de Servidores">
+        <NotifRowFull
+          icon={<span className="text-rose-300"><Icon name="alert" /></span>}
+          title="Servidor desconectado"
+          desc="Alerta cuando un servidor deje de responder al agente de monitoreo"
+          on={prefs.serverOffline} onChange={set('serverOffline')}
+          channel="inapp" onTest={() => testToast('serverOffline')}
+        />
+        <NotifRowFull
+          icon={<span className="text-amber-300"><Icon name="cpu" /></span>}
+          title="Uso alto de CPU"
+          desc="Alerta cuando el uso de CPU supere el umbral configurado en Monitoreo"
+          on={prefs.highCpuUsage} onChange={set('highCpuUsage')}
+          channel="inapp" onTest={() => testToast('highCpuUsage')}
+        />
+        <NotifRowFull
+          icon={<span className="text-sky-300"><Icon name="ram" /></span>}
+          title="Uso alto de Memoria"
+          desc="Alerta cuando el uso de RAM supere el umbral configurado en Monitoreo"
+          on={prefs.highMemoryUsage} onChange={set('highMemoryUsage')}
+          channel="inapp" onTest={() => testToast('highMemoryUsage')}
+        />
+        <NotifRowFull
+          icon={<span className="text-violet-300"><Icon name="disk" /></span>}
+          title="Uso alto de Disco"
+          desc="Alerta cuando el espacio en disco supere el umbral configurado en Monitoreo"
+          on={prefs.highDiskUsage} onChange={set('highDiskUsage')}
+          channel="inapp" onTest={() => testToast('highDiskUsage')}
+        />
+      </Group>
+
+      <Group title="Alertas de Seguridad">
+        <NotifRowFull
+          icon={<span className="text-emerald-300"><Icon name="shieldCheck" /></span>}
+          title="Alertas de seguridad"
+          desc="Intentos de acceso sospechosos y eventos críticos de seguridad. Se envían como notificación nativa del SO para garantizar visibilidad incluso fuera de la app."
+          on={prefs.securityAlerts} onChange={set('securityAlerts')}
+          channel="native" onTest={testNative}
+        />
+        {prefs.securityAlerts && (
+          <div className="glass-soft rounded-xl p-3 mt-2 flex items-center gap-3 border border-amber-400/15">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-300 shrink-0"><path d="M12 9v4M12 17v.01"/><path d="M10.3 3.3L2 19a2 2 0 001.7 3h16.6A2 2 0 0022 19L13.7 3.3a2 2 0 00-3.4 0z"/></svg>
+            <p className="text-xs text-amber-200/80">
+              Activo. El SO deberá otorgar permiso de notificaciones a StartCode Panel la primera vez.
+            </p>
+          </div>
+        )}
+      </Group>
+
+      <Group title="Otros">
+        <NotifRowFull
+          icon={<span className="text-fuchsia-300"><Icon name="terminal" /></span>}
+          title="Reporte semanal"
+          desc="Resumen de actividad enviado cada lunes a las 9:00 AM"
+          on={prefs.weeklyReport} onChange={set('weeklyReport')}
+          channel="inapp" onTest={() => testToast('weeklyReport')}
+        />
+        <NotifRowFull
+          icon={<span className="text-pink-300"><Icon name="gear" /></span>}
+          title="Novedades del producto"
+          desc="Avisos sobre nuevas versiones y funciones de StartCode Panel"
+          on={prefs.productNews} onChange={set('productNews')}
+          channel="inapp" onTest={() => testToast('productNews')}
+        />
+      </Group>
+    </div>
+  );
+};
 
 /* ── Pane: Seguridad ──────────────────────────────────────────────── */
 const SecurityPane = ({
@@ -874,18 +960,24 @@ export const Settings: React.FC = () => {
   const enableMutation  = useTwoFactorEnable();
   const disableMutation = useTwoFactorDisable();
 
-  const [notifications, setNotifications] = useState({
-    emailAlerts: true, serverOffline: true, highCpuUsage: true,
-    highMemoryUsage: true, highDiskUsage: false, securityAlerts: true,
-    weeklyReport: true, productNews: false,
-  });
+  const { thresholds, setThresholds } = useNotifications();
   const [monitoring, setMonitoring] = useState({
-    refreshInterval: 30, cpuThreshold: 80, memoryThreshold: 85, diskThreshold: 90, retentionDays: 30,
+    refreshInterval: 30,
+    cpuThreshold: thresholds.cpuThreshold,
+    memoryThreshold: thresholds.memoryThreshold,
+    diskThreshold: thresholds.diskThreshold,
+    retentionDays: 30,
   });
   const [security, setSecurity] = useState({ sessionTimeout: 30, passwordExpiration: 90 });
 
   const handleSave = async () => {
     setIsSaving(true);
+    /* Sincroniza thresholds del panel Monitoreo al contexto de notificaciones */
+    setThresholds({
+      cpuThreshold: monitoring.cpuThreshold,
+      memoryThreshold: monitoring.memoryThreshold,
+      diskThreshold: monitoring.diskThreshold,
+    });
     await new Promise(r => setTimeout(r, 1000));
     setIsSaving(false); setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
@@ -969,9 +1061,7 @@ export const Settings: React.FC = () => {
         {/* Content pane */}
         <Card className="p-7">
           {activeTab === 'profile' && <ProfilePane />}
-          {activeTab === 'notifications' && (
-            <NotifPane notifications={notifications} setNotifications={setNotifications} />
-          )}
+          {activeTab === 'notifications' && <NotifPane />}
           {activeTab === 'security' && (
             <SecurityPane
               security={security} setSecurity={setSecurity}

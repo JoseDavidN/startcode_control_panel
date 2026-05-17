@@ -2,11 +2,14 @@ export interface User {
 	id: string;
 	email: string;
 	name: string;
+	firstname?: string;
+	lastname?: string;
 	role: UserRole; // Backend usa role singular
 	roles?: UserRole[]; // Backward compatibility
 	permissions?: Permission[]; // Opcional, se calcula desde el rol
 	isActive: boolean;
 	avatar?: string;
+	twoFactorEnabled?: boolean;
 	createdAt?: Date;
 }
 
@@ -60,11 +63,23 @@ export interface AuthResponse {
 	expiresIn?: string; // Token expiration info
 }
 
+export interface TwoFactorPendingResponse {
+	requiresTwoFactor: true;
+	tempToken: string;
+}
+
+export interface TwoFactorSetupResponse {
+	secret: string;
+	otpAuthUrl: string;
+	qrCodeDataUrl: string;
+}
+
 export interface AuthContextType {
 	user: User | null;
 	isAuthenticated: boolean;
 	isLoading: boolean;
-	login: (credentials: LoginCredentials) => Promise<void>;
+	login: (credentials: LoginCredentials) => Promise<TwoFactorPendingResponse | void>;
+	complete2FALogin: (tempToken: string, code: string) => Promise<void>;
 	logout: () => Promise<void>;
 	refreshAuth: () => Promise<void>;
 	hasPermission: (permission: Permission) => boolean;

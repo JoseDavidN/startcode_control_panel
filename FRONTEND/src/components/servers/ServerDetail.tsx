@@ -1,427 +1,280 @@
 import React, { useState } from 'react';
-import {
-  Server,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  BarChart3,
-  Settings,
-  Plus,
-  ChevronRight,
-  Package,
-  Code,
-  Terminal,
-  Play,
-  Pause,
-  Database,
-  Globe,
-  Shield,
-  FolderOpen,
-  Container,
-  Network,
-  Activity,
-  Cpu
-} from 'lucide-react';
-import { type ServerData } from '../../types/DashboardTypes';
+import { type ServerData } from '@typings/DashboardTypes';
+import { Modal } from '@components/common/Modal';
 
-// Datos de ejemplo
-const serverData = {
-  serverId: "srv-001",
-  serverName: "DevStar",
-  cpu: {
-    usage: 100,
-    cores: 4,
-    loadAverage: "0.50, 0.45, 0.40"
-  },
-  memory: {
-    total: 8192,
-    used: 3440,
-    free: 4752,
-    usagePercent: 42
-  },
-  disk: [
-    {
-      total: 100,
-      used: 14,
-      free: 86,
-      usagePercent: 14,
-      mountPoint: "/"
-    }
-  ],
-  network: {
-    privateIp: "192.168.1.100",
-    publicIp: "203.0.113.1",
-    interface: "eth0"
-  },
-  system: {
-    os: "Ubuntu 22.04.3 LTS",
-    kernel: "5.15.0-91-generic",
-    hostname: "cloud.startcode.com.co",
-    uptime: "3 days, 7 hours, 27 minutes",
-    uptimeSeconds: 1703001234
-  },
-  processes: {
-    running: 145,
-    zombie: 12,
-    total: 157
-  },
-  timestamp: "2024-01-01T12:00:00Z",
-  status: "online"
+/* ── Inline SVG icons ─────────────────────────────────────────────── */
+const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
+const ServerIcon   = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>;
+const CheckCircle  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9.5"/></svg>;
+const AlertTri     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M12 4L2 20h20L12 4z"/><path d="M12 10v5M12 18v.01"/></svg>;
+const XCircle      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>;
+const ChevronLeft  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M15 18l-6-6 6-6"/></svg>;
+const PlusIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M12 5v14M5 12h14"/></svg>;
+const GearIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>;
+const ChartIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M4 20V10M10 20V4M16 20v-6M22 20H2"/></svg>;
+const PackageIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+const GlobeIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>;
+const DbIcon       = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>;
+const FolderIcon   = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>;
+const TerminalIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
+const NetworkIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 011-1h12a1 1 0 011 1v3M12 8v5"/></svg>;
+const ActivityIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+const CpuIcon      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
+const CodeIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>;
+const ShieldIcon   = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>;
+const PlayIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><polygon points="5 3 19 12 5 21 5 3"/></svg>;
+const PauseIcon    = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
+const CubeIcon     = ({ className='w-8 h-8' }) => <svg {...sp} className={className}><path d="M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>;
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
+const statusIcon = (status: string) => {
+  if (['online','running','active','connected'].includes(status))
+    return <CheckCircle className="w-5 h-5 text-emerald-400" />;
+  if (['warning','maintenance'].includes(status))
+    return <AlertTri className="w-5 h-5 text-amber-400" />;
+  return <XCircle className="w-5 h-5 text-rose-400" />;
 };
 
+const barGradient = (pct: number) => {
+  if (pct >= 90) return 'from-rose-500 to-orange-500';
+  if (pct >= 70) return 'from-amber-400 to-orange-500';
+  if (pct >= 50) return 'from-sky-500 to-cyan-400';
+  return 'from-emerald-500 to-teal-400';
+};
+
+/* ── Progress bar ─────────────────────────────────────────────────── */
+const MetricBar = ({ label, value, suffix = '%' }: { label: string; value: number; suffix?: string }) => (
+  <div>
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-sm text-white/55">{label}</span>
+      <span className="text-sm font-mono font-semibold text-white">{value}{suffix}</span>
+    </div>
+    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+      <div className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${barGradient(value)}`}
+        style={{ width: `${Math.min(100, value)}%` }} />
+    </div>
+  </div>
+);
+
+/* ── Info row ─────────────────────────────────────────────────────── */
+const InfoRow = ({ label, value }: { label: string; value: string }) => (
+  <div className="flex items-center justify-between py-2.5 border-b border-white/[0.05] last:border-0">
+    <span className="text-sm text-white/50">{label}</span>
+    <span className="text-sm font-medium text-white font-mono">{value}</span>
+  </div>
+);
+
+/* ── Service icon map ─────────────────────────────────────────────── */
+const serviceIconMap: Record<string, React.ReactNode> = {
+  nginx: <GlobeIcon />, apache: <GlobeIcon />,
+  mysql: <DbIcon />, postgresql: <DbIcon />, redis: <DbIcon />, mongodb: <DbIcon />,
+  wordpress: <CodeIcon />, nodejs: <TerminalIcon />, docker: <CubeIcon className="w-5 h-5" />,
+};
+const getServiceIcon = (type: string) => serviceIconMap[type] ?? <PackageIcon />;
+
+/* ── Component ────────────────────────────────────────────────────── */
 interface ServerDetailProps {
   server: ServerData;
   onBack: () => void;
 }
 
+const staticData = {
+  system: { os: 'Ubuntu 22.04.3 LTS', kernel: '5.15.0-91-generic', hostname: 'cloud.startcode.com.co', uptime: '3 días, 7 horas' },
+  cpu: { usage: 100, cores: 4, loadAverage: '0.50, 0.45, 0.40' },
+  memory: { total: 8192, used: 3440, free: 4752, usagePercent: 42 },
+  disk: [{ total: 100, used: 14, free: 86, usagePercent: 14, mountPoint: '/' }],
+  network: { privateIp: '192.168.1.100', publicIp: '203.0.113.1', interface: 'eth0' },
+  processes: { running: 145, zombie: 12, total: 157 },
+};
+
+const TABS = [
+  { id: 'overview',   label: 'Resumen',        icon: ChartIcon },
+  { id: 'services',   label: 'Servicios',       icon: PackageIcon },
+  { id: 'websites',   label: 'Sitios Web',      icon: GlobeIcon },
+  { id: 'databases',  label: 'Bases de Datos',  icon: DbIcon },
+  { id: 'files',      label: 'Archivos',        icon: FolderIcon },
+] as const;
+
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'services' | 'websites' | 'databases' | 'files'>('overview');
-  const [showInstallModal, setShowInstallModal] = useState(false);
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'online':
-      case 'running':
-      case 'active':
-      case 'connected':
-        return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'warning':
-      case 'maintenance':
-        return <AlertTriangle className="w-5 h-5 text-yellow-400" />;
-      case 'offline':
-      case 'stopped':
-      case 'error':
-      case 'inactive':
-      case 'disconnected':
-        return <XCircle className="w-5 h-5 text-red-400" />;
-      default:
-        return <XCircle className="w-5 h-5 text-gray-400" />;
-    }
-  };
-
-  const getServiceIcon = (type: string) => {
-    const iconMap = {
-      nginx: <Globe className="w-5 h-5" />,
-      apache: <Globe className="w-5 h-5" />,
-      mysql: <Database className="w-5 h-5" />,
-      postgresql: <Database className="w-5 h-5" />,
-      redis: <Database className="w-5 h-5" />,
-      mongodb: <Database className="w-5 h-5" />,
-      wordpress: <Code className="w-5 h-5" />,
-      nodejs: <Terminal className="w-5 h-5" />,
-      docker: <Container className="w-5 h-5" />,
-      php: <Code className="w-5 h-5" />
-    };
-    return iconMap[type as keyof typeof iconMap] || <Package className="w-5 h-5" />;
-  };
-
-  const getProgressColor = (value: number) => {
-    if (value >= 80) return 'bg-red-400';
-    if (value >= 60) return 'bg-yellow-400';
-    return 'bg-green-400';
-  };
-
-  const getUsageBarColor = (percent: number) => {
-    if (percent >= 90) return 'bg-gradient-to-r from-red-500 to-red-600';
-    if (percent >= 70) return 'bg-gradient-to-r from-yellow-500 to-orange-600';
-    if (percent >= 50) return 'bg-gradient-to-r from-blue-500 to-cyan-600';
-    return 'bg-gradient-to-r from-green-500 to-emerald-600';
-  };
-
-  const formatBytes = (bytes: number) => {
-    return `${(bytes / 1024).toFixed(1)} GB`;
-  };
+  const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
+  const [installOpen, setInstallOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-[#1a0d2e] via-[#2d1b4e] to-[#1a0d2e] p-6">
-      {/* Server Header */}
-      <header className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={onBack}
-              className="p-2 rounded-lg backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300"
-            >
-              <ChevronRight className="w-5 h-5 text-white rotate-180" />
+    <div className="space-y-5">
+
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <header className="glass rounded-2xl grain p-5">
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack}
+              className="w-9 h-9 rounded-xl glass-soft flex items-center justify-center text-white/65 hover:text-white hover:bg-white/[0.07] transition">
+              <ChevronLeft />
             </button>
-            <div className="p-3 rounded-xl bg-linear-to-r from-purple-600 to-pink-600 shadow-lg">
-              <Server className="w-8 h-8 text-white" />
+            <div className="w-12 h-12 rounded-xl grad-brand flex items-center justify-center shrink-0
+              shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+              <ServerIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">{server.name}</h1>
-              <p className="text-gray-300">{server.ip} • {server.os}</p>
+              <h1 className="text-xl font-bold text-white leading-tight">{server.name}</h1>
+              <p className="text-sm text-white/50">{server.ip} · {server.os}</p>
             </div>
-            {getStatusIcon(server.status)}
+            {statusIcon(server.status)}
           </div>
 
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setShowInstallModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Instalar Servicio</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setInstallOpen(true)}
+              className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)] transition">
+              <PlusIcon /> Instalar Servicio
             </button>
-            <button className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300">
-              <Settings className="w-5 h-5 text-white" />
+            <button className="w-9 h-9 rounded-xl glass-soft flex items-center justify-center text-white/65 hover:text-white transition">
+              <GearIcon />
             </button>
           </div>
         </div>
 
-        {/* Server Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-          <div className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-300 text-sm">CPU</span>
-              <span className="text-white font-semibold">{server.cpu}%</span>
+        {/* Quick stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'CPU',     value: server.cpu,    gradient: barGradient(server.cpu) },
+            { label: 'Memoria', value: server.memory, gradient: barGradient(server.memory) },
+            { label: 'Disco',   value: server.disk,   gradient: barGradient(server.disk) },
+          ].map(({ label, value, gradient }) => (
+            <div key={label} className="glass-soft rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-white/55">{label}</span>
+                <span className="text-xs font-mono font-semibold text-white">{value}%</span>
+              </div>
+              <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
+                  style={{ width: `${Math.min(100, value)}%` }} />
+              </div>
             </div>
-            <div className="w-full bg-white/10 rounded-full h-2 mt-2">
-              <div className={`h-2 rounded-full ${getProgressColor(server.cpu)}`} style={{ width: `${server.cpu}%` }}></div>
-            </div>
-          </div>
-          <div className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-300 text-sm">Memoria</span>
-              <span className="text-white font-semibold">{server.memory}%</span>
-            </div>
-            <div className="w-full bg-white/10 rounded-full h-2 mt-2">
-              <div className={`h-2 rounded-full ${getProgressColor(server.memory)}`} style={{ width: `${server.memory}%` }}></div>
-            </div>
-          </div>
-          <div className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-300 text-sm">Disco</span>
-              <span className="text-white font-semibold">{server.disk}%</span>
-            </div>
-            <div className="w-full bg-white/10 rounded-full h-2 mt-2">
-              <div className={`h-2 rounded-full ${getProgressColor(server.disk)}`} style={{ width: `${server.disk}%` }}></div>
-            </div>
-          </div>
-          <div className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-4">
-            <div className="text-center">
-              <span className="text-gray-300 text-sm">Tiempo Activo</span>
-              <p className="text-white font-semibold font-mono">{server.uptime}</p>
-            </div>
+          ))}
+          <div className="glass-soft rounded-xl p-3 flex flex-col justify-center">
+            <span className="text-xs text-white/55 mb-1">Tiempo activo</span>
+            <span className="text-sm font-mono font-semibold text-white truncate">{server.uptime}</span>
           </div>
         </div>
       </header>
 
-      {/* Navigation Tabs */}
-      <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 shadow-2xl">
-        <div className="flex space-x-1">
-          {[
-            { id: 'overview', label: 'Resumen', icon: BarChart3 },
-            { id: 'services', label: 'Servicios', icon: Package },
-            { id: 'websites', label: 'Sitios Web', icon: Globe },
-            { id: 'databases', label: 'Bases de Datos', icon: Database },
-            { id: 'files', label: 'Archivos', icon: FolderOpen }
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as any)}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-xl transition-all duration-300 ${activeTab === id
-                ? 'bg-linear-to-r from-purple-600 to-pink-600 text-white shadow-lg'
-                : 'text-gray-300 hover:bg-white/10'
-                }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
+      {/* ── Tabs ────────────────────────────────────────────────────── */}
+      <div className="glass rounded-2xl grain p-2 flex gap-1 flex-wrap">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-2 h-9 px-4 rounded-xl text-sm font-medium transition ${
+              activeTab === id
+                ? 'grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]'
+                : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+            }`}>
+            <Icon className="w-4 h-4" />{label}
+          </button>
+        ))}
       </div>
 
+      {/* ── Overview ────────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Información del Sistema */}
-          <div className="bg-[#2a1a4a]/50 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-purple-400" />
-              Información del Sistema
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Sistema */}
+          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
+              <TerminalIcon className="w-4 h-4 text-violet-300" /> Información del Sistema
             </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">Sistema Operativo</span>
-                <span className="text-sm text-white font-medium">{serverData.system.os}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">Kernel</span>
-                <span className="text-sm text-white font-medium">{serverData.system.kernel}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">Hostname</span>
-                <span className="text-sm text-white font-medium">{serverData.system.hostname}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">Load Average</span>
-                <span className="text-sm text-white font-medium">{serverData.cpu.loadAverage}</span>
-              </div>
+            <div className="space-y-0.5">
+              <InfoRow label="Sistema Operativo" value={staticData.system.os} />
+              <InfoRow label="Kernel"            value={staticData.system.kernel} />
+              <InfoRow label="Hostname"          value={staticData.system.hostname} />
+              <InfoRow label="Load Average"      value={staticData.cpu.loadAverage} />
             </div>
           </div>
 
           {/* Red */}
-          <div className="bg-[#2a1a4a]/50 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Network className="w-5 h-5 text-purple-400" />
-              Red
+          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
+              <NetworkIcon className="w-4 h-4 text-violet-300" /> Red
             </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">IP Privada</span>
-                <span className="text-sm text-white font-medium">{serverData.network.privateIp}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">IP Pública</span>
-                <span className="text-sm text-white font-medium">{serverData.network.publicIp}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-purple-500/10">
-                <span className="text-sm text-purple-300/70">Interfaz</span>
-                <span className="text-sm text-white font-medium">{serverData.network.interface}</span>
-              </div>
+            <div className="space-y-0.5">
+              <InfoRow label="IP Privada" value={staticData.network.privateIp} />
+              <InfoRow label="IP Pública"  value={staticData.network.publicIp} />
+              <InfoRow label="Interfaz"    value={staticData.network.interface} />
             </div>
           </div>
 
           {/* Procesos */}
-          <div className="bg-[#2a1a4a]/50 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-purple-400" />
-              Procesos
+          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
+              <ActivityIcon className="w-4 h-4 text-violet-300" /> Procesos
             </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-[#1a0d2e]/50 rounded-xl">
-                <p className="text-2xl font-bold text-white mb-1">{serverData.processes.running}</p>
-                <p className="text-xs text-purple-300/70">En ejecución</p>
-              </div>
-              <div className="text-center p-4 bg-[#1a0d2e]/50 rounded-xl">
-                <p className="text-2xl font-bold text-red-400 mb-1">{serverData.processes.zombie}</p>
-                <p className="text-xs text-purple-300/70">Zombies</p>
-              </div>
-              <div className="text-center p-4 bg-[#1a0d2e]/50 rounded-xl">
-                <p className="text-2xl font-bold text-white mb-1">{serverData.processes.total}</p>
-                <p className="text-xs text-purple-300/70">Total</p>
-              </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'En ejecución', value: staticData.processes.running, color: 'text-emerald-300' },
+                { label: 'Zombies',      value: staticData.processes.zombie,  color: 'text-rose-300' },
+                { label: 'Total',        value: staticData.processes.total,   color: 'text-white' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="glass rounded-xl p-3 text-center">
+                  <p className={`text-2xl font-bold ${color} mb-1`}>{value}</p>
+                  <p className="text-[10px] text-white/45 uppercase tracking-wider">{label}</p>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Recursos Detallados */}
-          <div className="bg-[#2a1a4a]/50 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-purple-400" />
-              Recursos Detallados
+          {/* Recursos detallados */}
+          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
+              <CpuIcon className="w-4 h-4 text-violet-300" /> Recursos Detallados
             </h3>
             <div className="space-y-4">
-              {/* CPU Detalle */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-purple-300/70">CPU</span>
-                  <span className="text-sm text-white font-medium">{serverData.cpu.usage}%</span>
-                </div>
-                <div className="h-3 bg-[#1a0d2e] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${getUsageBarColor(serverData.cpu.usage)} transition-all duration-500`}
-                    style={{ width: `${serverData.cpu.usage}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Memoria Detalle */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-purple-300/70">Memoria RAM</span>
-                  <span className="text-sm text-white font-medium">
-                    {formatBytes(serverData.memory.used)} / {formatBytes(serverData.memory.total)}
-                  </span>
-                </div>
-                <div className="h-3 bg-[#1a0d2e] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${getUsageBarColor(serverData.memory.usagePercent)} transition-all duration-500`}
-                    style={{ width: `${serverData.memory.usagePercent}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Disco Detalle */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-purple-300/70">Disco ({serverData.disk[0].mountPoint})</span>
-                  <span className="text-sm text-white font-medium">
-                    {serverData.disk[0].used} GB / {serverData.disk[0].total} GB
-                  </span>
-                </div>
-                <div className="h-3 bg-[#1a0d2e] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${getUsageBarColor(serverData.disk[0].usagePercent)} transition-all duration-500`}
-                    style={{ width: `${serverData.disk[0].usagePercent}%` }}
-                  ></div>
-                </div>
-              </div>
+              <MetricBar label="CPU"         value={staticData.cpu.usage} />
+              <MetricBar label="Memoria RAM" value={staticData.memory.usagePercent} />
+              <MetricBar label={`Disco (${staticData.disk[0].mountPoint})`} value={staticData.disk[0].usagePercent} />
             </div>
           </div>
         </div>
       )}
 
-      {/* Tab Content */}
+      {/* ── Services ────────────────────────────────────────────────── */}
       {activeTab === 'services' && (
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">Servicios Instalados</h2>
-            <button
-              onClick={() => setShowInstallModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nuevo Servicio</span>
+        <div className="glass rounded-2xl grain p-5">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-white">Servicios Instalados</h2>
+            <button onClick={() => setInstallOpen(true)}
+              className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
+              <PlusIcon /> Nuevo Servicio
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {server.services.map(service => (
-              <div key={service.id} className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 rounded-lg bg-white/20">
+              <div key={service.id} className="glass-soft rounded-xl p-4 hover:bg-white/[0.05] transition border border-white/[0.05]">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
                       {getServiceIcon(service.type)}
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-white">{service.name}</h3>
-                      <p className="text-sm text-gray-300">v{service.version} • Puerto {service.port}</p>
+                      <p className="text-sm font-semibold text-white">{service.name}</p>
+                      <p className="text-xs text-white/45">v{service.version} · Puerto {service.port}</p>
                     </div>
                   </div>
-                  {getStatusIcon(service.status)}
+                  {statusIcon(service.status)}
                 </div>
 
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-300">CPU</span>
-                      <span className="text-white">{service.cpu}%</span>
-                    </div>
-                    <div className="w-full bg-white/10 rounded-full h-1.5">
-                      <div className={`h-1.5 rounded-full ${getProgressColor(service.cpu)}`} style={{ width: `${service.cpu}%` }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-300">Memoria</span>
-                      <span className="text-white">{service.memory}%</span>
-                    </div>
-                    <div className="w-full bg-white/10 rounded-full h-1.5">
-                      <div className={`h-1.5 rounded-full ${getProgressColor(service.memory)}`} style={{ width: `${service.memory}%` }}></div>
-                    </div>
-                  </div>
+                <div className="space-y-2.5 mb-3">
+                  <MetricBar label="CPU"     value={service.cpu} />
+                  <MetricBar label="Memoria" value={service.memory} />
                 </div>
 
-                <div className="flex space-x-2">
-                  <button className="flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 transition-all duration-300">
-                    <Play className="w-4 h-4" />
-                    <span>Iniciar</span>
+                <div className="flex gap-2">
+                  <button className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium transition">
+                    <PlayIcon /> Iniciar
                   </button>
-                  <button className="flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 transition-all duration-300">
-                    <Pause className="w-4 h-4" />
-                    <span>Parar</span>
+                  <button className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-rose-500/15 border border-rose-400/20 text-rose-300 hover:bg-rose-500/25 text-xs font-medium transition">
+                    <PauseIcon /> Parar
                   </button>
-                  <button className="p-2 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-300">
-                    <Settings className="w-4 h-4" />
+                  <button className="w-8 h-8 rounded-lg glass-soft flex items-center justify-center text-white/55 hover:text-white transition">
+                    <GearIcon className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -430,51 +283,52 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </div>
       )}
 
+      {/* ── Websites ────────────────────────────────────────────────── */}
       {activeTab === 'websites' && (
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">Sitios Web</h2>
-            <button className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300">
-              <Plus className="w-4 h-4" />
-              <span>Nuevo Sitio</span>
+        <div className="glass rounded-2xl grain p-5">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-white">Sitios Web</h2>
+            <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
+              <PlusIcon /> Nuevo Sitio
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {server.websites.map(website => (
-              <div key={website.id} className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-6">
+              <div key={website.id} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 rounded-lg bg-white/20">
-                      <Globe className="w-5 h-5 text-white" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
+                      <GlobeIcon className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-white">{website.domain}</h3>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-300 capitalize">{website.type}</span>
-                        {website.ssl && <Shield className="w-4 h-4 text-green-400" />}
+                      <p className="text-sm font-semibold text-white">{website.domain}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-white/45 capitalize">{website.type}</span>
+                        {website.ssl && <ShieldIcon className="w-3.5 h-3.5 text-emerald-300" />}
                       </div>
                     </div>
                   </div>
-                  {getStatusIcon(website.status)}
+                  {statusIcon(website.status)}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-gray-300">Visitas</p>
-                    <p className="text-xl font-semibold text-white">{website.visits.toLocaleString()}</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="glass rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Visitas</p>
+                    <p className="text-lg font-semibold text-white">{website.visits.toLocaleString()}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-300">Almacenamiento</p>
-                    <p className="text-xl font-semibold text-white">{website.storage} GB</p>
+                  <div className="glass rounded-xl p-3">
+                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Almacenamiento</p>
+                    <p className="text-lg font-semibold text-white">{website.storage} GB</p>
                   </div>
                 </div>
 
-                <div className="flex space-x-2">
-                  <button className="flex-1 py-2 px-3 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-300">
+                <div className="flex gap-2">
+                  <button className="flex-1 h-8 rounded-lg glass-soft text-white/75 hover:text-white hover:bg-white/[0.07] text-xs font-medium transition">
                     Gestionar
                   </button>
-                  <button className="flex-1 py-2 px-3 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 transition-all duration-300">
+                  <button className="flex-1 h-8 rounded-lg bg-sky-500/15 border border-sky-400/20 text-sky-300 hover:bg-sky-500/25 text-xs font-medium transition">
                     Visitar
                   </button>
                 </div>
@@ -484,52 +338,51 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </div>
       )}
 
+      {/* ── Databases ───────────────────────────────────────────────── */}
       {activeTab === 'databases' && (
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">Bases de Datos</h2>
-            <button className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-linear-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all duration-300">
-              <Plus className="w-4 h-4" />
-              <span>Nueva Base de Datos</span>
+        <div className="glass rounded-2xl grain p-5">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-white">Bases de Datos</h2>
+            <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
+              <PlusIcon /> Nueva Base de Datos
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {server.databases.map(database => (
-              <div key={database.id} className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-xl p-6">
+              <div key={database.id} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 rounded-lg bg-white/20">
-                      <Database className="w-5 h-5 text-white" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
+                      <DbIcon className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-white">{database.name}</h3>
-                      <p className="text-sm text-gray-300 uppercase">{database.type}</p>
+                      <p className="text-sm font-semibold text-white">{database.name}</p>
+                      <p className="text-xs text-white/45 uppercase">{database.type}</p>
                     </div>
                   </div>
-                  {getStatusIcon(database.status)}
+                  {statusIcon(database.status)}
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-gray-300">Tamaño</p>
-                    <p className="text-lg font-semibold text-white">{database.size} MB</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-300">Tablas</p>
-                    <p className="text-lg font-semibold text-white">{database.tables}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-300">Conexiones</p>
-                    <p className="text-lg font-semibold text-white">{database.connections}</p>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[
+                    { label: 'Tamaño',     value: `${database.size} MB` },
+                    { label: 'Tablas',     value: `${database.tables}` },
+                    { label: 'Conexiones', value: `${database.connections}` },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="glass rounded-xl p-2.5 text-center">
+                      <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">{label}</p>
+                      <p className="text-sm font-semibold text-white">{value}</p>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex space-x-2">
-                  <button className="flex-1 py-2 px-3 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-300">
+                <div className="flex gap-2">
+                  <button className="flex-1 h-8 rounded-lg glass-soft text-white/75 hover:text-white hover:bg-white/[0.07] text-xs font-medium transition">
                     Gestionar
                   </button>
-                  <button className="flex-1 py-2 px-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 transition-all duration-300">
+                  <button className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium transition">
                     Backup
                   </button>
                 </div>
@@ -539,46 +392,37 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </div>
       )}
 
-      {/* Install Modal */}
-      {showInstallModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 w-full max-w-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-white">Instalar Nuevo Servicio</h3>
-              <button
-                onClick={() => setShowInstallModal(false)}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-300"
-              >
-                <XCircle className="w-5 h-5 text-white" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {[
-                { name: 'Nginx', type: 'nginx', icon: Globe, desc: 'Servidor web y proxy inverso' },
-                { name: 'Apache', type: 'apache', icon: Globe, desc: 'Servidor web HTTP' },
-                { name: 'MySQL', type: 'mysql', icon: Database, desc: 'Base de datos relacional' },
-                { name: 'PostgreSQL', type: 'postgresql', icon: Database, desc: 'Base de datos avanzada' },
-                { name: 'Redis', type: 'redis', icon: Database, desc: 'Base de datos en memoria' },
-                { name: 'MongoDB', type: 'mongodb', icon: Database, desc: 'Base de datos NoSQL' },
-                { name: 'WordPress', type: 'wordpress', icon: Code, desc: 'CMS popular' },
-                { name: 'Node.js', type: 'nodejs', icon: Terminal, desc: 'Runtime de JavaScript' },
-                { name: 'Docker', type: 'docker', icon: Container, desc: 'Plataforma de contenedores' },
-              ].map(({ name, type, icon: Icon, desc }) => (
-                <button
-                  key={type}
-                  className="p-4 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300 text-left"
-                >
-                  <Icon className="w-8 h-8 text-white mb-2" />
-                  <h4 className="font-semibold text-white mb-1">{name}</h4>
-                  <p className="text-sm text-gray-300">{desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* ── Files placeholder ───────────────────────────────────────── */}
+      {activeTab === 'files' && (
+        <div className="glass rounded-2xl grain p-10 flex flex-col items-center justify-center text-center gap-3">
+          <FolderIcon className="w-10 h-10 text-white/20" />
+          <p className="text-sm text-white/40">Gestor de archivos próximamente</p>
         </div>
       )}
+
+      {/* ── Install Modal ────────────────────────────────────────────── */}
+      <Modal isOpen={installOpen} onClose={() => setInstallOpen(false)} title="Instalar Nuevo Servicio" size="md">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {[
+            { name: 'Nginx',      type: 'nginx',      icon: <GlobeIcon />,   desc: 'Servidor web y proxy' },
+            { name: 'Apache',     type: 'apache',     icon: <GlobeIcon />,   desc: 'Servidor web HTTP' },
+            { name: 'MySQL',      type: 'mysql',      icon: <DbIcon />,      desc: 'Base de datos relacional' },
+            { name: 'PostgreSQL', type: 'postgresql', icon: <DbIcon />,      desc: 'Base de datos avanzada' },
+            { name: 'Redis',      type: 'redis',      icon: <DbIcon />,      desc: 'Cache en memoria' },
+            { name: 'MongoDB',    type: 'mongodb',    icon: <DbIcon />,      desc: 'Base de datos NoSQL' },
+            { name: 'WordPress',  type: 'wordpress',  icon: <CodeIcon />,    desc: 'CMS popular' },
+            { name: 'Node.js',    type: 'nodejs',     icon: <TerminalIcon />,desc: 'Runtime JavaScript' },
+            { name: 'Docker',     type: 'docker',     icon: <CubeIcon className="w-5 h-5" />, desc: 'Contenedores' },
+          ].map(({ name, type, icon, desc }) => (
+            <button key={type}
+              className="p-4 rounded-xl glass-soft hover:bg-white/[0.07] transition text-left border border-white/[0.05] hover:border-violet-400/25">
+              <div className="w-8 h-8 text-white/60 mb-2">{icon}</div>
+              <p className="text-sm font-semibold text-white mb-0.5">{name}</p>
+              <p className="text-xs text-white/45">{desc}</p>
+            </button>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 };
-

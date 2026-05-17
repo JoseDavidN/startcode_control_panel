@@ -28,6 +28,17 @@ export class AuthResponseDto {
   @ApiProperty()
   token: string;
 
+  @ApiProperty({ required: false })
+  refreshToken?: string;
+
   @ApiProperty()
   expiresIn: string;
+}
+
+export class TwoFactorPendingDto {
+  @ApiProperty({ example: true })
+  requiresTwoFactor: boolean;
+
+  @ApiProperty({ description: 'Token temporal válido por 5 minutos' })
+  tempToken: string;
 }

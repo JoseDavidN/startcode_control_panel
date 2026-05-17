@@ -1,11 +1,10 @@
 // src/hooks/useAuthQuery.ts
 import { useQuery } from '@tanstack/react-query';
-import { apiService } from '../services/api.service';
-import { TokenManager } from '../utils/tokenManager';
-import { API_CONFIG } from '../utils/constants';
-import { normalizeUser } from '../services/auth.adapter';
-import type { User } from '../types/auth.types';
-import type { ApiResponse } from '../types/api.types';
+import { apiService } from '@services/api.service';
+import { TokenManager } from '@utils/tokenManager';
+import { API_CONFIG } from '@utils/constants';
+import { normalizeUser } from '@services/auth.adapter';
+import type { User } from '@typings/auth.types';
 
 /**
  * Hook para obtener el perfil del usuario autenticado
@@ -53,7 +52,7 @@ export function useCurrentUser() {
 				console.error('Error getting current user:', error);
 
 				// Intentar obtener usuario guardado localmente
-				const savedUser = TokenManager.getUserData();
+				const savedUser = TokenManager.getUserData() as User | null;
 				if (savedUser && !TokenManager.isTokenExpired(token)) {
 					return savedUser;
 				}

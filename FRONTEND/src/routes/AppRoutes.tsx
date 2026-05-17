@@ -1,18 +1,21 @@
 // src/routes/AppRoutes.tsx
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ProtectedRoute } from '../components/guard/ProtectedRoute';
-import { ROUTES } from '../utils/constants';
-// import { Permission } from '../types/auth.types'; // Descomentar cuando se activen las rutas con permisos
+import { ProtectedRoute } from '@components/guard/ProtectedRoute';
+import { AppLayout } from '@components/layout/AppLayout';
+import { ROUTES } from '@utils/constants';
+// import { Permission } from '@typings/auth.types'; // Descomentar cuando se activen las rutas con permisos
 
 // Auth Pages
-import { Login } from '../pages/auth/Login';
+import { Login } from '@pages/auth/Login';
 
 // Errors
-import { NotFound } from '../pages/errors/NotFound';
+import { NotFound } from '@pages/errors/NotFound';
 
-// === COMPONENTES PENDIENTES POR CREAR ===
 // Dashboard
-import { Dashboard } from '../pages/dashboard/Dashboard';
+import { Dashboard } from '@pages/dashboard/Dashboard';
+
+// Settings
+import { Settings } from '@pages/settings';
 
 // Servers
 // import { ServerList } from '../pages/servers/ServerList';
@@ -44,7 +47,10 @@ export const AppRoutes = () => {
 
       {/* Protected Routes - Dashboard principal */}
       <Route element={<ProtectedRoute />}>
-        <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
+        <Route element={<AppLayout />}>
+          <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
+          <Route path={ROUTES.SETTINGS} element={<Settings />} />
+        </Route>
       </Route>
 
       {/* Error Pages disponibles */}
@@ -55,10 +61,9 @@ export const AppRoutes = () => {
 
       {/* ====== RUTAS PENDIENTES - DESCOMENTAR CUANDO LOS COMPONENTES ESTÉN LISTOS ====== */}
 
-      {/* Protected Routes - Profile & Settings */}
+      {/* Protected Routes - Profile */}
       {/* <Route element={<ProtectedRoute />}>
         <Route path={ROUTES.PROFILE} element={<Profile />} />
-        <Route path={ROUTES.SETTINGS} element={<Settings />} />
       </Route> */}
 
       {/* Protected Routes - Servers (require VIEW_SERVERS permission) */}

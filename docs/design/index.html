@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StartCode — Panel de Control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { height: 100%; margin: 0; background: #07050d; font-family: 'Inter', system-ui, sans-serif; color: #f4f1ff; overflow: hidden; }
+  /* Scrollbar in content panes */
+  .scroll-area::-webkit-scrollbar { width: 10px; height: 10px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+  .scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+  .scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); background-clip: padding-box; }
+
+  /* Glass card base */
+  .glass {
+    background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.025) 100%);
+    backdrop-filter: blur(28px) saturate(140%);
+    -webkit-backdrop-filter: blur(28px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+      0 1px 0 0 rgba(255,255,255,0.06) inset,
+      0 24px 60px -24px rgba(0,0,0,0.6),
+      0 1px 2px rgba(0,0,0,0.4);
+  }
+  .glass-soft {
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .glass-input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .glass-input:focus-within {
+    border-color: rgba(168,85,247,0.5);
+    box-shadow: 0 0 0 4px rgba(168,85,247,0.12);
+  }
+  .grad-brand { background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); }
+  .grad-brand-soft { background: linear-gradient(135deg, rgba(168,85,247,0.18) 0%, rgba(236,72,153,0.18) 100%); }
+  .text-grad-brand {
+    background: linear-gradient(135deg, #c084fc 0%, #f472b6 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* Animated aurora background blobs */
+  .aurora { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.55; pointer-events: none; will-change: transform; }
+  @keyframes float1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-30px) scale(1.1); } }
+  @keyframes float2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,40px) scale(1.05); } }
+  @keyframes float3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(30px,30px) scale(1.08); } }
+
+  /* Subtle noise/grain overlay for glass authenticity */
+  .grain::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.025; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  /* Custom scroll-thin */
+  .scroll-thin::-webkit-scrollbar { width: 6px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+
+  /* Range slider styling */
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: linear-gradient(135deg, #c084fc, #f472b6); cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(168,85,247,0.2), 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  /* Hide native number spin buttons except for the styled wrapper */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* Sidebar item active */
+  .nav-active {
+    background: linear-gradient(135deg, rgba(168,85,247,0.28), rgba(236,72,153,0.28));
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 8px 24px -8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+
+  /* Animated progress bar shine */
+  @keyframes shine {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Toggle */
+  .toggle-track { transition: background 200ms ease; }
+  .toggle-dot { transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <!-- Ambient gradient background + auroras -->
+  <div class="fixed inset-0 -z-10 overflow-hidden" style="background: radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%);">
+    <div class="aurora" style="width:520px;height:520px;background:#a855f7;top:-120px;left:-80px;animation: float1 22s ease-in-out infinite;"></div>
+    <div class="aurora" style="width:480px;height:480px;background:#ec4899;top:35%;right:-100px;opacity:0.4;animation: float2 28s ease-in-out infinite;"></div>
+    <div class="aurora" style="width:560px;height:560px;background:#6366f1;bottom:-120px;left:25%;opacity:0.35;animation: float3 32s ease-in-out infinite;"></div>
+  </div>
+
+  <div id="root" class="h-full"></div>
+
+  <script type="text/babel" data-presets="react">
+// components.jsx — shared primitives for StartCode app
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ── Icons (single-source, stroke-current) ────────────────────────── */
+const Icon = ({ name, className = 'w-5 h-5', strokeWidth = 1.75 }) => {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round', className };
+  const P = {
+    server: <svg viewBox="0 0 24 24" {...common}><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>,
+    box: <svg viewBox="0 0 24 24" {...common}><path d="M21 7.5l-9-4.5-9 4.5 9 4.5 9-4.5z"/><path d="M3 7.5v9l9 4.5 9-4.5v-9"/><path d="M12 12v9"/></svg>,
+    globe: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>,
+    database: <svg viewBox="0 0 24 24" {...common}><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>,
+    check: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9.5"/></svg>,
+    cpu: <svg viewBox="0 0 24 24" {...common}><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>,
+    ram: <svg viewBox="0 0 24 24" {...common}><rect x="2.5" y="7" width="19" height="10" rx="1.5"/><path d="M7 11v2M11 11v2M15 11v2M19 11v2M5 17v2M9 17v2M13 17v2M17 17v2"/></svg>,
+    disk: <svg viewBox="0 0 24 24" {...common}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h18"/><circle cx="7" cy="17" r="1"/></svg>,
+    wrench: <svg viewBox="0 0 24 24" {...common}><path d="M14.7 6.3a4 4 0 015.7 5.1l-1.4-1.5-2.1 2.1 1.4 1.4a4 4 0 01-5.1-5.7L4.4 17.6a2 2 0 102.8 2.8l8.2-8.2"/></svg>,
+    clock: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>,
+    monitor: <svg viewBox="0 0 24 24" {...common}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>,
+    bell: <svg viewBox="0 0 24 24" {...common}><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 004 0"/></svg>,
+    gear: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.4 1.8l.1.1a2 2 0 01-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.8-.4 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 01-2.8-2.9l.1-.1a1.7 1.7 0 00.4-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.4-1.9L4.1 7a2 2 0 012.9-2.8l.1.1a1.7 1.7 0 001.9.4H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.4l.1-.1a2 2 0 012.9 2.9l-.1.1a1.7 1.7 0 00-.4 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>,
+    shield: <svg viewBox="0 0 24 24" {...common}><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/></svg>,
+    shieldOff: <svg viewBox="0 0 24 24" {...common}><path d="M19.7 14a8.9 8.9 0 00.3-2V6l-8-3-3.5 1.3M4.7 4.7L4 5v7c0 5 3.5 8.5 8 9 2.1-.2 3.9-1.1 5.3-2.4M3 3l18 18"/></svg>,
+    user: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>,
+    mail: <svg viewBox="0 0 24 24" {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>,
+    key: <svg viewBox="0 0 24 24" {...common}><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></svg>,
+    eye: <svg viewBox="0 0 24 24" {...common}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>,
+    save: <svg viewBox="0 0 24 24" {...common}><path d="M5 4h11l4 4v12a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 4v6h9V4M7 20v-6h10v6"/></svg>,
+    refresh: <svg viewBox="0 0 24 24" {...common}><path d="M3 12a9 9 0 0115-6.7L21 8M21 3v5h-5M21 12a9 9 0 01-15 6.7L3 16M3 21v-5h5"/></svg>,
+    filter: <svg viewBox="0 0 24 24" {...common}><path d="M3 5h18l-7 9v6l-4-2v-4L3 5z"/></svg>,
+    search: <svg viewBox="0 0 24 24" {...common}><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>,
+    chevronRight: <svg viewBox="0 0 24 24" {...common}><path d="M9 6l6 6-6 6"/></svg>,
+    chevronLeft: <svg viewBox="0 0 24 24" {...common}><path d="M15 6l-6 6 6 6"/></svg>,
+    chevronDown: <svg viewBox="0 0 24 24" {...common}><path d="M6 9l6 6 6-6"/></svg>,
+    alert: <svg viewBox="0 0 24 24" {...common}><path d="M12 4L2 20h20L12 4z"/><path d="M12 10v5M12 18v.01"/></svg>,
+    plus: <svg viewBox="0 0 24 24" {...common}><path d="M12 5v14M5 12h14"/></svg>,
+    terminal: <svg viewBox="0 0 24 24" {...common}><path d="M5 7l4 5-4 5M12 17h7"/></svg>,
+    activity: <svg viewBox="0 0 24 24" {...common}><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>,
+    network: <svg viewBox="0 0 24 24" {...common}><circle cx="12" cy="4" r="2"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="20" r="2"/><path d="M12 6v4M12 10l-5 8M12 10l5 8"/></svg>,
+    folder: <svg viewBox="0 0 24 24" {...common}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>,
+    chart: <svg viewBox="0 0 24 24" {...common}><path d="M4 20V10M10 20V4M16 20v-6M22 20H2"/></svg>,
+    cube: <svg viewBox="0 0 24 24" {...common}><path d="M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>,
+    logout: <svg viewBox="0 0 24 24" {...common}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
+    arrowLeft: <svg viewBox="0 0 24 24" {...common}><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
+    sparkle: <svg viewBox="0 0 24 24" {...common}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg>,
+  };
+  return P[name] || null;
+};
+
+/* ── Glass card wrapper ──────────────────────────────────────────── */
+const Card = ({ children, className = '', as: As = 'div', ...rest }) => (
+  <As className={`glass rounded-2xl relative grain ${className}`} {...rest}>{children}</As>
+);
+
+/* ── Top-of-page header (used in dashboard + sub-pages) ─────────── */
+const PageHeader = ({ icon, title, subtitle, leading, actions }) => (
+  <Card className="px-6 py-5 flex items-center gap-4">
+    {leading}
+    <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+      <div className="text-white">{icon}</div>
+    </div>
+    <div className="flex-1 min-w-0">
+      <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+      {subtitle && <p className="text-sm text-white/55 mt-0.5">{subtitle}</p>}
+    </div>
+    {actions}
+  </Card>
+);
+
+/* ── Toggle ──────────────────────────────────────────────────────── */
+const Toggle = ({ on, onChange }) => (
+  <button
+    role="switch"
+    aria-checked={on}
+    onClick={() => onChange?.(!on)}
+    className={`toggle-track w-12 h-7 rounded-full relative shrink-0 ${on ? 'grad-brand shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]' : 'bg-white/10'} border border-white/10`}
+  >
+    <span className={`toggle-dot absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md ${on ? 'translate-x-5' : ''}`} />
+  </button>
+);
+
+/* ── Pill button (glass + gradient variants) ─────────────────────── */
+const Btn = ({ variant = 'glass', icon, children, className = '', ...rest }) => {
+  const base = 'inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-medium transition active:scale-[0.98]';
+  const styles = {
+    glass: 'glass-soft text-white/85 hover:bg-white/[0.07]',
+    brand: 'grad-brand text-white shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)]',
+    ghost: 'text-white/70 hover:text-white hover:bg-white/[0.06]',
+  };
+  return (
+    <button className={`${base} ${styles[variant]} ${className}`} {...rest}>
+      {icon && <span className="-ml-0.5">{icon}</span>}
+      {children}
+    </button>
+  );
+};
+
+/* ── Progress bar (gradient with shimmer) ────────────────────────── */
+const Progress = ({ value = 0, gradient = 'from-violet-500 to-fuchsia-500', height = 'h-1.5', track = 'bg-white/[0.06]' }) => (
+  <div className={`${track} ${height} rounded-full overflow-hidden relative`}>
+    <div
+      className={`h-full bg-gradient-to-r ${gradient} rounded-full transition-all duration-700 ease-out relative overflow-hidden`}
+      style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+    >
+      <div className="absolute inset-0 opacity-50" style={{
+        backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)',
+        backgroundSize: '200% 100%',
+        animation: 'shine 2.4s linear infinite',
+      }} />
+    </div>
+  </div>
+);
+
+/* ── Tile (small icon block used in dashboard server card) ───────── */
+const Tile = ({ icon, label, value, tone = 'violet' }) => {
+  const tones = {
+    violet: 'from-violet-500/25 to-violet-500/5 text-violet-300 ring-violet-400/20',
+    emerald: 'from-emerald-500/25 to-emerald-500/5 text-emerald-300 ring-emerald-400/20',
+    sky: 'from-sky-500/25 to-sky-500/5 text-sky-300 ring-sky-400/20',
+    amber: 'from-amber-500/25 to-amber-500/5 text-amber-300 ring-amber-400/20',
+    fuchsia: 'from-fuchsia-500/25 to-fuchsia-500/5 text-fuchsia-300 ring-fuchsia-400/20',
+  }[tone];
+  return (
+    <div className="flex flex-col items-center text-center gap-2">
+      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tones} ring-1 flex items-center justify-center backdrop-blur-md`}>
+        {icon}
+      </div>
+      <div className="text-[11px] uppercase tracking-wider text-white/45 font-medium">{label}</div>
+      <div className="text-lg font-bold tracking-tight">{value}</div>
+    </div>
+  );
+};
+
+/* ── KPI big card (dashboard top row) ────────────────────────────── */
+const Kpi = ({ label, value, sub, icon, tone = 'violet', accent }) => {
+  const tones = {
+    violet: { wrap: 'from-violet-500/30 to-violet-500/10', text: 'text-violet-300', ring: 'ring-violet-400/25' },
+    emerald: { wrap: 'from-emerald-500/30 to-emerald-500/10', text: 'text-emerald-300', ring: 'ring-emerald-400/25' },
+    sky: { wrap: 'from-sky-500/30 to-sky-500/10', text: 'text-sky-300', ring: 'ring-sky-400/25' },
+    amber: { wrap: 'from-amber-500/30 to-amber-500/10', text: 'text-amber-300', ring: 'ring-amber-400/25' },
+  }[tone];
+  return (
+    <Card className="p-5 flex items-center justify-between gap-4 group hover:bg-white/[0.05] transition">
+      <div className="min-w-0">
+        <div className="text-xs uppercase tracking-wider text-white/50 font-medium">{label}</div>
+        <div className={`text-4xl font-extrabold tracking-tight mt-1 ${accent || ''}`}>{value}</div>
+        {sub && <div className="text-xs text-white/50 mt-1">{sub}</div>}
+      </div>
+      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tones.wrap} ${tones.text} ring-1 ${tones.ring} flex items-center justify-center backdrop-blur-md`}>
+        {icon}
+      </div>
+    </Card>
+  );
+};
+
+/* ── Field label + input ─────────────────────────────────────────── */
+const Field = ({ label, children, hint }) => (
+  <label className="block">
+    <div className="text-xs text-white/55 mb-1.5 font-medium">{label}</div>
+    {children}
+    {hint && <div className="text-xs text-white/40 mt-1.5">{hint}</div>}
+  </label>
+);
+
+const Input = ({ icon, suffix, className = '', ...rest }) => (
+  <div className={`glass-input rounded-xl h-11 flex items-center gap-2 px-3.5 transition ${className}`}>
+    {icon && <span className="text-white/45 shrink-0">{icon}</span>}
+    <input className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/30" {...rest} />
+    {suffix && <span className="text-white/45 shrink-0">{suffix}</span>}
+  </div>
+);
+
+const Select = ({ icon, children, ...rest }) => (
+  <div className="glass-input rounded-xl h-11 flex items-center gap-2 px-3.5 transition w-fit">
+    {icon && <span className="text-white/45 shrink-0">{icon}</span>}
+    <select className="bg-transparent outline-none text-sm pr-2" {...rest}>
+      {children}
+    </select>
+  </div>
+);
+
+/* ── Section heading inside content panes ────────────────────────── */
+const SectionTitle = ({ children }) => (
+  <h2 className="text-base font-semibold text-white/90 tracking-tight">{children}</h2>
+);
+
+/* expose globally to other Babel scripts */
+Object.assign(window, {
+  Icon, Card, PageHeader, Toggle, Btn, Progress, Tile, Kpi, Field, Input, Select, SectionTitle,
+});
+
+</script>
+  <script type="text/babel" data-presets="react">
+// screens.jsx — dashboard, server detail, settings sub-screens
+const { useState: useStateS, useEffect: useEffectS, useMemo: useMemoS } = React;
+
+/* ── Dashboard ───────────────────────────────────────────────────── */
+function DashboardScreen({ onOpenServer, onOpenSettings }) {
+  const [now, setNow] = useStateS(new Date());
+  useEffectS(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const time = now.toLocaleTimeString('es-CO', { hour12: false });
+
+  return (
+    <div className="space-y-6">
+      {/* Page header */}
+      <PageHeader
+        icon={<Icon name="server" className="w-7 h-7" />}
+        title="Panel de Control"
+        subtitle="Administración de Servidores y Servicios"
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <div className="text-[10px] uppercase tracking-wider text-white/45 font-medium">Hora actual</div>
+              <div className="font-mono text-base text-white/95 tabular-nums">{time}</div>
+            </div>
+            <button className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center relative">
+              <Icon name="bell" />
+              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-pink-400 ring-2 ring-[#150a2e]" />
+            </button>
+            <button onClick={onOpenSettings} className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center">
+              <Icon name="gear" />
+            </button>
+          </div>
+        }
+      />
+
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <Kpi label="Servidores Online" value="0/1" accent="text-emerald-300" icon={<Icon name="check" className="w-6 h-6" />} tone="emerald" />
+        <Kpi label="Servicios Activos" value="0/0" accent="text-sky-300" icon={<Icon name="cube" className="w-6 h-6" />} tone="sky" />
+        <Kpi label="Sitios Web" value="—" accent="text-violet-300" icon={<Icon name="globe" className="w-6 h-6" />} tone="violet" />
+        <Kpi label="Bases de Datos" value="—" accent="text-amber-300" icon={<Icon name="database" className="w-6 h-6" />} tone="amber" />
+      </div>
+
+      {/* Search + filters */}
+      <Card className="p-3 flex items-center gap-3">
+        <div className="flex-1 flex items-center gap-2 px-3">
+          <Icon name="search" className="w-5 h-5 text-white/45" />
+          <input className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/40 py-2.5" placeholder="Buscar servidores por nombre o IP…" />
+        </div>
+        <Btn icon={<Icon name="filter" className="w-4 h-4" />}>Filtros</Btn>
+        <Btn variant="brand" icon={<Icon name="refresh" className="w-4 h-4" />}>Actualizar</Btn>
+      </Card>
+
+      {/* Server cards grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <ServerCard onOpen={onOpenServer} />
+        {/* Add-new tile to balance composition */}
+        <button className="glass rounded-2xl border-dashed border-white/10 hover:border-white/25 hover:bg-white/[0.04] transition group flex items-center justify-center min-h-[280px] grain relative">
+          <div className="flex flex-col items-center gap-3 text-white/40 group-hover:text-white/70 transition">
+            <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-white/10 flex items-center justify-center">
+              <Icon name="plus" className="w-7 h-7" />
+            </div>
+            <div className="text-sm font-medium">Agregar nuevo servidor</div>
+            <div className="text-xs text-white/35 max-w-[260px] text-center">Conecta una máquina nueva para empezar a monitorearla en tiempo real.</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Server card (DevStar) ───────────────────────────────────────── */
+function ServerCard({ onOpen }) {
+  return (
+    <button onClick={onOpen} className="text-left group">
+      <Card className="p-5 hover:bg-white/[0.05] transition relative">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-violet-200">
+            <Icon name="monitor" className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-lg">DevStar</div>
+              <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/20">Atención</span>
+            </div>
+            <div className="text-sm text-white/55 mt-0.5 font-mono">cloud.startcode.com.co · ubuntu</div>
+          </div>
+          <Icon name="chevronRight" className="w-5 h-5 text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition" />
+        </div>
+
+        {/* Metrics row */}
+        <div className="grid grid-cols-3 gap-4 mt-5">
+          <Tile icon={<Icon name="cpu" />} label="CPU" value="0.0%" tone="emerald" />
+          <Tile icon={<Icon name="ram" />} label="RAM" value="0.0%" tone="sky" />
+          <Tile icon={<Icon name="disk" />} label="Disco" value="0.0%" tone="violet" />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          <Tile icon={<Icon name="wrench" />} label="Servicios" value="160" tone="fuchsia" />
+          <Tile icon={<Icon name="globe" />} label="Sitios" value="0" tone="emerald" />
+          <Tile icon={<Icon name="database" />} label="BBDD" value="0" tone="amber" />
+        </div>
+
+        <div className="border-t border-white/[0.06] mt-5 pt-4 flex items-center justify-between text-sm">
+          <div className="text-white/55">Servicios clave: <span className="text-white/40">Sin datos</span></div>
+          <div className="flex items-center gap-2 text-white/55">
+            <Icon name="clock" className="w-4 h-4" />
+            <span className="text-xs">Tiempo activo</span>
+            <span className="font-mono text-xs text-white/75">N/A</span>
+          </div>
+        </div>
+      </Card>
+    </button>
+  );
+}
+
+/* ── Server detail (DevStar) ─────────────────────────────────────── */
+function ServerDetailScreen({ onBack }) {
+  const [tab, setTab] = useStateS('resumen');
+  const tabs = [
+    ['resumen', 'Resumen', 'chart'],
+    ['servicios', 'Servicios', 'cube'],
+    ['sitios', 'Sitios Web', 'globe'],
+    ['bbdd', 'Bases de Datos', 'database'],
+    ['archivos', 'Archivos', 'folder'],
+  ];
+
+  return (
+    <div className="space-y-6">
+      <Card className="p-5">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center">
+            <Icon name="arrowLeft" />
+          </button>
+          <div className="w-12 h-12 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+            <Icon name="server" className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-bold tracking-tight">DevStar</h1>
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md glass-soft text-white/55">
+                Datos en vivo
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse" />
+            </div>
+            <div className="text-sm text-white/55 mt-0.5 font-mono">186.121.51.206 · Ubuntu 24.04.3 LTS (noble)</div>
+          </div>
+          <Btn variant="brand" icon={<Icon name="plus" className="w-4 h-4" />}>Instalar Servicio</Btn>
+          <button className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center">
+            <Icon name="gear" />
+          </button>
+        </div>
+
+        {/* Stat strip */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-5">
+          <StatBlock label="CPU" value="98.6%" tone="rose" valueColor="text-rose-300">
+            <Progress value={98.6} gradient="from-rose-500 to-orange-400" />
+          </StatBlock>
+          <StatBlock label="Memoria" value="67.6%" tone="amber" valueColor="text-amber-300">
+            <Progress value={67.6} gradient="from-amber-400 to-orange-400" />
+          </StatBlock>
+          <StatBlock label="Disco" value="13.7%" tone="emerald" valueColor="text-emerald-300">
+            <Progress value={13.7} gradient="from-emerald-500 to-teal-400" />
+          </StatBlock>
+          <StatBlock label="Tiempo Activo" value="8w:2d:3h:32m" tone="violet" mono valueColor="text-violet-200" />
+        </div>
+      </Card>
+
+      {/* Tabs */}
+      <Card className="p-2">
+        <div className="flex items-center gap-1">
+          {tabs.map(([id, label, icon]) => (
+            <button key={id} onClick={() => setTab(id)} className={`h-10 px-4 rounded-lg text-sm font-medium flex items-center gap-2 transition ${tab === id ? 'grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]' : 'text-white/65 hover:text-white hover:bg-white/[0.05]'}`}>
+              <Icon name={icon} className="w-4 h-4" />{label}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {/* Resumen content */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-violet-300 mb-4">
+            <Icon name="terminal" className="w-5 h-5" />
+            <SectionTitle>Información del Sistema</SectionTitle>
+          </div>
+          <KV rows={[
+            ['Sistema Operativo', 'Ubuntu 24.04.3 LTS (noble)'],
+            ['Kernel', '6.8.0-94-generic', true],
+            ['Hostname', 'devstar', true],
+            ['Load Average', '98.62 / 98.62 / 98.62', true],
+          ]} />
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-pink-300 mb-4">
+            <Icon name="network" className="w-5 h-5" />
+            <SectionTitle>Red</SectionTitle>
+          </div>
+          <KV rows={[
+            ['IP Privada', '192.168.1.18', true],
+            ['IP Pública', '186.121.51.206', true],
+            ['Interfaz', 'eth0', true],
+            ['Ancho de banda', '↑ 42 KB/s · ↓ 188 KB/s', true],
+          ]} />
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-emerald-300 mb-4">
+            <Icon name="activity" className="w-5 h-5" />
+            <SectionTitle>Procesos del Sistema</SectionTitle>
+          </div>
+          <div className="flex items-end justify-center py-2 gap-6">
+            <div className="text-center">
+              <div className="text-5xl font-extrabold tracking-tight">393</div>
+              <div className="text-xs uppercase tracking-wider text-white/45 mt-1">Procesos Totales</div>
+            </div>
+            <div className="h-16 w-px bg-white/10" />
+            <Sparkline />
+          </div>
+          <div className="grid grid-cols-3 gap-3 mt-5">
+            <MicroStat label="En ejecución" value="9" tone="emerald" />
+            <MicroStat label="Suspendidos" value="382" tone="violet" />
+            <MicroStat label="Zombies" value="2" tone="rose" />
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-amber-300 mb-4">
+            <Icon name="chart" className="w-5 h-5" />
+            <SectionTitle>Recursos Detallados</SectionTitle>
+          </div>
+          <ResourceRow label="CPU" right="98.6%" rightColor="text-rose-300">
+            <Progress value={98.6} gradient="from-rose-500 to-orange-400" height="h-2" />
+          </ResourceRow>
+          <ResourceRow label="Memoria RAM" right="7.47 GB / 7.64 GB" rightColor="text-sky-300">
+            <Progress value={97.7} gradient="from-sky-500 to-cyan-400" height="h-2" />
+          </ResourceRow>
+          <ResourceRow label="Disco Total" right="138.3 GB / 995.8 GB (13.7%)" rightColor="text-emerald-300">
+            <Progress value={13.7} gradient="from-emerald-500 to-teal-400" height="h-2" />
+            <div className="text-xs text-white/45 mt-1">Libre: 806.6 GB</div>
+          </ResourceRow>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+const StatBlock = ({ label, value, valueColor = 'text-white', children, mono }) => (
+  <div className="glass-soft rounded-xl p-4">
+    <div className="flex items-center justify-between">
+      <div className="text-xs uppercase tracking-wider text-white/55 font-medium">{label}</div>
+      <div className={`${mono ? 'font-mono text-sm' : 'text-lg font-bold'} ${valueColor}`}>{value}</div>
+    </div>
+    {children && <div className="mt-3">{children}</div>}
+  </div>
+);
+
+const KV = ({ rows }) => (
+  <div className="divide-y divide-white/[0.05]">
+    {rows.map(([k, v, mono], i) => (
+      <div key={i} className="flex items-center justify-between py-2.5 first:pt-0">
+        <span className="text-sm text-white/55">{k}</span>
+        <span className={`text-sm text-white/90 ${mono ? 'font-mono' : ''}`}>{v}</span>
+      </div>
+    ))}
+  </div>
+);
+
+const MicroStat = ({ label, value, tone }) => {
+  const tones = {
+    emerald: 'text-emerald-300', violet: 'text-violet-300', rose: 'text-rose-300', amber: 'text-amber-300',
+  };
+  return (
+    <div className="glass-soft rounded-lg p-3">
+      <div className="text-xs text-white/50">{label}</div>
+      <div className={`text-xl font-bold mt-0.5 ${tones[tone]}`}>{value}</div>
+    </div>
+  );
+};
+
+const ResourceRow = ({ label, right, rightColor, children }) => (
+  <div className="mb-4 last:mb-0">
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-sm text-white/65">{label}</span>
+      <span className={`text-sm font-mono ${rightColor || 'text-white/85'}`}>{right}</span>
+    </div>
+    {children}
+  </div>
+);
+
+const Sparkline = () => {
+  const points = [22, 38, 30, 50, 44, 68, 60, 82, 74, 90, 86, 95];
+  const max = 100;
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${(i / (points.length - 1)) * 160} ${50 - (p / max) * 45}`).join(' ');
+  return (
+    <svg width="160" height="50" viewBox="0 0 160 50" className="overflow-visible">
+      <defs>
+        <linearGradient id="spark-g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#34d399" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${d} L 160 50 L 0 50 Z`} fill="url(#spark-g)" />
+      <path d={d} stroke="#34d399" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+/* ── Configuración layout shell ──────────────────────────────────── */
+function SettingsScreen({ onBack }) {
+  const [tab, setTab] = useStateS('perfil');
+  const tabs = [
+    ['perfil', 'Perfil', 'user'],
+    ['notif', 'Notificaciones', 'bell'],
+    ['seg', 'Seguridad', 'shield'],
+    ['mon', 'Monitoreo', 'monitor'],
+    ['sis', 'Sistema', 'database'],
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        leading={
+          <button onClick={onBack} className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center">
+            <Icon name="arrowLeft" />
+          </button>
+        }
+        icon={<Icon name="gear" className="w-7 h-7" />}
+        title="Configuración"
+        subtitle="Administra las preferencias del sistema"
+        actions={<Btn variant="brand" icon={<Icon name="save" className="w-4 h-4" />}>Guardar Cambios</Btn>}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-[260px,1fr] gap-5">
+        {/* Sidebar */}
+        <Card className="p-3 self-start sticky top-0">
+          <div className="space-y-1">
+            {tabs.map(([id, label, icon]) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`w-full h-11 px-3.5 rounded-xl flex items-center gap-3 text-sm font-medium transition ${tab === id ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-white/[0.05]'}`}
+              >
+                <Icon name={icon} className="w-4.5 h-4.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        {/* Pane */}
+        <Card className="p-7">
+          {tab === 'perfil' && <PerfilPane />}
+          {tab === 'notif' && <NotifPane />}
+          {tab === 'seg' && <SegPane />}
+          {tab === 'mon' && <MonPane />}
+          {tab === 'sis' && <SisPane />}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ── Perfil pane ─────────────────────────────────────────────────── */
+function PerfilPane() {
+  const [show1, setShow1] = useStateS(false);
+  const [show2, setShow2] = useStateS(false);
+  return (
+    <div className="space-y-8">
+      <div>
+        <div className="flex items-center gap-4 mb-5">
+          <div className="w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white text-2xl font-bold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+            AS
+          </div>
+          <div>
+            <div className="text-lg font-semibold">Admin System</div>
+            <div className="text-sm text-white/55 font-mono">admin@startcode.local</div>
+            <div className="text-xs text-emerald-300 mt-1 inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Superadministrador
+            </div>
+          </div>
+        </div>
+        <SectionTitle>Información Personal</SectionTitle>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label="Nombre"><Input defaultValue="Admin" /></Field>
+          <Field label="Apellido"><Input defaultValue="System" /></Field>
+          <div className="md:col-span-2">
+            <Field label="Correo Electrónico">
+              <Input icon={<Icon name="mail" className="w-4 h-4" />} defaultValue="admin@startcode.local" />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-white/[0.06]" />
+
+      <div>
+        <SectionTitle>Cambiar Contraseña</SectionTitle>
+        <div className="space-y-4 mt-4">
+          <Field label="Contraseña Actual">
+            <Input
+              icon={<Icon name="key" className="w-4 h-4" />}
+              type={show1 ? 'text' : 'password'}
+              defaultValue="abc123xy"
+              suffix={
+                <button onClick={() => setShow1(s => !s)} className="text-white/55 hover:text-white">
+                  <Icon name="eye" className="w-4 h-4" />
+                </button>
+              }
+            />
+          </Field>
+          <Field label="Nueva Contraseña" hint="Mínimo 8 caracteres con un número y un símbolo">
+            <Input
+              icon={<Icon name="key" className="w-4 h-4" />}
+              type={show2 ? 'text' : 'password'}
+              defaultValue="abc123xy"
+              suffix={
+                <button onClick={() => setShow2(s => !s)} className="text-white/55 hover:text-white">
+                  <Icon name="eye" className="w-4 h-4" />
+                </button>
+              }
+            />
+          </Field>
+          <Field label="Confirmar Nueva Contraseña">
+            <Input icon={<Icon name="key" className="w-4 h-4" />} type="password" defaultValue="abc123xy" />
+          </Field>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Notificaciones pane ─────────────────────────────────────────── */
+function NotifPane() {
+  const [vals, setVals] = useStateS({
+    email: true, srvDown: true, cpu: true, mem: true, disk: false, sec: true, weekly: true, marketing: false,
+  });
+  const T = (k) => <Toggle on={vals[k]} onChange={(v) => setVals({ ...vals, [k]: v })} />;
+  return (
+    <div className="space-y-8">
+      <Group title="Alertas por Correo">
+        <NotifRow title="Alertas por correo electrónico" desc="Recibir notificaciones por correo cuando ocurran eventos importantes" trailing={T('email')} />
+      </Group>
+      <Group title="Alertas de Servidores">
+        <NotifRow icon={<Icon name="alert" className="w-4 h-4 text-rose-300" />} title="Servidor desconectado" desc="Notificar cuando un servidor deje de responder" trailing={T('srvDown')} />
+        <NotifRow icon={<Icon name="cpu" className="w-4 h-4 text-amber-300" />} title="Uso alto de CPU" desc="Notificar cuando el uso de CPU supere el umbral configurado" trailing={T('cpu')} />
+        <NotifRow icon={<Icon name="ram" className="w-4 h-4 text-sky-300" />} title="Uso alto de Memoria" desc="Notificar cuando el uso de memoria supere el umbral configurado" trailing={T('mem')} />
+        <NotifRow icon={<Icon name="disk" className="w-4 h-4 text-violet-300" />} title="Uso alto de Disco" desc="Notificar cuando el espacio en disco supere el umbral configurado" trailing={T('disk')} />
+      </Group>
+      <Group title="Alertas de Seguridad">
+        <NotifRow icon={<Icon name="shield" className="w-4 h-4 text-emerald-300" />} title="Alertas de seguridad" desc="Notificar sobre intentos de acceso sospechosos y eventos de seguridad" trailing={T('sec')} />
+      </Group>
+      <Group title="Otros">
+        <NotifRow icon={<Icon name="chart" className="w-4 h-4 text-fuchsia-300" />} title="Reporte semanal" desc="Resumen de actividad enviado cada lunes a las 9:00 AM" trailing={T('weekly')} />
+        <NotifRow icon={<Icon name="sparkle" className="w-4 h-4 text-pink-300" />} title="Novedades del producto" desc="Avisos sobre nuevas funciones y actualizaciones" trailing={T('marketing')} />
+      </Group>
+    </div>
+  );
+}
+
+const Group = ({ title, children }) => (
+  <div>
+    <SectionTitle>{title}</SectionTitle>
+    <div className="mt-4 space-y-2.5">{children}</div>
+  </div>
+);
+
+const NotifRow = ({ title, desc, trailing, icon }) => (
+  <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
+    {icon && <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center shrink-0">{icon}</div>}
+    <div className="flex-1 min-w-0">
+      <div className="text-sm font-medium">{title}</div>
+      <div className="text-xs text-white/50 mt-0.5">{desc}</div>
+    </div>
+    {trailing}
+  </div>
+);
+
+/* ── Seguridad pane ──────────────────────────────────────────────── */
+function SegPane() {
+  const [timeout, setTimeoutVal] = useStateS(30);
+  const [pwExp, setPwExp] = useStateS(90);
+  return (
+    <div className="space-y-8">
+      <div>
+        <SectionTitle>Autenticación de dos factores (2FA)</SectionTitle>
+        <div className="glass-soft rounded-xl p-4 mt-4 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-400/15 flex items-center justify-center text-amber-300">
+            <Icon name="shieldOff" />
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-medium">2FA desactivado</div>
+            <div className="text-xs text-white/55 mt-0.5">Usa Google Authenticator, Authy o cualquier app TOTP</div>
+          </div>
+          <Btn variant="brand" icon={<Icon name="shield" className="w-4 h-4" />}>Activar 2FA</Btn>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Sesión</SectionTitle>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label="Tiempo de inactividad para cerrar sesión" hint="Cierre automático tras inactividad">
+            <div className="flex items-center gap-3">
+              <Input icon={<Icon name="clock" className="w-4 h-4" />} type="number" value={timeout} onChange={(e) => setTimeoutVal(+e.target.value)} className="flex-1" />
+              <div className="text-sm text-white/55 shrink-0">minutos</div>
+            </div>
+            <input type="range" min="5" max="120" value={timeout} onChange={(e) => setTimeoutVal(+e.target.value)} className="w-full mt-3" />
+          </Field>
+          <Field label="Expiración de contraseña" hint="0 = sin expiración">
+            <div className="flex items-center gap-3">
+              <Input icon={<Icon name="key" className="w-4 h-4" />} type="number" value={pwExp} onChange={(e) => setPwExp(+e.target.value)} className="flex-1" />
+              <div className="text-sm text-white/55 shrink-0">días</div>
+            </div>
+            <input type="range" min="0" max="365" value={pwExp} onChange={(e) => setPwExp(+e.target.value)} className="w-full mt-3" />
+          </Field>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Sesiones Activas</SectionTitle>
+        <div className="space-y-2.5 mt-4">
+          <SessionRow icon="monitor" device="Sesión actual" meta="Navegador actual · Activa ahora" current />
+          <SessionRow icon="monitor" device="MacBook Pro · Chrome" meta="Bogotá, CO · hace 2 horas" />
+          <SessionRow icon="cpu" device="Servidor CI · Token API" meta="186.121.51.206 · expira en 30 días" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SessionRow = ({ icon, device, meta, current }) => (
+  <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
+    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-400/15 flex items-center justify-center text-emerald-300">
+      <Icon name={icon} className="w-5 h-5" />
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="text-sm font-medium">{device}</div>
+      <div className="text-xs text-white/55 mt-0.5">{meta}</div>
+    </div>
+    {current
+      ? <span className="text-xs px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20 font-medium">Activa</span>
+      : <button className="text-xs text-rose-300 hover:text-rose-200">Cerrar sesión</button>}
+  </div>
+);
+
+/* ── Monitoreo pane ──────────────────────────────────────────────── */
+function MonPane() {
+  const [cpu, setCpu] = useStateS(80);
+  const [mem, setMem] = useStateS(85);
+  const [disk, setDisk] = useStateS(90);
+  return (
+    <div className="space-y-8">
+      <div>
+        <SectionTitle>Intervalo de Actualización</SectionTitle>
+        <div className="mt-4 flex items-center gap-3">
+          <Select icon={<Icon name="refresh" className="w-4 h-4" />} defaultValue="30">
+            <option className="bg-[#1a0f3d]" value="5">5 segundos</option>
+            <option className="bg-[#1a0f3d]" value="15">15 segundos</option>
+            <option className="bg-[#1a0f3d]" value="30">30 segundos</option>
+            <option className="bg-[#1a0f3d]" value="60">1 minuto</option>
+            <option className="bg-[#1a0f3d]" value="300">5 minutos</option>
+          </Select>
+          <div className="text-xs text-white/50 max-w-md">Con qué frecuencia se actualizan las métricas de los servidores en tiempo real.</div>
+        </div>
+      </div>
+
+      <div className="border-t border-white/[0.06]" />
+
+      <div>
+        <SectionTitle>Umbrales de Alerta</SectionTitle>
+        <div className="space-y-5 mt-4">
+          <ThresholdRow label="Umbral de CPU" value={cpu} onChange={setCpu} gradient="from-emerald-400 via-amber-400 to-rose-500" />
+          <ThresholdRow label="Umbral de Memoria" value={mem} onChange={setMem} gradient="from-sky-400 via-violet-400 to-fuchsia-500" />
+          <ThresholdRow label="Umbral de Disco" value={disk} onChange={setDisk} gradient="from-violet-500 via-fuchsia-500 to-rose-500" />
+        </div>
+      </div>
+
+      <div className="border-t border-white/[0.06]" />
+
+      <div>
+        <SectionTitle>Retención de Datos</SectionTitle>
+        <div className="mt-4 flex items-center gap-3">
+          <Select icon={<Icon name="database" className="w-4 h-4" />} defaultValue="30">
+            <option className="bg-[#1a0f3d]" value="7">7 días</option>
+            <option className="bg-[#1a0f3d]" value="14">14 días</option>
+            <option className="bg-[#1a0f3d]" value="30">30 días</option>
+            <option className="bg-[#1a0f3d]" value="90">90 días</option>
+            <option className="bg-[#1a0f3d]" value="365">1 año</option>
+          </Select>
+          <div className="text-xs text-white/50">Tiempo que se conservan los históricos de métricas.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ThresholdRow = ({ label, value, onChange, gradient }) => (
+  <div>
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-sm text-white/75">{label}</span>
+      <span className="text-sm font-mono tabular-nums text-white">{value}%</span>
+    </div>
+    <div className="relative h-2 rounded-full bg-white/[0.06] overflow-hidden">
+      <div className={`absolute inset-y-0 left-0 bg-gradient-to-r ${gradient} rounded-full`} style={{ width: `${value}%` }} />
+    </div>
+    <input
+      type="range" min="10" max="100" value={value} onChange={(e) => onChange(+e.target.value)}
+      className="w-full mt-2.5"
+    />
+  </div>
+);
+
+/* ── Sistema pane ────────────────────────────────────────────────── */
+function SisPane() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <SectionTitle>Información del Sistema</SectionTitle>
+        <div className="glass-soft rounded-xl mt-4 divide-y divide-white/[0.04]">
+          <SisRow label="Versión" value="0.1.0" />
+          <SisRow label="Entorno" value="Desarrollo" badge="warning" />
+          <SisRow label="API URL" value="localhost:3001" mono />
+          <SisRow label="Última actualización" value="hoy, 02:55" />
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Base de Datos</SectionTitle>
+        <div className="glass-soft rounded-xl mt-4 divide-y divide-white/[0.04]">
+          <SisRow label="Tipo" value="PostgreSQL" mono />
+          <SisRow label="Estado" value="Conectado" badge="success" />
+          <SisRow label="Tamaño" value="248 MB" mono />
+          <SisRow label="Conexiones activas" value="6 / 100" mono />
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Acciones del Sistema</SectionTitle>
+        <div className="flex flex-wrap gap-3 mt-4">
+          <Btn icon={<Icon name="refresh" className="w-4 h-4" />}>Limpiar caché</Btn>
+          <Btn icon={<Icon name="database" className="w-4 h-4" />}>Exportar configuración</Btn>
+          <Btn icon={<Icon name="terminal" className="w-4 h-4" />}>Ver logs</Btn>
+          <Btn icon={<Icon name="logout" className="w-4 h-4" />} className="text-rose-300 hover:bg-rose-500/10">Reiniciar servicio</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SisRow = ({ label, value, mono, badge }) => (
+  <div className="flex items-center justify-between px-4 py-3">
+    <span className="text-sm text-white/55">{label}</span>
+    {badge === 'success'
+      ? <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20">{value}</span>
+      : badge === 'warning'
+        ? <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/20">{value}</span>
+        : <span className={`text-sm text-white/90 ${mono ? 'font-mono' : ''}`}>{value}</span>}
+  </div>
+);
+
+/* expose */
+Object.assign(window, { DashboardScreen, ServerDetailScreen, SettingsScreen });
+
+</script>
+  <script type="text/babel" data-presets="react">
+// app.jsx — app shell with sidebar + window chrome
+const { useState: useStateA } = React;
+
+function App() {
+  // 'dashboard' | 'server' | 'settings'
+  const [route, setRoute] = useStateA('dashboard');
+
+  // Sidebar items
+  const nav = [
+    ['dashboard', 'Panel', 'chart'],
+    ['server', 'Servidores', 'server'],
+    ['servicios', 'Servicios', 'cube'],
+    ['sitios', 'Sitios Web', 'globe'],
+    ['bbdd', 'Bases de Datos', 'database'],
+    ['archivos', 'Archivos', 'folder'],
+  ];
+  const meta = [
+    ['notif', 'Notificaciones', 'bell'],
+    ['settings', 'Configuración', 'gear'],
+  ];
+
+  const activeRoute = route === 'server' ? 'server' : route === 'settings' ? 'settings' : 'dashboard';
+
+  return (
+    <div className="h-full flex p-5 gap-5">
+      {/* ─── Sidebar ─────────────────────────────────────────── */}
+      <aside className="w-[240px] shrink-0 glass rounded-2xl flex flex-col grain relative">
+        {/* Brand */}
+        <div className="px-4 pt-5 pb-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl grad-brand flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(168,85,247,0.55)]">
+            <Icon name="server" className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="text-sm font-bold tracking-tight">StartCode</div>
+            <div className="text-[10px] uppercase tracking-wider text-white/45 font-medium">Cloud Console</div>
+          </div>
+        </div>
+
+        <div className="px-3 mt-1">
+          <div className="text-[10px] uppercase tracking-wider text-white/35 font-semibold px-2 py-2">Workspace</div>
+          <div className="space-y-0.5">
+            {nav.map(([id, label, icon]) => (
+              <SideItem key={id} icon={icon} label={label} active={id === activeRoute || (id === 'server' && route === 'server')} onClick={() => setRoute(id === 'dashboard' ? 'dashboard' : id === 'server' ? 'server' : 'dashboard')} />
+            ))}
+          </div>
+
+          <div className="text-[10px] uppercase tracking-wider text-white/35 font-semibold px-2 pt-5 pb-2">Cuenta</div>
+          <div className="space-y-0.5">
+            {meta.map(([id, label, icon]) => (
+              <SideItem key={id} icon={icon} label={label} active={id === 'settings' && route === 'settings'} onClick={() => setRoute(id === 'settings' ? 'settings' : route)} badge={id === 'notif' ? '3' : null} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-auto p-3">
+          {/* Server status card */}
+          <div className="glass-soft rounded-xl p-3 mb-2">
+            <div className="flex items-center gap-2 text-xs text-white/55 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Sistema operativo
+            </div>
+            <div className="flex items-end justify-between">
+              <div className="text-sm font-semibold">DevStar</div>
+              <div className="font-mono text-[11px] text-emerald-300">98.6%</div>
+            </div>
+            <div className="mt-2"><Progress value={98.6} gradient="from-rose-500 to-orange-400" height="h-1" /></div>
+          </div>
+
+          {/* User chip */}
+          <div className="glass-soft rounded-xl p-2.5 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg grad-brand flex items-center justify-center text-white text-xs font-bold">AS</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium truncate">Admin System</div>
+              <div className="text-[10px] text-white/45 truncate font-mono">admin@startcode.local</div>
+            </div>
+            <button className="text-white/45 hover:text-white"><Icon name="logout" className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ─── Main pane ───────────────────────────────────────── */}
+      <main className="flex-1 min-w-0 flex flex-col gap-0">
+        {/* Window chrome */}
+        <div className="glass rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-rose-400/90 ring-1 ring-rose-300/30" />
+            <span className="w-3 h-3 rounded-full bg-amber-400/90 ring-1 ring-amber-300/30" />
+            <span className="w-3 h-3 rounded-full bg-emerald-400/90 ring-1 ring-emerald-300/30" />
+          </div>
+          <div className="text-xs text-white/45 font-mono">
+            startcode://{route === 'server' ? 'servers/devstar' : route === 'settings' ? 'settings' : 'dashboard'}
+          </div>
+          <div className="flex-1" />
+          <div className="hidden md:flex items-center gap-2 glass-soft rounded-lg px-3 h-8 text-xs text-white/50">
+            <Icon name="search" className="w-3.5 h-3.5" />
+            Buscar… <span className="ml-2 px-1.5 py-0.5 rounded bg-white/[0.06] text-white/60 font-mono text-[10px]">⌘K</span>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 glass rounded-2xl rounded-t-none border-t-0 overflow-hidden grain relative">
+          <div className="h-full overflow-y-auto scroll-area p-6">
+            {route === 'dashboard' && <DashboardScreen onOpenServer={() => setRoute('server')} onOpenSettings={() => setRoute('settings')} />}
+            {route === 'server' && <ServerDetailScreen onBack={() => setRoute('dashboard')} />}
+            {route === 'settings' && <SettingsScreen onBack={() => setRoute('dashboard')} />}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function SideItem({ icon, label, active, onClick, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full h-10 px-2.5 rounded-xl flex items-center gap-3 text-sm font-medium transition relative ${active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-white/[0.04]'}`}
+    >
+      <Icon name={icon} className="w-4 h-4 shrink-0" />
+      <span className="flex-1 text-left">{label}</span>
+      {badge && (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 ring-1 ring-pink-400/25">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>

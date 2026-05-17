@@ -1,6 +1,6 @@
 // src/hooks/useServers.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { serverService } from '../services/server.service';
+import { serverService } from '@services/server.service';
 
 /**
  * Hook para obtener todos los servidores del usuario

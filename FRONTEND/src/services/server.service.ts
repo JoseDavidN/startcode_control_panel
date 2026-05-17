@@ -1,6 +1,6 @@
 // src/services/server.service.ts
 import { apiService } from './api.service';
-import { API_CONFIG } from '../utils/constants';
+import { API_CONFIG } from '@utils/constants';
 
 interface CreateServerDto {
 	name: string;
@@ -83,21 +83,8 @@ class ServerService {
 		return res as { message: string };
 	}
 
-	/**
-	 * Actualizar quickstats de todos los servidores
-	 * Ejecuta quickstats para todos los servidores del usuario
-	 */
-	async refreshAllServersStats(): Promise<any[]> {
-		const response = await apiService.get<any[]>(
-			`${API_CONFIG.ENDPOINTS.MONITORING}/servers/all/stats`
-		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const list =
-			payload && (payload as any).data ? (payload as any).data : payload;
-		return Array.isArray(list) ? (list as any[]) : [];
+	async refreshAllServersStats(): Promise<Server[]> {
+		return this.getServers();
 	}
 }
 

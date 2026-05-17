@@ -1,41 +1,37 @@
 // src/hooks/useAuthMutation.ts
 import { useMutation } from '@tanstack/react-query';
-import { apiService } from '../services/api.service';
-import { TokenManager } from '../utils/tokenManager';
-import { API_CONFIG } from '../utils/constants';
-import { normalizeAuthResponse } from '../services/auth.adapter';
-import type { LoginCredentials, AuthResponse } from '../types/auth.types';
+import { apiService } from '@services/api.service';
+import { TokenManager } from '@utils/tokenManager';
+import { API_CONFIG } from '@utils/constants';
+import { normalizeAuthResponse } from '@services/auth.adapter';
+import type { LoginCredentials, AuthResponse, TwoFactorPendingResponse } from '@typings/auth.types';
 
-/**
- * Hook para el login con TanStack Query
- */
 export function useLoginMutation() {
 	return useMutation({
 		mutationFn: async (
 			credentials: LoginCredentials
-		): Promise<AuthResponse> => {
-			// El backend puede devolver objeto directo o envuelto { success, data }
+		): Promise<AuthResponse | TwoFactorPendingResponse> => {
 			const response = await apiService.post<any>(
 				API_CONFIG.ENDPOINTS.LOGIN,
 				credentials
 			);
 
-			// Extraer datos de forma segura
-			const backendData =	response && response.data ? response.data : response;
+			const backendData = response && response.data ? response.data : response;
 
-			// Normalizar respuesta del backend
+			// Detectar respuesta 2FA antes de intentar normalizar
+			if (backendData?.requiresTwoFactor === true) {
+				return { requiresTwoFactor: true, tempToken: backendData.tempToken } as TwoFactorPendingResponse;
+			}
+
 			const normalized = normalizeAuthResponse(backendData);
 
-			// Guardar tokens
 			if (normalized.tokens) {
 				TokenManager.setTokens(
 					normalized.tokens.accessToken,
-					normalized.tokens.refreshToken ||
-						normalized.tokens.accessToken
+					normalized.tokens.refreshToken || normalized.tokens.accessToken
 				);
 			}
 
-			// Guardar usuario
 			TokenManager.saveUserData(normalized.user);
 			return normalized;
 		},

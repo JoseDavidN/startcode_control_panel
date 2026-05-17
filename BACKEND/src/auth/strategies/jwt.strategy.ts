@@ -31,7 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
     });
 
-    if (!user || !user.bol_is_active) {
+    if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario no autorizado');
     }
 

@@ -1,26 +1,31 @@
 // src/services/auth.service.ts
 import { apiService } from './api.service';
-import { TokenManager } from '../utils/tokenManager';
-import { API_CONFIG } from '../utils/constants';
-import type { LoginCredentials, AuthResponse, User } from '../types/auth.types';
+import { TokenManager } from '@utils/tokenManager';
+import { API_CONFIG } from '@utils/constants';
+import { normalizeAuthResponse } from './auth.adapter';
+import type { LoginCredentials, AuthResponse, User } from '@typings/auth.types';
 
 class AuthService {
 	async login(credentials: LoginCredentials): Promise<AuthResponse> {
 		try {
-			const response = await apiService.post<AuthResponse>(
+			const response = await apiService.post<any>(
 				API_CONFIG.ENDPOINTS.LOGIN,
 				credentials
 			);
 
-			const { user, tokens } = response.data;
+			// Normalizar la respuesta del backend
+			const normalizedResponse = normalizeAuthResponse(response);
 
 			// Guardar tokens
-			TokenManager.setTokens(tokens?.accessToken || '', tokens?.refreshToken || '');
+			TokenManager.setTokens(
+				normalizedResponse.tokens?.accessToken || '',
+				normalizedResponse.tokens?.refreshToken || ''
+			);
 
 			// Guardar datos del usuario
-			TokenManager.saveUserData(user);
+			TokenManager.saveUserData(normalizedResponse.user);
 
-			return response.data;
+			return normalizedResponse;
 		} catch (error: any) {
 			throw new Error(
 				error.response?.data?.message || 'Error al iniciar sesión'
@@ -51,19 +56,19 @@ class AuthService {
 				// Intentar refrescar el token
 				const refreshToken = TokenManager.getRefreshToken();
 				if (refreshToken) {
-					const response = await apiService.post<AuthResponse>(
+					const response = await apiService.post<any>(
 						API_CONFIG.ENDPOINTS.REFRESH,
 						{ refreshToken }
 					);
 
-					const { user, tokens } = response.data;
+					const normalizedResponse = normalizeAuthResponse(response);
 					TokenManager.setTokens(
-						tokens?.accessToken || '',
-						tokens?.refreshToken || ''
+						normalizedResponse.tokens?.accessToken || '',
+						normalizedResponse.tokens?.refreshToken || ''
 					);
-					TokenManager.saveUserData(user);
+					TokenManager.saveUserData(normalizedResponse.user);
 
-					return user;
+					return normalizedResponse.user;
 				}
 
 				return null;
@@ -106,16 +111,19 @@ class AuthService {
 				throw new Error('No refresh token available');
 			}
 
-			const response = await apiService.post<AuthResponse>(
+			const response = await apiService.post<any>(
 				API_CONFIG.ENDPOINTS.REFRESH,
 				{ refreshToken }
 			);
 
-			const { user, tokens } = response.data;
-			TokenManager.setTokens(tokens?.accessToken || '', tokens?.refreshToken || '');
-			TokenManager.saveUserData(user);
+			const normalizedResponse = normalizeAuthResponse(response);
+			TokenManager.setTokens(
+				normalizedResponse.tokens?.accessToken || '',
+				normalizedResponse.tokens?.refreshToken || ''
+			);
+			TokenManager.saveUserData(normalizedResponse.user);
 
-			return response.data;
+			return normalizedResponse;
 		} catch (error: any) {
 			TokenManager.clearTokens();
 			throw new Error(

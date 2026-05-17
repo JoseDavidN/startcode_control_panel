@@ -8,39 +8,39 @@ export class ServerResponseDto {
   @ApiProperty()
   id: string;
 
-  @Expose({ name: 'str_name' })
+  @Expose({ name: 'name' })
   @ApiProperty()
   name: string;
 
-  @Expose({ name: 'str_host' })
+  @Expose({ name: 'host' })
   @ApiProperty()
   host: string;
 
-  @Expose({ name: 'int_port' })
+  @Expose({ name: 'port' })
   @ApiProperty()
   port: number;
 
-  @Expose({ name: 'str_username' })
+  @Expose({ name: 'username' })
   @ApiProperty()
   username: string;
 
-  @Expose({ name: 'enu_status' })
+  @Expose({ name: 'status' })
   @ApiProperty({ enum: ServerStatus })
   status: ServerStatus;
 
-  @Expose({ name: 'enu_os' })
+  @Expose({ name: 'os' })
   @ApiProperty({ enum: ServerOs })
   os: ServerOs;
 
-  @Expose({ name: 'str_description' })
+  @Expose({ name: 'description' })
   @ApiProperty({ required: false })
   description: string;
 
-  @Expose({ name: 'json_metadata' })
+  @Expose({ name: 'metadata' })
   @ApiProperty({ required: false })
   metadata: any;
 
-  @Expose({ name: 'str_owner_id' })
+  @Expose({ name: 'ownerId' })
   @ApiProperty()
   ownerId: string;
 

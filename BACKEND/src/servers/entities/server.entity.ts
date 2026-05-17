@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { User } from '../../auth/entities/user.entity';
+import { User } from '@auth/entities/user.entity';
 
 export enum ServerStatus {
   ONLINE = 'online',
@@ -37,45 +37,58 @@ export class Server {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  str_name: string;
+  @Column({ name: 'str_name' })
+  name: string;
 
-  @Column()
-  str_host: string;
+  @Column({ name: 'str_host' })
+  host: string;
 
-  @Column({ default: 22 })
-  int_port: number;
+  @Column({ default: 22, name: 'int_port' })
+  port: number;
 
-  @Column()
-  str_username: string;
+  @Column({ name: 'str_username' })
+  username: string;
 
-  @Column({ type: 'text', select: false })
-  str_privatekey: string;
+  @Column({ type: 'text', select: false, name: 'str_privatekey' })
+  privateKey: string;
 
-  @Column({ type: 'enum', enum: ServerStatus, default: ServerStatus.OFFLINE })
-  enu_status: ServerStatus;
+  @Column({ type: 'enum', enum: ServerStatus, default: ServerStatus.OFFLINE, name: 'enu_status' })
+  status: ServerStatus;
 
-  @Column({ type: 'enum', enum: ServerOs })
-  enu_os: ServerOs;
+  @Column({ type: 'enum', enum: ServerOs, name: 'enu_os' })
+  os: ServerOs;
 
-  @Column({ type: 'text', nullable: true })
-  str_description: string;
+  @Column({ type: 'text', nullable: true, name: 'str_description' })
+  description: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  json_metadata: {
+  @Column({ type: 'jsonb', nullable: true, name: 'json_metadata' })
+  metadata: {
     cpu?: number;
     memory?: number;
     disk?: number;
     uptime?: string;
     osVersion?: string;
+    activeServices?: number;
   };
+
+  @Column({ type: 'timestamp', nullable: true, name: 'dat_last_seen' })
+  lastSeen: Date;
+
+  @Column({ type: 'text', nullable: true, name: 'str_hostname' })
+  hostname: string;
+
+  @Column({ type: 'text', nullable: true, name: 'str_os_version' })
+  osVersion: string;
+
+  @Column({ type: 'text', nullable: true, name: 'str_kernel_version' })
+  kernelVersion: string;
 
   @ManyToOne(() => User, (user) => user.servers, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'str_owner_id' })
-  str_owner: User;
+  owner: User;
 
   @Column({ name: 'str_owner_id' })
-  str_owner_id: string;
+  ownerId: string;
 
   @CreateDateColumn()
   createdAt: Date;

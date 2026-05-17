@@ -1,7 +1,7 @@
 // src/services/auth.adapter.ts
 // Adaptador para normalizar respuestas del backend a formato del frontend
 
-import type { User, AuthResponse, Permission } from '../types/auth.types';
+import type { User, AuthResponse, Permission } from '@typings/auth.types';
 
 /**
  * Mapea roles a permisos predeterminados
@@ -48,46 +48,39 @@ export function getPermissionsFromRole(role: string): Permission[] {
  * - Entidad completa: { id, str_email, str_firstname, str_lastname, enu_role, bol_is_active, createdAt }
  */
 export function normalizeUser(user: any): User {
-	// Si ya tiene el formato correcto (del login)
-	if (user.email && user.name && !user.str_email) {
-		return {
-			id: user.id,
-			email: user.email,
-			name: user.name,
-			role: user.role,
-			roles: user.roles || (user.role ? [user.role] : []),
-			isActive: user.isActive,
-			createdAt: user.createdAt,
-			permissions: user.permissions || getPermissionsFromRole(user.role),
-		};
-	}
+	// Determinar firstname/lastname
+	const firstname: string | undefined =
+		user.firstname ?? user.str_firstname;
+	const lastname: string | undefined =
+		user.lastname ?? user.str_lastname;
 
-	// Si viene de la entidad completa (de /me endpoint)
+	// Construir el nombre completo
+	const name: string =
+		user.name ||
+		(firstname && lastname ? `${firstname} ${lastname}` : firstname || lastname || '');
+
+	const role = user.enu_role || user.role;
+	const email = user.str_email || user.email;
+	const isActive = user.bol_is_active !== undefined ? user.bol_is_active : user.isActive;
+
 	return {
 		id: user.id,
-		email: user.str_email || user.email,
-		name:
-			user.str_firstname && user.str_lastname
-				? `${user.str_firstname} ${user.str_lastname}`
-				: user.name,
-		role: user.enu_role || user.role,
-		roles:
-			user.roles ||
-			(user.enu_role ? [user.enu_role] : user.role ? [user.role] : []),
-		isActive:
-			user.bol_is_active !== undefined
-				? user.bol_is_active
-				: user.isActive,
+		email,
+		name,
+		firstname,
+		lastname,
+		role,
+		roles: user.roles || (role ? [role] : []),
+		isActive,
+		twoFactorEnabled: user.twoFactorEnabled ?? user.bol_two_factor_enabled ?? false,
 		createdAt: user.createdAt,
-		permissions:
-			user.permissions ||
-			getPermissionsFromRole(user.enu_role || user.role),
+		permissions: user.permissions || getPermissionsFromRole(role),
 	};
 }
 
 /**
  * Normaliza la respuesta de autenticación del backend
- * Backend: { user, token, expiresIn }
+ * Backend: { user, token, refreshToken, expiresIn }
  * Frontend: { user, tokens: { accessToken, refreshToken } }
  */
 export function normalizeAuthResponse(response: any): AuthResponse {
@@ -98,14 +91,16 @@ export function normalizeAuthResponse(response: any): AuthResponse {
 		throw new Error('Respuesta inválida del servidor en login');
 	}
 
-	const { user, token, tokens, expiresIn } = payload;
+	const { user, token, refreshToken, tokens, expiresIn } = payload;
 
 	// Normalizar usuario
 	const normalizedUser = normalizeUser(user);
 
 	// Normalizar tokens (aceptar token único o estructura tokens)
+	// Priorizar: tokens.accessToken > token > ''
+	// Priorizar refresh: tokens.refreshToken > refreshToken > ''
 	const accessToken = tokens?.accessToken || token || '';
-	const refreshToken = tokens?.refreshToken || token || accessToken;
+	const refresh = tokens?.refreshToken || refreshToken || '';
 
 	return {
 		user: normalizedUser,
@@ -113,7 +108,7 @@ export function normalizeAuthResponse(response: any): AuthResponse {
 		token: token,
 		tokens: {
 			accessToken,
-			refreshToken,
+			refreshToken: refresh,
 		},
 	};
 }

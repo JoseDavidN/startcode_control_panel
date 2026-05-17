@@ -1,7 +1,7 @@
 // src/monitoring/services/ssh.service.ts
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Client } from 'ssh2';
-import { Server } from '../../servers/entities/server.entity';
+import { Server } from '@servers/entities/server.entity';
 
 export interface SSHExecResult {
   stdout: string;
@@ -38,11 +38,11 @@ export class SSHService {
         }
 
         this.logger.debug(
-          `🔗 Creando nueva conexión a ${server.str_host}:${server.int_port} como ${server.str_username}`,
+          `🔗 Creando nueva conexión a ${server.host}:${server.port} como ${server.username}`,
         );
 
         // Limpiar la llave privada
-        const cleanPrivateKey = this.cleanPrivateKey(server.str_privatekey);
+        const cleanPrivateKey = this.cleanPrivateKey(server.privateKey);
         this.logger.debug(`Llave limpia, longitud: ${cleanPrivateKey.length}`);
         this.logger.debug(
           `Tipo de llave: ${this.detectKeyType(cleanPrivateKey)}`,
@@ -59,28 +59,28 @@ export class SSHService {
         conn.on('ready', () => {
           clearTimeout(timeout);
           this.connections.set(server.id, conn);
-          this.logger.log(`✅ Conectado exitosamente a ${server.str_name}`);
+          this.logger.log(`✅ Conectado exitosamente a ${server.name}`);
           resolve(conn);
         });
 
         conn.on('error', (err) => {
           clearTimeout(timeout);
           this.logger.error(
-            `❌ Error SSH en ${server.str_name}: ${err.message}`,
+            `❌ Error SSH en ${server.name}: ${err.message}`,
           );
           reject(err);
         });
 
         conn.on('close', () => {
           this.connections.delete(server.id);
-          this.logger.debug(`Conexión cerrada: ${server.str_name}`);
+          this.logger.debug(`Conexión cerrada: ${server.name}`);
         });
 
         // Intentar conectar
         conn.connect({
-          host: server.str_host,
-          port: server.int_port,
-          username: server.str_username,
+          host: server.host,
+          port: server.port,
+          username: server.username,
           privateKey: Buffer.from(cleanPrivateKey, 'utf8'),
           readyTimeout: 15000,
           keepaliveInterval: 10000,

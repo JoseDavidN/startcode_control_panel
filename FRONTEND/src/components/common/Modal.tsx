@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { X } from 'lucide-react';
 
 interface ModalProps {
   isOpen: boolean;
@@ -9,72 +8,55 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-export const Modal: React.FC<ModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children,
-  size = 'md' 
-}) => {
-  // Close on ESC key
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
+const sizeMap = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-3xl', xl: 'max-w-5xl' };
 
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
+      document.addEventListener('keydown', onKey);
       document.body.style.overflow = 'hidden';
     }
-
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
     };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-2xl',
-    lg: 'max-w-4xl',
-    xl: 'max-w-6xl'
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn"
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-md animate-fadeIn"
         onClick={onClose}
       />
-      
-      {/* Modal */}
-      <div 
-        className={`relative w-full ${sizeClasses[size]} bg-[#0f0623]/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-purple-500/20 animate-slideUp`}
+
+      {/* Modal — max 88vh, flex-col so header stays fixed and body scrolls */}
+      <div
+        className={`relative w-full ${sizeMap[size]} max-h-[88vh] flex flex-col glass grain rounded-2xl animate-slideUp`}
+        style={{ boxShadow: '0 32px 80px -16px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset' }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
-            {title}
-          </h2>
+        {/* Header — never scrolls */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] shrink-0">
+          <h2 className="text-lg font-semibold tracking-tight text-grad-brand">{title}</h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg backdrop-blur-sm bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-300 hover:rotate-90"
+            className="w-8 h-8 rounded-lg glass-soft text-white/50 hover:text-white/90 hover:bg-white/[0.08] flex items-center justify-center transition"
           >
-            <X className="w-5 h-5" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6">
+        {/* Scrollable content */}
+        <div className="p-6 overflow-y-auto modal-scroll flex-1 min-h-0">
           {children}
         </div>
       </div>
     </div>
   );
 };
-

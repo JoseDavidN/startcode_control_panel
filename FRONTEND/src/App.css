@@ -10,6 +10,9 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* ── Interactive cursor ───────────────────────────────────────────── */
+button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
+
 /* ── Scrollbars ───────────────────────────────────────────────────── */
 .scroll-area::-webkit-scrollbar { width: 10px; height: 10px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }

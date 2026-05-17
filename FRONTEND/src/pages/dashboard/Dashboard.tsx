@@ -267,15 +267,6 @@ export const Dashboard: React.FC = () => {
             </svg>
             <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-pink-400 ring-2 ring-[#150a2e]" />
           </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.7 1.7 0 00.4 1.8l.1.1a2 2 0 01-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.8-.4 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 01-2.8-2.9l.1-.1a1.7 1.7 0 00.4-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.4-1.9L4.1 7a2 2 0 012.9-2.8l.1.1a1.7 1.7 0 001.9.4H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.4l.1-.1a2 2 0 012.9 2.9l-.1.1a1.7 1.7 0 00-.4 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z" />
-            </svg>
-          </button>
         </div>
       </Card>
 
@@ -346,7 +337,10 @@ export const Dashboard: React.FC = () => {
           {/* Add new server tile */}
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="glass rounded-2xl border-dashed border-white/10 hover:border-white/25 hover:bg-white/[0.04] transition group flex items-center justify-center min-h-[280px] grain relative"
+            className="glass rounded-2xl transition group flex items-center justify-center min-h-[280px] grain relative cursor-pointer"
+            style={{ border: '1.5px dashed rgba(255,255,255,0.18)' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.45)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)')}
           >
             <div className="flex flex-col items-center gap-3 text-white/40 group-hover:text-white/70 transition">
               <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-white/10 flex items-center justify-center">

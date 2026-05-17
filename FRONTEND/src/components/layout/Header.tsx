@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Server, Bell, Settings } from 'lucide-react'
+import { Server, Bell } from 'lucide-react'
 
 
 export const Header = () => {
@@ -28,16 +28,13 @@ export const Header = () => {
 
           <div className="flex items-center space-x-4">
             <div className="text-right">
-              <p className="text-sm text-gray-300">Hora actual</p>
+              <p className="text-sm text-gray-300">Hora actua</p>
               <p className="text-lg font-mono text-white">
                 {currentTime.toLocaleTimeString()}
               </p>
             </div>
             <button className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300">
               <Bell className="w-5 h-5 text-white" />
-            </button>
-            <button className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300">
-              <Settings className="w-5 h-5 text-white" />
             </button>
           </div>
         </div>

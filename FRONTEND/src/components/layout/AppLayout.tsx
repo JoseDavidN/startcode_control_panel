@@ -169,24 +169,6 @@ export const AppLayout = () => {
 
         {/* Bottom: server status + user chip */}
         <div className="p-3 space-y-2">
-          {/* Mini server status card */}
-          {primaryServer && (
-            <div className="glass-soft rounded-xl p-3">
-              <div className="flex items-center gap-2 text-xs text-white/55 mb-2">
-                <span className={`w-1.5 h-1.5 rounded-full ${primaryServer.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-                Sistema operativo
-              </div>
-              <div className="flex items-end justify-between">
-                <div className="text-sm font-semibold truncate">{primaryServer.name}</div>
-                <div className={`font-mono text-[11px] shrink-0 ml-2 ${(primaryServer.metadata?.cpu ?? 0) > 80 ? 'text-rose-300' : 'text-emerald-300'}`}>
-                  {(primaryServer.metadata?.cpu ?? 0).toFixed(1)}%
-                </div>
-              </div>
-              <div className="mt-2">
-                <Progress value={primaryServer.metadata?.cpu ?? 0} gradient={((primaryServer.metadata?.cpu ?? 0) > 80) ? 'from-rose-500 to-orange-400' : 'from-emerald-500 to-teal-400'} />
-              </div>
-            </div>
-          )}
           <div className="glass-soft rounded-xl p-2.5 flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg grad-brand flex items-center justify-center text-white text-xs font-bold shrink-0">
               {userInitials}
@@ -210,18 +192,7 @@ export const AppLayout = () => {
       <main className="flex-1 min-w-0 flex flex-col gap-0 overflow-hidden">
         {/* Window chrome */}
         <div className="glass rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-rose-400/90 ring-1 ring-rose-300/30" />
-            <span className="w-3 h-3 rounded-full bg-amber-400/90 ring-1 ring-amber-300/30" />
-            <span className="w-3 h-3 rounded-full bg-emerald-400/90 ring-1 ring-emerald-300/30" />
-          </div>
           <div className="text-xs text-white/45 font-mono">startcode://{chromeSegment}</div>
-          <div className="flex-1" />
-          <div className="hidden md:flex items-center gap-2 glass-soft rounded-lg px-3 h-8 text-xs text-white/50">
-            <Icon name="search" className="w-3.5 h-3.5" />
-            Buscar…
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-white/[0.06] text-white/60 font-mono text-[10px]">⌘K</span>
-          </div>
         </div>
 
         {/* Scrollable content */}

@@ -1,0 +1,3 @@
+ALTER TABLE tbl_users
+  ADD COLUMN IF NOT EXISTS bol_two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS str_two_factor_secret   VARCHAR(255)     DEFAULT NULL;

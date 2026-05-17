@@ -4,9 +4,9 @@ import axios, {
 	AxiosError,
 	type InternalAxiosRequestConfig,
 } from 'axios';
-import { API_CONFIG } from '../utils/constants';
-import { TokenManager } from '../utils/tokenManager';
-import type { ApiError, ApiResponse } from '../types/api.types';
+import { API_CONFIG } from '@utils/constants';
+import { TokenManager } from '@utils/tokenManager';
+import type { ApiError, ApiResponse } from '@typings/api.types';
 
 class ApiService {
 	private api: AxiosInstance;
@@ -87,8 +87,11 @@ class ApiService {
 							}
 						);
 
-						const { accessToken } = response.data;
-						TokenManager.setAccessToken(accessToken);
+						// El backend devuelve { user, token, refreshToken, expiresIn }
+						const { token, refreshToken: newRefreshToken } = response.data;
+
+						// Guardar los nuevos tokens
+						TokenManager.setTokens(token, newRefreshToken);
 
 						// Procesar la cola de peticiones fallidas
 						this.failedQueue.forEach((promise) => {

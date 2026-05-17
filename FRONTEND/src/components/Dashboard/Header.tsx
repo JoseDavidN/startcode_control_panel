@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Server, Bell, Settings } from 'lucide-react'
-
+import { ROUTES } from '@utils/constants'
 
 export const Header = () => {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -36,7 +38,11 @@ export const Header = () => {
             <button className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300">
               <Bell className="w-5 h-5 text-white" />
             </button>
-            <button className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300">
+            <button
+              onClick={() => navigate(ROUTES.SETTINGS)}
+              className="p-3 rounded-xl backdrop-blur-sm bg-white/10 border border-white/20 hover:bg-white/20 transition-all duration-300"
+              title="Configuración"
+            >
               <Settings className="w-5 h-5 text-white" />
             </button>
           </div>

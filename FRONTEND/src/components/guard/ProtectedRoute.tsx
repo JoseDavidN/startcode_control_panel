@@ -1,9 +1,9 @@
 // src/components/guards/ProtectedRoute.tsx
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { UserRole, Permission } from '../../types/auth.types';
-import { ROUTES } from '../../utils/constants';
-import { Loading } from '../ui/Loading';
+import { useAuth } from '@hooks/useAuth';
+import { UserRole, Permission } from '@typings/auth.types';
+import { ROUTES } from '@utils/constants';
+import { Loading } from '@components/ui/Loading';
 
 interface ProtectedRouteProps {
   requiredRoles?: UserRole[];

@@ -1,6 +1,6 @@
 // src/routes/routes.config.ts
-import { ROUTES } from '../utils/constants';
-import { Permission, UserRole } from '../types/auth.types';
+import { ROUTES } from '@utils/constants';
+import { Permission, UserRole } from '@typings/auth.types';
 
 export interface RouteConfig {
 	path: string;

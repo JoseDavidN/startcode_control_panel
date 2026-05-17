@@ -1,277 +1,548 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Server, Eye, EyeOff, Database, Cloud, Cpu, HardDrive, Network, Shield, Terminal, Wifi, Globe, Activity } from 'lucide-react';
-import { ROUTES } from '../../utils/constants';
-import { useAuth } from '../../hooks/useAuth';
+import { ROUTES } from '@utils/constants';
+import { useAuth } from '@hooks/useAuth';
 
+/* ── Hooks ────────────────────────────────────────────────────────── */
+function useDrift(base: number, range = 5, step = 600) {
+  const [v, setV] = useState(base);
+  useEffect(() => {
+    const id = setInterval(
+      () => setV(() => Math.max(0, Math.min(100, base + (Math.random() - 0.5) * range * 2))),
+      step,
+    );
+    return () => clearInterval(id);
+  }, [base, range, step]);
+  return v;
+}
+
+/* ── Icon system ──────────────────────────────────────────────────── */
+const sp = {
+  viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+  strokeWidth: 1.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+};
+const Ico = ({ d, className = 'w-5 h-5' }: { d: React.ReactNode; className?: string }) => (
+  <svg {...sp} className={className}>{d}</svg>
+);
+
+const I = {
+  server:      <Ico d={<><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M15 7.5h3M15 16.5h3"/></>} />,
+  mail:        <Ico d={<><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></>} />,
+  lock:        <Ico d={<><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>} />,
+  eye:         <Ico d={<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>} />,
+  eyeOff:      <Ico d={<><path d="M17.94 17.94A10 10 0 0112 19c-7 0-10-7-10-7a18 18 0 014.06-5.06M9.9 5a10.5 10.5 0 012.1-.2c7 0 10 7 10 7a18 18 0 01-2.16 3.19M14.12 14.12A3 3 0 119.88 9.88M1 1l22 22"/></>} />,
+  shield:      <Ico d={<path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/>} />,
+  fingerprint: <Ico d={<><path d="M5 12a7 7 0 0114 0v2"/><path d="M9 12a3 3 0 016 0v3"/><path d="M12 12v6"/><path d="M9 18c0 .7-.2 1.4-.5 2M15 18c0 1 .2 2 .7 3"/></>} />,
+  arrow:       <Ico d={<path d="M5 12h14M13 6l6 6-6 6"/>} />,
+  activity:    <Ico d={<path d="M3 12h4l3-9 4 18 3-9h4"/>} />,
+  database:    <Ico d={<><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>} />,
+  globe:       <Ico d={<><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></>} />,
+  terminal:    <Ico d={<><path d="M5 7l4 5-4 5M12 17h7"/></>} />,
+  zap:         <Ico d={<path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/>} />,
+  shieldCheck: <Ico d={<><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></>} />,
+  github:      <Ico d={<path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 00-1.3-3.2 4.2 4.2 0 00-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 00-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 00-.1 3.2A4.6 4.6 0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/>} />,
+  arrowLeft:   <Ico d={<path d="M19 12H5M12 19l-7-7 7-7"/>} />,
+};
+
+/* ── LiveSpark ────────────────────────────────────────────────────── */
+function LiveSpark({ stroke = '#c084fc', height = 56 }: { stroke?: string; height?: number }) {
+  const [pts, setPts] = useState(() => Array.from({ length: 28 }, () => 30 + Math.random() * 50));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPts(p => [...p.slice(1), Math.max(15, Math.min(92, p[p.length - 1] + (Math.random() - 0.5) * 22))]);
+    }, 700);
+    return () => clearInterval(id);
+  }, []);
+  const w = 220, h = height, max = 100;
+  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${(i / (pts.length - 1)) * w} ${h - (p / max) * (h - 6) - 3}`).join(' ');
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="overflow-visible">
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.4" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${path} L ${w} ${h} L 0 ${h} Z`} fill="url(#sg)" />
+      <path d={path} stroke={stroke} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={w} cy={h - (pts[pts.length - 1] / max) * (h - 6) - 3} r="3" fill={stroke} />
+    </svg>
+  );
+}
+
+/* ── MetricChip ───────────────────────────────────────────────────── */
+const TONES: Record<string, string> = {
+  violet:  'from-violet-500/30 to-violet-500/10 text-violet-300 ring-violet-400/20',
+  emerald: 'from-emerald-500/30 to-emerald-500/10 text-emerald-300 ring-emerald-400/20',
+  amber:   'from-amber-500/30 to-amber-500/10 text-amber-300 ring-amber-400/20',
+};
+const MetricChip = ({
+  icon, label, value, sub, tone = 'violet', accent,
+}: { icon: React.ReactNode; label: string; value: string; sub?: string; tone?: string; accent?: string }) => (
+  <div className="glass rounded-2xl p-4 grain relative">
+    <div className="flex items-center gap-2.5">
+      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${TONES[tone]} ring-1 flex items-center justify-center shrink-0`}>{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] uppercase tracking-wider text-white/45 font-semibold">{label}</div>
+        <div className={`text-xl font-bold tabular-nums tracking-tight ${accent ?? 'text-white'}`}>{value}</div>
+      </div>
+    </div>
+    {sub && <div className="text-xs text-white/55 mt-2">{sub}</div>}
+  </div>
+);
+
+/* ── NodeLabel ────────────────────────────────────────────────────── */
+const NodeLabel = ({ pos, name, status }: { pos: string; name: string; status: 'ok' | 'degraded' }) => {
+  const color = status === 'ok' ? 'bg-emerald-400' : 'bg-amber-400';
+  return (
+    <div className={`absolute ${pos} flex items-center gap-1.5`}>
+      <span className="relative inline-flex w-2.5 h-2.5">
+        <span className={`absolute inset-0 rounded-full ${color}`} />
+        <span className={`absolute inset-0 rounded-full ${color}`} style={{ animation: 'pulseRing 2.2s ease-out infinite' }} />
+      </span>
+      <span className="text-[10px] font-mono text-white/65 bg-black/40 backdrop-blur px-1.5 py-0.5 rounded">{name}</span>
+    </div>
+  );
+};
+
+/* ── ServerOrbit ──────────────────────────────────────────────────── */
+function ServerOrbit() {
+  return (
+    <div className="relative w-[300px] h-[300px] mx-auto shrink-0">
+      <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full glass grain flex items-center justify-center">
+        <div className="absolute inset-0 rounded-full grad-brand opacity-30 blur-2xl" />
+        <div className="relative w-12 h-12 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_8px_30px_-4px_rgba(168,85,247,0.7)]">
+          {I.server}
+        </div>
+      </div>
+      <div className="absolute inset-0 rounded-full border border-white/[0.06]" />
+      <div className="absolute inset-6 rounded-full border border-white/[0.05] border-dashed" />
+      <div className="absolute inset-12 rounded-full border border-white/[0.04]" />
+      <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full" style={{ animation: 'spin 22s linear infinite' }}>
+        <circle cx="150" cy="150" r="138" fill="none" stroke="rgba(168,85,247,0.25)" strokeDasharray="2 6" />
+        <circle cx="150" cy="12" r="5" fill="#c084fc" />
+        <circle cx="288" cy="150" r="4" fill="#f472b6" />
+        <circle cx="150" cy="288" r="3.5" fill="#a5b4fc" />
+      </svg>
+      <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full" style={{ animation: 'spinR 30s linear infinite' }}>
+        <circle cx="150" cy="150" r="100" fill="none" stroke="rgba(236,72,153,0.18)" strokeDasharray="4 8" />
+        <circle cx="250" cy="150" r="3" fill="#f472b6" />
+        <circle cx="50" cy="150" r="3" fill="#a78bfa" />
+      </svg>
+      <NodeLabel pos="top-0 left-1/2 -translate-x-1/2 -translate-y-2" name="eu-west-1" status="ok" />
+      <NodeLabel pos="bottom-0 left-1/2 -translate-x-1/2 translate-y-2" name="ap-south-2" status="ok" />
+      <NodeLabel pos="top-1/2 -right-2 -translate-y-1/2 translate-x-2" name="us-east-1" status="ok" />
+      <NodeLabel pos="top-1/2 -left-2 -translate-y-1/2 -translate-x-2" name="sa-east-1" status="degraded" />
+    </div>
+  );
+}
+
+/* ── TerminalFeed ─────────────────────────────────────────────────── */
+const LOGS: [string, string, string][] = [
+  ['INFO', 'sched: deploy released-2026.05.17 → us-east-1', 'text-emerald-300'],
+  ['OK',   'db.pool: connections 6/100 · latency 12ms',     'text-emerald-300'],
+  ['INFO', 'agent[devstar] heartbeat · uptime 8w2d',         'text-white/65'],
+  ['WARN', 'cpu.load reached 78% on devstar',                'text-amber-300'],
+  ['INFO', 'tls.cert renewed (cloud.startcode.com.co)',       'text-violet-300'],
+  ['OK',   'backup.snapshot.daily completed in 47s',          'text-emerald-300'],
+  ['INFO', 'metrics: ingested 28,431 events in last 1m',      'text-sky-300'],
+  ['INFO', 'auth.session.refresh admin@startcode.local',      'text-white/65'],
+  ['OK',   'load.balancer: 12 nodes healthy / 12 total',      'text-emerald-300'],
+  ['INFO', 'queue.jobs processed=412 failed=0 backlog=3',     'text-fuchsia-300'],
+];
+function TerminalFeed() {
+  const [lines, setLines] = useState<[string, string, string][]>(LOGS.slice(0, 5));
+  useEffect(() => {
+    let i = 5;
+    const id = setInterval(() => {
+      setLines(prev => [...prev.slice(-6), LOGS[i % LOGS.length]]);
+      i++;
+    }, 1400);
+    return () => clearInterval(id);
+  }, []);
+  const time = (offset: number) =>
+    new Date(Date.now() - offset * 1400).toLocaleTimeString('es-CO', { hour12: false });
+  return (
+    <div className="glass rounded-2xl grain relative overflow-hidden">
+      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-white/[0.06]">
+        <span className="w-2.5 h-2.5 rounded-full bg-rose-400/90" />
+        <span className="w-2.5 h-2.5 rounded-full bg-amber-400/90" />
+        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/90" />
+        <div className="ml-2 flex items-center gap-1.5 text-white/55">
+          {I.terminal}
+          <span className="text-xs font-mono">~/startcode/agent.log</span>
+        </div>
+        <div className="flex-1" />
+        <span className="text-[10px] font-mono text-emerald-300 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE
+        </span>
+      </div>
+      <div className="px-4 py-3 font-mono text-[11px] leading-relaxed h-[152px] overflow-hidden">
+        {lines.map((l, i) => (
+          <div key={i + l[1]} className="flex gap-2 opacity-0" style={{ animation: 'fadeUp 400ms ease-out forwards', animationDelay: `${i * 30}ms` }}>
+            <span className="text-white/30 shrink-0">{time(lines.length - i)}</span>
+            <span className={`shrink-0 font-semibold ${l[2]}`}>[{l[0]}]</span>
+            <span className="text-white/75 truncate">{l[1]}</span>
+          </div>
+        ))}
+        <div className="flex gap-2 mt-0.5 text-white/55">
+          <span className="text-violet-300">$</span>
+          <span>tail -f agent.log</span>
+          <span className="blink">▍</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── StatsStrip ───────────────────────────────────────────────────── */
+const MiniStat = ({ label, value, bar, grad }: { label: string; value: string; bar: number; grad: string }) => (
+  <div className="glass-soft rounded-xl p-3">
+    <div className="text-[10px] uppercase tracking-wider text-white/45 font-semibold">{label}</div>
+    <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
+    <div className="h-1 rounded-full bg-white/[0.05] mt-2 overflow-hidden">
+      <div className={`h-full bg-gradient-to-r ${grad} rounded-full transition-all duration-700`} style={{ width: `${Math.min(100, bar)}%` }} />
+    </div>
+  </div>
+);
+function StatsStrip() {
+  const cpu     = useDrift(64, 8);
+  const reqs    = useDrift(1240, 80);
+  const latency = useDrift(38, 6);
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <MiniStat label="Latencia p50"  value={`${Math.round(latency)}ms`}            bar={(latency / 120) * 100} grad="from-emerald-400 to-teal-400" />
+      <MiniStat label="Requests/s"    value={Math.round(reqs).toLocaleString()}      bar={(reqs / 2000) * 100}   grad="from-violet-500 to-fuchsia-500" />
+      <MiniStat label="CPU media"     value={`${Math.round(cpu)}%`}                  bar={cpu}                   grad="from-sky-500 to-cyan-400" />
+    </div>
+  );
+}
+
+/* ── SsoBtn ───────────────────────────────────────────────────────── */
+const SsoBtn = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
+  <button type="button" className="glass-soft rounded-xl h-11 flex items-center justify-center gap-2 text-xs text-white/75 hover:bg-white/[0.06] hover:text-white transition">
+    <span className="w-4 h-4">{icon}</span>
+    {label}
+  </button>
+);
+
+/* ── Left panel ───────────────────────────────────────────────────── */
+function TechShowcase() {
+  return (
+    <div className="relative p-8 lg:p-10 overflow-hidden hidden lg:flex flex-col gap-5 border-r border-white/[0.06]">
+      <div className="absolute -top-32 -left-20 w-[400px] h-[400px] rounded-full bg-violet-600/30 blur-[100px] pointer-events-none" />
+      <div className="absolute -bottom-32 -right-20 w-[400px] h-[400px] rounded-full bg-pink-600/20 blur-[120px] pointer-events-none" />
+
+      <div className="relative flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">// Status global · en tiempo real</div>
+        <div className="flex-1 h-px bg-white/[0.06]" />
+        <span className="font-mono text-[10px] text-emerald-300">SYNCED</span>
+      </div>
+
+      <h2 className="relative text-3xl xl:text-4xl font-extrabold tracking-tight leading-[1.1]">
+        Tu infraestructura,<br />
+        <span className="text-grad-brand">orquestada en una sola vista.</span>
+      </h2>
+      <p className="relative text-sm text-white/55 max-w-md -mt-1">
+        Métricas, logs y despliegues en vivo. Acceso seguro a tus servidores con autenticación cifrada extremo a extremo.
+      </p>
+
+      <StatsStrip />
+
+      <div className="relative grid grid-cols-[1fr_auto] gap-5 mt-2 items-center">
+        <div className="space-y-3">
+          <div className="glass rounded-2xl p-4 grain relative">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-violet-300">{I.activity}</span>
+                <div className="text-xs text-white/70 font-medium">CPU · cluster-prod</div>
+              </div>
+              <span className="font-mono text-xs text-violet-200">live</span>
+            </div>
+            <LiveSpark stroke="#c084fc" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MetricChip icon={I.database} label="Base de datos" value="6/100" sub="conexiones · 12ms p50" tone="amber" accent="text-amber-300" />
+            <MetricChip icon={I.globe}    label="Sitios web"    value="34"    sub="todos resolviendo"     tone="emerald" accent="text-emerald-300" />
+          </div>
+        </div>
+        <ServerOrbit />
+      </div>
+
+      <div className="relative">
+        <TerminalFeed />
+      </div>
+    </div>
+  );
+}
+
+/* ── Main export ──────────────────────────────────────────────────── */
 export const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const { login, isLoading } = useAuth();
+  const [email, setEmail]          = useState('');
+  const [password, setPassword]    = useState('');
+  const [showPwd, setShowPwd]      = useState(false);
+  const [error, setError]          = useState('');
+  const [twoFactorPending, set2FA] = useState(false);
+  const [tempToken, setTempToken]  = useState('');
+  const [code, setCode]            = useState(['', '', '', '', '', '']);
+  const inputRefs                  = useRef<(HTMLInputElement | null)[]>([]);
+
+  const { login, complete2FALogin, isLoading } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
     try {
-      await login({ email, password });
-      // Redirigir al dashboard después del login exitoso
+      const result = await login({ email, password });
+      if (result?.requiresTwoFactor) {
+        setTempToken(result.tempToken);
+        set2FA(true);
+        return;
+      }
       navigate(ROUTES.DASHBOARD);
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión. Por favor, verifica tus credenciales.');
-      console.error('Login error:', err);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Credenciales incorrectas.');
+    }
+  };
+
+  const handleCodeInput = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const next = [...code];
+    next[index] = value.slice(-1);
+    setCode(next);
+    if (value && index < 5) inputRefs.current[index + 1]?.focus();
+  };
+
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !code[index] && index > 0) inputRefs.current[index - 1]?.focus();
+  };
+
+  const handleCodePaste = (e: React.ClipboardEvent) => {
+    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (digits.length === 6) { setCode(digits.split('')); inputRefs.current[5]?.focus(); }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const joined = code.join('');
+    if (joined.length < 6) return;
+    setError('');
+    try {
+      await complete2FALogin(tempToken, joined);
+      navigate(ROUTES.DASHBOARD);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Código inválido o expirado.');
+      setCode(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a0d2e] via-[#2d1b4e] to-[#1a0d2e] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute w-96 h-96 bg-purple-500/10 rounded-full blur-3xl -top-48 -left-48 animate-pulse"></div>
-        <div className="absolute w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -bottom-48 -right-48 animate-pulse delay-700"></div>
-        <div className="absolute w-64 h-64 bg-pink-500/10 rounded-full blur-3xl top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse delay-1000"></div>
-      </div>
+    <div className="h-full w-full flex items-center justify-center p-5">
+      {/* Window card */}
+      <div className="w-full max-w-[1280px] h-full max-h-[820px] glass rounded-2xl flex flex-col grain relative overflow-hidden">
 
-      {/* Floating server icons */}
-      <div className="absolute inset-0">
-        {[
-          { Icon: Server, delay: 0, duration: 15, x: 10, y: 15 },
-          { Icon: Database, delay: 2, duration: 18, x: 85, y: 20 },
-          { Icon: Cloud, delay: 4, duration: 20, x: 15, y: 75 },
-          { Icon: Cpu, delay: 1, duration: 16, x: 75, y: 65 },
-          { Icon: HardDrive, delay: 3, duration: 17, x: 50, y: 10 },
-          { Icon: Network, delay: 5, duration: 19, x: 90, y: 80 },
-          { Icon: Shield, delay: 2.5, duration: 14, x: 25, y: 45 },
-          { Icon: Terminal, delay: 4.5, duration: 21, x: 65, y: 30 },
-          { Icon: Wifi, delay: 1.5, duration: 16, x: 40, y: 85 },
-          { Icon: Globe, delay: 3.5, duration: 18, x: 80, y: 45 },
-          { Icon: Activity, delay: 0.5, duration: 15, x: 20, y: 60 },
-          { Icon: Database, delay: 5.5, duration: 19, x: 55, y: 70 },
-        ].map((item, i) => {
-          const IconComponent = item.Icon;
-          return (
-            <div
-              key={i}
-              className="absolute animate-floatIcon opacity-20 hover:opacity-40 transition-opacity duration-300"
-              style={{
-                left: `${item.x}%`,
-                top: `${item.y}%`,
-                animationDelay: `${item.delay}s`,
-                animationDuration: `${item.duration}s`
-              }}
-            >
-              <IconComponent
-                className="w-10 h-10 text-purple-400"
-                strokeWidth={1.5}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Connecting lines between icons */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-10">
-        <defs>
-          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#a855f7" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#ec4899" stopOpacity="0.1" />
-          </linearGradient>
-        </defs>
-        {[
-          { x1: '10%', y1: '15%', x2: '50%', y2: '10%' },
-          { x1: '85%', y1: '20%', x2: '65%', y2: '30%' },
-          { x1: '15%', y1: '75%', x2: '40%', y2: '85%' },
-          { x1: '75%', y1: '65%', x2: '90%', y2: '80%' },
-          { x1: '25%', y1: '45%', x2: '50%', y2: '10%' },
-          { x1: '80%', y1: '45%', x2: '65%', y2: '30%' },
-        ].map((line, i) => (
-          <line
-            key={i}
-            x1={line.x1}
-            y1={line.y1}
-            x2={line.x2}
-            y2={line.y2}
-            stroke="url(#lineGradient)"
-            strokeWidth="1"
-            className="animate-pulse"
-            style={{ animationDelay: `${i * 0.5}s` }}
-          />
-        ))}
-      </svg>
-
-      {/* Login Card */}
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-[#0f0623]/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-purple-500/20 p-8 transform transition-all duration-500 hover:scale-[1.02]">
-          {/* Logo and Header */}
-          <div className="text-center mb-8 animate-fadeIn">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl mb-4 shadow-lg shadow-purple-500/50 animate-float">
-              <Server className="w-10 h-10 text-white" strokeWidth={2} />
-            </div>
-            <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
-              Server Control
-            </h1>
-            <p className="text-purple-300/70 text-sm">
-              Panel de Administración
-            </p>
-          </div>
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Input */}
-            <div className="relative group">
-              <label htmlFor="email" className="block text-sm font-medium text-purple-300 mb-2">
-                Correo Electrónico
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-purple-400/50 group-hover:text-purple-400 transition-colors" />
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="block w-full pl-12 pr-4 py-3 bg-[#1a0d2e]/50 border border-purple-500/30 rounded-xl text-white placeholder-purple-400/30 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all duration-300 hover:border-purple-500/50"
-                  placeholder="admin@servidor.com"
-                />
-              </div>
-            </div>
-
-            {/* Password Input */}
-            <div className="relative group">
-              <label htmlFor="password" className="block text-sm font-medium text-purple-300 mb-2">
-                Contraseña
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-purple-400/50 group-hover:text-purple-400 transition-colors" />
-                </div>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="block w-full pl-12 pr-12 py-3 bg-[#1a0d2e]/50 border border-purple-500/30 rounded-xl text-white placeholder-purple-400/30 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all duration-300 hover:border-purple-500/50"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-purple-400/50 hover:text-purple-400 transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transform transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-offset-2 focus:ring-offset-[#1a0d2e] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Iniciando sesión...</span>
-                </div>
-              ) : (
-                'Iniciar Sesión'
-              )}
-            </button>
-          </form>
-
-          {/* Footer */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-purple-400/50">
-              Acceso seguro al panel de servidores
-            </p>
+        {/* Window chrome */}
+        <div className="px-5 py-3 flex items-center gap-4 border-b border-white/[0.06] shrink-0">
+          <div className="text-xs text-white/45 font-mono">startcode://auth/login</div>
+          <div className="flex-1" />
+          <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-white/45">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            4 regiones · 12 nodos · 99.99% SLA
           </div>
         </div>
 
-        {/* Additional decorative element */}
-        <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 w-3/4 h-4 bg-purple-600/20 blur-xl rounded-full"></div>
+        {/* Content split */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] min-h-0">
+
+          {/* Left: tech showcase */}
+          <TechShowcase />
+
+          {/* Right: auth form */}
+          <div className="relative p-8 lg:p-12 flex items-center justify-center overflow-y-auto scroll-area">
+            <div className="absolute top-10 right-10 hidden lg:flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-white/40">
+              <span>{I.zap}</span> 0.1.0-rc
+            </div>
+
+            {twoFactorPending ? (
+              /* ── 2FA step ── */
+              <form onSubmit={handleVerify2FA} className="w-full max-w-[420px] mx-auto space-y-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="relative">
+                    <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                      {I.shieldCheck}
+                    </div>
+                  </div>
+                  <h1 className="mt-5 text-3xl font-extrabold tracking-tight">
+                    <span className="text-grad-brand">Verificación 2FA</span>
+                  </h1>
+                  <p className="text-sm text-white/55 mt-1">Ingresa el código de tu app autenticadora</p>
+                </div>
+
+                <div>
+                  <div className="text-xs text-white/55 font-medium mb-3 text-center">Código de 6 dígitos</div>
+                  <div className="flex justify-center gap-2" onPaste={handleCodePaste}>
+                    {code.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={el => { inputRefs.current[i] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={e => handleCodeInput(i, e.target.value)}
+                        onKeyDown={e => handleCodeKeyDown(i, e)}
+                        autoFocus={i === 0}
+                        className="w-11 h-14 text-center text-xl font-bold font-mono glass-input rounded-xl text-white outline-none focus:border-violet-400/50 transition"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm text-center border border-rose-400/20">{error}</div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoading || code.join('').length < 6}
+                  className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] hover:shadow-[0_14px_36px_-8px_rgba(236,72,153,0.6)] transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }} />
+                  <span className="relative inline-flex items-center justify-center gap-2.5">
+                    {isLoading
+                      ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/><path d="M21 12a9 9 0 00-9-9" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>Verificando...</>
+                      : 'Verificar Código'
+                    }
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { set2FA(false); setError(''); setCode(['', '', '', '', '', '']); }}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm text-white/45 hover:text-white/75 transition"
+                >
+                  {I.arrowLeft} Volver al inicio de sesión
+                </button>
+              </form>
+            ) : (
+              /* ── Login step ── */
+              <form onSubmit={handleSubmit} className="w-full max-w-[420px] mx-auto">
+                <div className="flex flex-col items-center text-center">
+                  <div className="relative">
+                    <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                      <span className="scale-125">{I.server}</span>
+                    </div>
+                  </div>
+                  <h1 className="mt-5 text-3xl font-extrabold tracking-tight">
+                    <span className="text-grad-brand">StartCode</span>
+                  </h1>
+                  <div className="text-sm text-white/55 mt-1">Cloud Console · Acceso seguro</div>
+                  <div className="mt-3 flex items-center gap-1.5 text-[10px] font-mono text-emerald-300 uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Endpoint operativo · v0.1.0
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 mt-8">
+                  <div>
+                    <label className="text-xs text-white/55 font-medium block mb-1.5">Correo Electrónico</label>
+                    <div className="glass-input rounded-xl h-12 flex items-center gap-2.5 px-3.5">
+                      <span className="text-white/45 shrink-0">{I.mail}</span>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                        autoComplete="email"
+                        placeholder="admin@servidor.com"
+                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/30 text-white/90"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs text-white/55 font-medium">Contraseña</label>
+                    </div>
+                    <div className="glass-input rounded-xl h-12 flex items-center gap-2.5 px-3.5">
+                      <span className="text-white/45 shrink-0">{I.lock}</span>
+                      <input
+                        type={showPwd ? 'text' : 'password'}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        required
+                        autoComplete="current-password"
+                        placeholder="••••••••"
+                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/30 text-white/90"
+                      />
+                      <button type="button" onClick={() => setShowPwd(v => !v)} className="text-white/45 hover:text-white transition shrink-0">
+                        {showPwd ? I.eyeOff : I.eye}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <label className="flex items-center gap-2 text-white/65 cursor-pointer select-none">
+                      <input type="checkbox" className="chk" defaultChecked />
+                      Mantener sesión iniciada
+                    </label>
+                    <span className="font-mono text-white/45 flex items-center gap-1.5">
+                      {I.shield} <span>TLS 1.3 · E2E</span>
+                    </span>
+                  </div>
+
+                  {error && (
+                    <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm border border-rose-400/20">{error}</div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] hover:shadow-[0_14px_36px_-8px_rgba(236,72,153,0.6)] transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }} />
+                    <span className="relative inline-flex items-center justify-center gap-2.5">
+                      {isLoading
+                        ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/><path d="M21 12a9 9 0 00-9-9" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>Autenticando...</>
+                        : <>Iniciar sesión {I.arrow}</>
+                      }
+                    </span>
+                  </button>
+
+                  <div className="flex items-center gap-3 py-1">
+                    <div className="flex-1 h-px bg-white/[0.06]" />
+                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">o continúa con</span>
+                    <div className="flex-1 h-px bg-white/[0.06]" />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <SsoBtn label="SSO"     icon={I.shield} />
+                    <SsoBtn label="GitHub"  icon={I.github} />
+                    <SsoBtn label="WebAuthn" icon={I.fingerprint} />
+                  </div>
+                </div>
+
+                <div className="mt-7 text-center text-xs text-white/45">
+                  ¿No tienes acceso?{' '}
+                  <span className="text-violet-300 font-medium">Contacta al administrador</span>
+                </div>
+              </form>
+            )}
+
+            <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-4 text-[10px] text-white/40">
+              <span className="hover:text-white/70 cursor-pointer">Términos</span>
+              <span>·</span>
+              <span className="hover:text-white/70 cursor-pointer">Privacidad</span>
+              <span>·</span>
+              <span className="hover:text-white/70 cursor-pointer">Estado del servicio</span>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0) translateX(0);
-          }
-          25% {
-            transform: translateY(-20px) translateX(10px);
-          }
-          50% {
-            transform: translateY(-10px) translateX(-10px);
-          }
-          75% {
-            transform: translateY(-15px) translateX(5px);
-          }
-        }
-
-        @keyframes floatIcon {
-          0%, 100% {
-            transform: translateY(0) translateX(0) rotate(0deg);
-          }
-          25% {
-            transform: translateY(-30px) translateX(20px) rotate(5deg);
-          }
-          50% {
-            transform: translateY(-15px) translateX(-15px) rotate(-3deg);
-          }
-          75% {
-            transform: translateY(-25px) translateX(10px) rotate(2deg);
-          }
-        }
-
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .animate-float {
-          animation: float 10s ease-in-out infinite;
-        }
-
-        .animate-floatIcon {
-          animation: floatIcon 15s ease-in-out infinite;
-        }
-
-        .animate-fadeIn {
-          animation: fadeIn 0.8s ease-out;
-        }
-
-        .delay-700 {
-          animation-delay: 700ms;
-        }
-
-        .delay-1000 {
-          animation-delay: 1000ms;
-        }
-      ` }} />
     </div>
   );
 };

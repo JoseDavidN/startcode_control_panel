@@ -2,24 +2,19 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
   ConflictException,
   Logger,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Server, ServerStatus, ServerOs } from './entities/server.entity';
-import { User } from '../auth/entities/user.entity';
+import { User } from '@auth/entities/user.entity';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { UpdatePrivateKeyDto } from './dto/update-private-key.dto';
 import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
 import { plainToClass } from 'class-transformer';
-import { SSHService } from '../monitoring/services/ssh.service';
-import { MetricsService } from '../monitoring/services/metrics.service';
 
 @Injectable()
 export class ServersService {
@@ -28,10 +23,6 @@ export class ServersService {
   constructor(
     @InjectRepository(Server)
     private serversRepository: Repository<Server>,
-    @Inject(forwardRef(() => SSHService))
-    private sshService?: SSHService,
-    @Inject(forwardRef(() => MetricsService))
-    private metricsService?: MetricsService,
   ) {}
 
   /**
@@ -47,8 +38,8 @@ export class ServersService {
     // Verificar si ya existe un servidor con el mismo nombre
     const existingServer = await this.serversRepository.findOne({
       where: {
-        str_host: createServerDto.host,
-        str_owner_id: user.id,
+        host: createServerDto.host,
+        ownerId: user.id,
       },
     });
 
@@ -60,91 +51,26 @@ export class ServersService {
 
     // Crear el servidor - Mapeo manual necesario porque los nombres de DTO no coinciden con los de la entidad
     const server = this.serversRepository.create({
-      str_name: createServerDto.name,
-      str_host: createServerDto.host,
-      int_port: createServerDto.port || 22,
-      str_username: createServerDto.username,
-      str_privatekey: createServerDto.privateKey,
-      enu_os: createServerDto.os,
-      str_description: createServerDto.description,
-      str_owner_id: user.id,
-      enu_status: ServerStatus.OFFLINE,
+      name: createServerDto.name,
+      host: createServerDto.host,
+      port: createServerDto.port || 22,
+      username: createServerDto.username,
+      privateKey: createServerDto.privateKey,
+      os: createServerDto.os,
+      description: createServerDto.description,
+      ownerId: user.id,
+      status: ServerStatus.OFFLINE,
     });
 
     const savedServer = await this.serversRepository.save(server);
     this.logger.log(
-      `Servidor creado: ${savedServer.str_name} por usuario ${user.str_email}`,
+      `Servidor creado: ${savedServer.name} por usuario ${user.email}`,
+    );
+    this.logger.log(
+      `⏳ El servidor estará disponible cuando el agente se conecte`,
     );
 
-    // Intentar conectar y obtener métricas en segundo plano
-    this.initializeServerConnection(savedServer).catch((error) => {
-      this.logger.warn(
-        `No se pudo obtener métricas iniciales del servidor ${savedServer.str_name}: ${error.message}`,
-      );
-    });
-
     return this.toResponseDto(savedServer);
-  }
-
-  /**
-   * Inicializar conexión y obtener métricas del servidor
-   * @param server - El servidor a inicializar
-   */
-  private async initializeServerConnection(server: Server): Promise<void> {
-    if (!this.sshService || !this.metricsService) {
-      this.logger.warn(
-        'Servicios de monitoreo no disponibles para inicializar servidor',
-      );
-      return;
-    }
-
-    try {
-      this.logger.log(
-        `🔄 Inicializando conexión al servidor ${server.str_name}...`,
-      );
-
-      // Intentar conectar
-      const isConnected = await this.sshService.testConnection(server);
-
-      if (isConnected) {
-        // Obtener métricas rápidas
-        const quickStats = await this.metricsService.getQuickStats(server);
-
-        // Actualizar el servidor con las métricas y estado
-        server.enu_status = ServerStatus.ONLINE;
-        server.json_metadata = {
-          ...server.json_metadata,
-          cpu: quickStats.cpuUsage,
-          memory: quickStats.memoryUsage,
-          disk: quickStats.diskUsage,
-        };
-        server.lastCheckAt = new Date();
-
-        await this.serversRepository.save(server);
-
-        this.logger.log(
-          `✅ Servidor ${server.str_name} inicializado correctamente - CPU: ${quickStats.cpuUsage}%, RAM: ${quickStats.memoryUsage}%, Disco: ${quickStats.diskUsage}%`,
-        );
-      } else {
-        // Marcar como offline si no se pudo conectar
-        server.enu_status = ServerStatus.OFFLINE;
-        server.lastCheckAt = new Date();
-        await this.serversRepository.save(server);
-
-        this.logger.warn(
-          `⚠️ No se pudo conectar al servidor ${server.str_name}`,
-        );
-      }
-    } catch (error) {
-      // Marcar como error si hubo un problema
-      server.enu_status = ServerStatus.ERROR;
-      server.json_metadata = {
-        ...server.json_metadata,
-        uptime: error.message,
-      };
-      server.lastCheckAt = new Date();
-      await this.serversRepository.save(server);
-    }
   }
 
   /**
@@ -153,7 +79,7 @@ export class ServersService {
    */
   async findAll(user: User): Promise<ServerResponseDto[]> {
     const servers = await this.serversRepository.find({
-      where: { str_owner_id: user.id },
+      where: { ownerId: user.id },
       order: { createdAt: 'DESC' },
     });
 
@@ -180,16 +106,16 @@ export class ServersService {
       where: { id },
       select: [
         'id',
-        'str_name',
-        'str_host',
-        'int_port',
-        'str_username',
-        'str_privatekey',
-        'enu_status',
-        'enu_os',
-        'str_description',
-        'json_metadata',
-        'str_owner_id',
+        'name',
+        'host',
+        'port',
+        'username',
+        'privateKey',
+        'status',
+        'os',
+        'description',
+        'metadata',
+        'ownerId',
         'createdAt',
         'updatedAt',
         'lastCheckAt',
@@ -200,7 +126,7 @@ export class ServersService {
       throw new NotFoundException('Servidor no encontrado');
     }
 
-    if (server.str_owner_id !== userId) {
+    if (server.ownerId !== userId) {
       throw new ForbiddenException(
         'No tienes permisos para acceder a este servidor',
       );
@@ -223,11 +149,11 @@ export class ServersService {
     const server = await this.verifyServerAccess(id, user.id);
 
     // Si se actualiza el host, verificar si ya existe un servidor con el mismo host
-    if (updateServerDto.host && updateServerDto.host !== server.str_host) {
+    if (updateServerDto.host && updateServerDto.host !== server.host) {
       const existingServer = await this.serversRepository.findOne({
         where: {
-          str_host: updateServerDto.host,
-          str_owner_id: user.id,
+          host: updateServerDto.host,
+          ownerId: user.id,
         },
       });
 
@@ -240,23 +166,23 @@ export class ServersService {
 
     // Actualizar los campos - Mapeo manual necesario
     if (updateServerDto.name !== undefined)
-      server.str_name = updateServerDto.name;
+      server.name = updateServerDto.name;
     if (updateServerDto.host !== undefined)
-      server.str_host = updateServerDto.host;
+      server.host = updateServerDto.host;
     if (updateServerDto.port !== undefined)
-      server.int_port = updateServerDto.port;
+      server.port = updateServerDto.port;
     if (updateServerDto.username !== undefined)
-      server.str_username = updateServerDto.username;
-    if (updateServerDto.os !== undefined) server.enu_os = updateServerDto.os;
+      server.username = updateServerDto.username;
+    if (updateServerDto.os !== undefined) server.os = updateServerDto.os;
     if (updateServerDto.description !== undefined)
-      server.str_description = updateServerDto.description;
+      server.description = updateServerDto.description;
     if (updateServerDto.status !== undefined)
-      server.enu_status = updateServerDto.status;
+      server.status = updateServerDto.status;
     server.updatedAt = new Date();
 
     const updatedServer = await this.serversRepository.save(server);
     this.logger.log(
-      `Servidor actualizado: ${updatedServer.str_name} por usuario ${user.str_email}`,
+      `Servidor actualizado: ${updatedServer.name} por usuario ${user.email}`,
     );
 
     return this.toResponseDto(updatedServer);
@@ -275,12 +201,12 @@ export class ServersService {
   ): Promise<{ message: string }> {
     const server = await this.findOneWithPrivateKey(id, user.id);
 
-    server.str_privatekey = updatePrivateKeyDto.privateKey;
+    server.privateKey = updatePrivateKeyDto.privateKey;
     server.updatedAt = new Date();
 
     const updatedServer = await this.serversRepository.save(server);
     this.logger.log(
-      `Llave privada actualizada: ${updatedServer.str_name} por usuario ${user.str_email}`,
+      `Llave privada actualizada: ${updatedServer.name} por usuario ${user.email}`,
     );
 
     return { message: 'Llave privada actualizada correctamente' };
@@ -293,11 +219,11 @@ export class ServersService {
    */
   async remove(id: string, user: User): Promise<{ message: string }> {
     const server = await this.verifyServerAccess(id, user.id);
-    const serverName = server.str_name;
+    const serverName = server.name;
 
     await this.serversRepository.remove(server);
     this.logger.log(
-      `Servidor eliminado: ${serverName} por usuario ${user.str_email}`,
+      `Servidor eliminado: ${serverName} por usuario ${user.email}`,
     );
 
     return { message: 'Servidor eliminado correctamente' };
@@ -316,11 +242,11 @@ export class ServersService {
   ): Promise<ServerResponseDto> {
     const server = await this.verifyServerAccess(id, user.id);
 
-    server.enu_status = status;
+    server.status = status;
     server.lastCheckAt = new Date();
 
     const updatedServer = await this.serversRepository.save(server);
-    this.logger.log(`Estado actualizado: ${server.str_name} -> ${status}`);
+    this.logger.log(`Estado actualizado: ${server.name} -> ${status}`);
 
     return this.toResponseDto(updatedServer);
   }
@@ -338,7 +264,7 @@ export class ServersService {
   ): Promise<void> {
     const server = await this.findOneWithPrivateKey(id, userId);
 
-    server.json_metadata = { ...server.json_metadata, ...metadata };
+    server.metadata = { ...server.metadata, ...metadata };
     server.lastCheckAt = new Date();
 
     await this.serversRepository.save(server);
@@ -350,8 +276,8 @@ export class ServersService {
    */
   async getStats(user: User): Promise<ServerStatsDto> {
     const servers = await this.serversRepository.find({
-      where: { str_owner_id: user.id },
-      select: ['enu_status'],
+      where: { ownerId: user.id },
+      select: ['status'],
     });
 
     const stats: ServerStatsDto = {
@@ -364,7 +290,7 @@ export class ServersService {
     };
 
     servers.forEach((server) => {
-      switch (server.enu_status) {
+      switch (server.status) {
         case ServerStatus.ONLINE:
           stats.online++;
           break;
@@ -414,8 +340,8 @@ export class ServersService {
   ): Promise<ServerResponseDto[]> {
     const servers = await this.serversRepository.find({
       where: {
-        str_owner_id: user.id,
-        enu_status: status,
+        ownerId: user.id,
+        status: status,
       },
       order: { createdAt: 'DESC' },
     });
@@ -429,8 +355,8 @@ export class ServersService {
   async filterByOS(os: ServerOs, user: User): Promise<ServerResponseDto[]> {
     const servers = await this.serversRepository.find({
       where: {
-        str_owner_id: user.id,
-        enu_os: os,
+        ownerId: user.id,
+        os: os,
       },
       order: { createdAt: 'DESC' },
     });
@@ -453,7 +379,7 @@ export class ServersService {
       throw new NotFoundException('Servidor no encontrado');
     }
 
-    if (server.str_owner_id !== userId) {
+    if (server.ownerId !== userId) {
       throw new ForbiddenException(
         'No tienes permisos para acceder a este servidor',
       );
@@ -471,10 +397,23 @@ export class ServersService {
   async verifyOwnership(serverId: string, userId: string): Promise<boolean> {
     const server = await this.serversRepository.findOne({
       where: { id: serverId },
-      select: ['str_owner_id'],
+      select: ['ownerId'],
     });
 
-    return !!(server && server.str_owner_id === userId);
+    return !!(server && server.ownerId === userId);
+  }
+
+  async findNameAndVerifyOwnership(serverId: string, userId: string): Promise<string> {
+    const server = await this.serversRepository.findOne({
+      where: { id: serverId },
+      select: ['ownerId', 'name'],
+    });
+
+    if (!server || server.ownerId !== userId) {
+      throw new NotFoundException('Servidor no encontrado o sin acceso');
+    }
+
+    return server.name;
   }
 
   /**
@@ -484,7 +423,7 @@ export class ServersService {
    */
   async count(userId: string): Promise<number> {
     return await this.serversRepository.count({
-      where: { str_owner_id: userId },
+      where: { ownerId: userId },
     });
   }
 

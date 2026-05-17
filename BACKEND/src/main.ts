@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { CorsIoAdapter } from './adapters/cors-io.adapter';
 import { join } from 'path';
 
 async function bootstrap() {
@@ -13,12 +14,15 @@ async function bootstrap() {
     prefix: '/public/',
   });
 
-  // Cors
+  // CORS HTTP
   app.enableCors({
     origin: process.env.CORS_ORIGIN ?? '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
+
+  // CORS WebSocket — adapter lee CORS_ORIGIN en bootstrap, no en tiempo de decorador
+  app.useWebSocketAdapter(new CorsIoAdapter(app));
 
   // Validacion Global de DTOs
   app.useGlobalPipes(
@@ -62,6 +66,24 @@ async function bootstrap() {
     customCssUrl: '/public/swagger-theme.css',
     customfavIcon: '/public/favicon_black.png',
   });
+
+  const nodeEnv = process.env.NODE_ENV;
+  const validEnvs = ['development', 'production', 'test'];
+
+  if (!nodeEnv || !validEnvs.includes(nodeEnv)) {
+    throw new Error(
+      `NODE_ENV no está definido o es inválido: "${nodeEnv}". ` +
+      `Valores aceptados: ${validEnvs.join(', ')}. ` +
+      `Defínelo en .env antes de arrancar.`,
+    );
+  }
+
+  if (nodeEnv === 'development') {
+    console.warn('');
+    console.warn('⚠️  [TypeORM] synchronize=true — el esquema se sincroniza automáticamente.');
+    console.warn('    NO ejecutar con NODE_ENV=development en un servidor de producción.');
+    console.warn('');
+  }
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

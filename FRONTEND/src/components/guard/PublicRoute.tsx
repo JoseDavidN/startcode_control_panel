@@ -1,8 +1,8 @@
 // src/components/guards/PublicRoute.tsx
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { ROUTES } from '../../utils/constants';
-import { Loading } from '../ui/Loading';
+import { useAuth } from '@hooks/useAuth';
+import { ROUTES } from '@utils/constants';
+import { Loading } from '@components/ui/Loading';
 
 export const PublicRoute = () => {
   const { isAuthenticated, isLoading } = useAuth();

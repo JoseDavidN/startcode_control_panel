@@ -9,6 +9,7 @@ import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 import { RolesGuard } from './roles/roles.guard';
+import { DefaultUserSeeder } from './seeders/default-user.seeder';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { RolesGuard } from './roles/roles.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard],
-  exports: [AuthService, JwtAuthGuard, RolesGuard],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, DefaultUserSeeder],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
 })
 export class AuthModule {}

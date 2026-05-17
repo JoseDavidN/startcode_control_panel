@@ -85,3 +85,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .pnpm
 BACKEND_CAMBIOS_SUGERIDOS.md
 CONEXION_BACKEND.md
+ROADMAP.md
+CLAUDE.md

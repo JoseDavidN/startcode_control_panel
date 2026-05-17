@@ -8,7 +8,13 @@ export const API_CONFIG = {
 		VALIDATE: '/auth/validate',
 		ME: '/auth/me',
 		SERVERS: '/servers',
-		MONITORING: '/monitoring',
+		AGENT_DATA: '/agent-data',
+		TWO_FACTOR_SETUP: '/auth/2fa/setup',
+		TWO_FACTOR_ENABLE: '/auth/2fa/enable',
+		TWO_FACTOR_DISABLE: '/auth/2fa/disable',
+		TWO_FACTOR_VERIFY_LOGIN: '/auth/2fa/verify-login',
+		UPDATE_PROFILE: '/auth/profile',
+		CHANGE_PASSWORD: '/auth/change-password',
 	},
 };
 

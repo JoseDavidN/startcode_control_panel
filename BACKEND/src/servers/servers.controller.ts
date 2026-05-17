@@ -23,12 +23,13 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ServersService } from './servers.service';
+import { AuthService } from '@auth/auth.service';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { UpdatePrivateKeyDto } from './dto/update-private-key.dto';
 import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth/jwt-auth.guard';
+import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import { ServerStatus, ServerOs } from './entities/server.entity';
 
 @ApiTags('Servers')
@@ -36,7 +37,10 @@ import { ServerStatus, ServerOs } from './entities/server.entity';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class ServersController {
-  constructor(private readonly serversService: ServersService) {}
+  constructor(
+    private readonly serversService: ServersService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post()
   @ApiOperation({
@@ -160,6 +164,26 @@ export class ServersController {
     @Request() req,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.filterByOS(os, req.user);
+  }
+
+  @Post(':id/agent-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Generar token de autenticación para el agente',
+    description:
+      'Genera un JWT de larga duración para que el agente de monitoreo se autentique en el WebSocket Gateway',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor (UUID)', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Token generado exitosamente' })
+  @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
+  @ApiResponse({ status: 403, description: 'Sin permisos sobre este servidor' })
+  async generateAgentToken(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<{ token: string; serverId: string; expiresIn: string }> {
+    const server = await this.serversService.findOne(id, req.user);
+    const token = this.authService.generateAgentToken(server.id, server.name);
+    return { token, serverId: server.id, expiresIn: '365d' };
   }
 
   @Get(':id')

@@ -1,148 +1,130 @@
 import { useState, useEffect } from 'react';
-import { Loader, Server, Shield, Activity, CheckCircle2, Wifi } from 'lucide-react';
+
+const steps = [
+  {
+    label: 'Iniciando conexión',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20v.01"/>
+      </svg>
+    ),
+  },
+  {
+    label: 'Autenticación SSH',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    ),
+  },
+  {
+    label: 'Conectando al servidor',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <rect x="3" y="4" width="18" height="7" rx="1.5"/>
+        <rect x="3" y="13" width="18" height="7" rx="1.5"/>
+        <path d="M7 7.5h.01M7 16.5h.01"/>
+      </svg>
+    ),
+  },
+  {
+    label: 'Obteniendo métricas',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M4 20V10M10 20V4M16 20v-6M22 20H2"/>
+      </svg>
+    ),
+  },
+];
 
 export const ConnectionLoading = () => {
-  const [connectionSteps, setConnectionSteps] = useState([
-    { icon: Wifi, label: 'Iniciando conexión', completed: false, active: true },
-    { icon: Shield, label: 'Autenticación SSH', completed: false, active: false },
-    { icon: Server, label: 'Conectando al servidor', completed: false, active: false },
-    { icon: Activity, label: 'Obteniendo métricas', completed: false, active: false },
-  ]);
+  const [completed, setCompleted] = useState<number[]>([]);
+  const [active, setActive] = useState(0);
 
   useEffect(() => {
-    const timings = [1500, 3000, 4500, 6000];
-
-    timings.forEach((time, index) => {
+    const timings = [1200, 2800, 4400, 6000];
+    const timers = timings.map((delay, i) =>
       setTimeout(() => {
-        setConnectionSteps(prev => {
-          const newSteps = [...prev];
-          if (index > 0) {
-            newSteps[index - 1].completed = true;
-            newSteps[index - 1].active = false;
-          }
-          newSteps[index].active = true;
-          return newSteps;
-        });
-      }, time);
-    });
-
-    setTimeout(() => {
-      setConnectionSteps(prev => {
-        const newSteps = [...prev];
-        newSteps[3].completed = true;
-        newSteps[3].active = false;
-        return newSteps;
-      });
-    }, 7000);
+        setActive(i);
+        if (i > 0) setCompleted(prev => [...prev, i - 1]);
+      }, delay)
+    );
+    const done = setTimeout(() => setCompleted(prev => [...prev, 3]), 7200);
+    return () => { timers.forEach(clearTimeout); clearTimeout(done); };
   }, []);
 
+  const progress = (completed.length / steps.length) * 100;
+
   return (
-    <div className="w-full max-w-md">
-      <div className="relative p-1 rounded-2xl w-full overflow-hidden">
-        {/* Animated gradient border */}
-        <div
-          className="absolute inset-0 animate-spin-slow"
-          style={{
-            background: 'conic-gradient(from 0deg, #9333ea, #ec4899, #3b82f6, #9333ea)',
-            animation: 'spin 3s linear infinite'
-          }}
-        />
-
-        {/* Content container */}
-        <div className="relative bg-[#1a0d2e] rounded-2xl p-8 z-10">
-          {/* Loading spinner central */}
-          <div className="flex justify-center mb-6">
-            <div className="relative">
-              <div className="w-20 h-20 rounded-full border-4 border-purple-500/20"></div>
-              <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-transparent border-t-purple-500 border-r-pink-500 animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Server className="w-8 h-8 text-purple-400" />
-              </div>
+    <div className="w-full max-w-sm mx-auto">
+      <div className="glass rounded-2xl grain p-7">
+        {/* Spinner */}
+        <div className="flex justify-center mb-6">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-2 border-white/[0.06]" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-pink-400 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center text-white/60">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+                <rect x="3" y="4" width="18" height="7" rx="1.5"/>
+                <rect x="3" y="13" width="18" height="7" rx="1.5"/>
+                <path d="M7 7.5h.01M7 16.5h.01"/>
+              </svg>
             </div>
-          </div>
-
-          {/* Title */}
-          <h3 className="text-xl font-semibold text-white text-center mb-2">
-            Conectando al Servidor
-          </h3>
-          <p className="text-sm text-purple-300/70 text-center mb-8">
-            Estableciendo conexión segura
-          </p>
-
-          {/* Connection steps */}
-          <div className="space-y-4">
-            {connectionSteps.map((step, index) => {
-              const IconComponent = step.icon;
-              return (
-                <div
-                  key={index}
-                  className={`flex items-center space-x-3 p-3 rounded-xl transition-all duration-500 ${step.active
-                    ? 'bg-purple-500/10 border border-purple-500/30'
-                    : step.completed
-                      ? 'bg-green-500/5 border border-green-500/20'
-                      : 'bg-[#0f0623]/30 border border-purple-500/10'
-                    }`}
-                >
-                  <div className="relative flex-shrink-0">
-                    {step.completed ? (
-                      <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5 text-green-400" />
-                      </div>
-                    ) : step.active ? (
-                      <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                        <IconComponent className="w-5 h-5 text-purple-400 animate-pulse" />
-                      </div>
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-purple-500/5 flex items-center justify-center">
-                        <IconComponent className="w-5 h-5 text-purple-400/40" />
-                      </div>
-                    )}
-
-                    {step.active && (
-                      <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping"></div>
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <p
-                      className={`text-sm font-medium transition-colors ${step.active
-                        ? 'text-white'
-                        : step.completed
-                          ? 'text-green-300'
-                          : 'text-purple-300/50'
-                        }`}
-                    >
-                      {step.label}
-                    </p>
-                  </div>
-
-                  {step.active && (
-                    <Loader className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Progress bar */}
-          <div className="mt-6">
-            <div className="h-2 bg-[#0f0623] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-linear-to-r from-purple-600 via-pink-600 to-blue-600 rounded-full transition-all duration-1000 ease-out"
-                style={{
-                  width: `${(connectionSteps.filter(s => s.completed).length / connectionSteps.length) * 100}%`
-                }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Additional info */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-purple-400/50">
-              Conexión cifrada SSH
-            </p>
           </div>
         </div>
+
+        <h3 className="text-base font-semibold text-white text-center mb-1">Conectando al Servidor</h3>
+        <p className="text-xs text-white/45 text-center mb-6">Estableciendo conexión segura SSH</p>
+
+        {/* Steps */}
+        <div className="space-y-2.5 mb-5">
+          {steps.map((step, i) => {
+            const isCompleted = completed.includes(i);
+            const isActive = active === i && !isCompleted;
+            return (
+              <div key={i}
+                className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all duration-500 ${
+                  isCompleted
+                    ? 'bg-emerald-500/[0.07] border-emerald-400/20'
+                    : isActive
+                      ? 'glass-soft border-violet-400/25'
+                      : 'border-transparent opacity-40'
+                }`}>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  isCompleted ? 'text-emerald-300' : isActive ? 'text-violet-300' : 'text-white/30'
+                }`}>
+                  {isCompleted
+                    ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                        <circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9.5"/>
+                      </svg>
+                    )
+                    : step.icon
+                  }
+                </div>
+                <span className={`text-sm font-medium ${isCompleted ? 'text-emerald-300' : isActive ? 'text-white' : 'text-white/40'}`}>
+                  {step.label}
+                </span>
+                {isActive && (
+                  <div className="ml-auto shrink-0">
+                    <div className="w-3.5 h-3.5 rounded-full border-2 border-violet-400/40 border-t-violet-300 animate-spin" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress bar */}
+        <div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #a855f7, #ec4899)' }}
+          />
+        </div>
+
+        <p className="text-[10px] text-white/30 text-center mt-3">Conexión cifrada SSH</p>
       </div>
     </div>
   );

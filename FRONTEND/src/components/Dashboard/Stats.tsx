@@ -1,5 +1,5 @@
 import { CheckCircle, Package, Globe, Database } from 'lucide-react'
-import { useServerStats } from '../../hooks/useServerStats'
+import { useServerStats } from '@hooks/useServerStats'
 
 export const Stats = () => {
   const { stats, isLoading } = useServerStats();

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useServers } from '@hooks/useServers';
+import { useUnreadCount } from '@hooks/useNotificationsFeed';
+import { ROUTES } from '@utils/constants';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
 const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -46,6 +49,8 @@ const icons = {
 
 /* ── Dashboard ────────────────────────────────────────────────────── */
 export const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const { data: unreadCount = 0 } = useUnreadCount();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -74,11 +79,18 @@ export const Dashboard: React.FC = () => {
             <div className="text-[10px] uppercase tracking-wider text-white/45 font-medium">Hora actual</div>
             <div className="font-mono text-base text-white/95 tabular-nums">{time}</div>
           </div>
-          <button className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center relative transition">
+          <button
+            onClick={() => navigate(ROUTES.NOTIFICATIONS)}
+            aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
+            title={unreadCount > 0 ? `${unreadCount} sin leer` : 'Notificaciones'}
+            className="mo-tab w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center relative"
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10 21a2 2 0 004 0" />
             </svg>
-            <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-pink-400 ring-2 ring-[var(--bg-mid)]" />
+            {unreadCount > 0 && (
+              <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-pink-400 ring-2 ring-[var(--bg-mid)]" />
+            )}
           </button>
         </div>
       </Card>

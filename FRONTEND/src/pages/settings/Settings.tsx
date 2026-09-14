@@ -20,6 +20,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@lib/queryClient';
 import { notify } from '@services/notification.service';
 import { apiService } from '@services/api.service';
+import { timeAgo } from '@utils/time';
 
 type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'monitoring' | 'system';
 
@@ -614,19 +615,6 @@ function parseUserAgent(ua: string): { browser: string; os: string } {
     /iPhone|iPad/.test(ua) ? 'iOS' :
     /Android/.test(ua) ? 'Android' : 'SO desconocido';
   return { browser, os };
-}
-
-function timeAgo(date: Date | string | null | undefined): string {
-  if (!date) return 'Desconocido';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return 'Desconocido';
-  const diff = Date.now() - d.getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'hace un momento';
-  if (m < 60) return `hace ${m} min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `hace ${h}h`;
-  return `hace ${Math.floor(h / 24)}d`;
 }
 
 /* ── Pane: Seguridad ──────────────────────────────────────────────── */

@@ -1,8 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { notify } from '@services/notification.service';
+import { notificationsApi } from '@services/notifications.api';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useAuth } from '@hooks/useAuth';
 import { usePreferences } from '@contexts/PreferencesContext';
+import type { AppNotification } from '@typings/notification.types';
 
 /* ── Tipos ────────────────────────────────────────────────────────── */
 export interface NotifPrefs {
@@ -32,45 +36,76 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-/* ── Watcher — dispara alertas al detectar umbrales o desconexión ─── */
-function MetricWatcher({ prefs, thresholds }: { prefs: NotifPrefs; thresholds: NotifThresholds }) {
-  const { data } = useRealtimeMetrics();
-  /* Guardamos estado previo para detectar transiciones (online→offline, normal→alto) */
-  const prevRef = useRef<Record<string, { status: string; cpu: number; memory: number; disk: number }>>({});
+/* ── Puente con el backend ────────────────────────────────────────────
+   La detección de umbrales y de servidor caído vive en el servidor: es el
+   único sitio donde la alerta existe aunque nadie tenga la app abierta, y
+   evita duplicados con varias sesiones. Aquí solo se escucha la señal
+   `notifications:changed` (sin payload, el namespace es broadcast), se
+   recarga la lista con el JWT propio y se avisa de lo que sea nuevo. */
+function ServerAlertBridge({ securityAlerts }: { securityAlerts: boolean }) {
+  const { socket } = useRealtimeMetrics();
+  const { isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
+  /* Ids ya anunciados: al arrancar se siembran con el pendiente para no
+     soltar de golpe los toasts del historial. */
+  const announced = useRef<Set<string> | null>(null);
+  const securityRef = useRef(securityAlerts);
+  securityRef.current = securityAlerts;
+
+  const announce = useCallback((items: AppNotification[]) => {
+    const seen = announced.current;
+    if (!seen) return;
+    /* Del más antiguo al más reciente para que el orden en pantalla coincida */
+    [...items].reverse().forEach(item => {
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+
+      if (item.type === 'security' && securityRef.current) {
+        notify.native(item.title, item.body);
+        return;
+      }
+      if (item.severity === 'error') notify.error(item.title, item.body);
+      else if (item.severity === 'warning') notify.warning(item.title, item.body);
+      else notify.info(item.title, item.body);
+    });
+  }, []);
+
+  /* Siembra inicial: lo que ya estaba sin leer no se anuncia.
+     Sin sesión no se pide nada: el 401 dispararía la redirección dura del
+     interceptor y la pantalla de login se recargaría en bucle. */
+  useEffect(() => {
+    if (!isAuthenticated) {
+      announced.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    notificationsApi
+      .list({ unread: true, limit: 50 })
+      .then(res => {
+        if (cancelled) return;
+        announced.current = new Set(res.items.map(i => i.id));
+      })
+      .catch(() => {
+        if (!cancelled) announced.current = new Set();
+      });
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    Object.entries(data).forEach(([id, server]) => {
-      const prev = prevRef.current[id];
-      const name = server.serverName ?? `Servidor ${id.slice(0, 8)}`;
-      const cpu    = server.metrics?.cpu    ?? 0;
-      const memory = server.metrics?.memory ?? 0;
-      const disk   = server.metrics?.disk   ?? 0;
+    if (!socket || !isAuthenticated) return;
 
-      if (prev) {
-        /* Servidor se desconectó */
-        if (prefs.serverOffline && prev.status === 'online' && server.status === 'offline') {
-          notify.error(`${name} desconectado`, 'El servidor dejó de responder al agente.');
-        }
+    const onChanged = () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      notificationsApi
+        .list({ unread: true, limit: 20 })
+        .then(res => announce(res.items))
+        .catch(() => { /* sin sesión o backend caído: el toast se pierde, la fila no */ });
+    };
 
-        /* CPU superó umbral */
-        if (prefs.highCpuUsage && prev.cpu < thresholds.cpuThreshold && cpu >= thresholds.cpuThreshold) {
-          notify.warning(`CPU alta en ${name}`, `Uso de CPU: ${Math.round(cpu)}% (umbral ${thresholds.cpuThreshold}%)`);
-        }
-
-        /* Memoria superó umbral */
-        if (prefs.highMemoryUsage && prev.memory < thresholds.memoryThreshold && memory >= thresholds.memoryThreshold) {
-          notify.warning(`Memoria alta en ${name}`, `Uso de RAM: ${Math.round(memory)}% (umbral ${thresholds.memoryThreshold}%)`);
-        }
-
-        /* Disco superó umbral */
-        if (prefs.highDiskUsage && prev.disk < thresholds.diskThreshold && disk >= thresholds.diskThreshold) {
-          notify.warning(`Disco crítico en ${name}`, `Uso de disco: ${Math.round(disk)}% (umbral ${thresholds.diskThreshold}%)`);
-        }
-      }
-
-      prevRef.current[id] = { status: server.status, cpu, memory, disk };
-    });
-  }, [data, prefs, thresholds]);
+    socket.on('notifications:changed', onChanged);
+    return () => { socket.off('notifications:changed', onChanged); };
+  }, [socket, isAuthenticated, queryClient, announce]);
 
   return null;
 }
@@ -124,7 +159,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <NotificationContext.Provider value={{ prefs, setPrefs, thresholds, setThresholds, testToast, testNative }}>
-      <MetricWatcher prefs={prefs} thresholds={thresholds} />
+      <ServerAlertBridge securityAlerts={prefs.securityAlerts} />
       {children}
     </NotificationContext.Provider>
   );

@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { ServersModule } from './servers/servers.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { CacheModule } from './cache/cache.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CacheModule } from './cache/cache.module';
     AuthModule,
     ServersModule,
     MonitoringModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

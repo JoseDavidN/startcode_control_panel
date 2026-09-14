@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Server, ServerStatus } from '@servers/entities/server.entity';
+import { NotificationsService } from '@/notifications/notifications.service';
 
 /**
  * Servicio para verificar y actualizar el estado de los servidores
@@ -19,6 +20,7 @@ export class ServerStatusService {
   constructor(
     @InjectRepository(Server)
     private serversRepository: Repository<Server>,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -62,6 +64,17 @@ export class ServerStatusService {
           this.logger.log(
             `🔴 Servidor marcado como OFFLINE por inactividad: ${server.name} (última actividad: ${server.lastSeen})`,
           );
+
+          await this.notificationsService
+            .serverWentOffline(
+              server,
+              `Sin métricas desde hace más de ${this.OFFLINE_THRESHOLD_MINUTES} minutos.`,
+            )
+            .catch((err) =>
+              this.logger.error(
+                `Error notificando inactividad de ${server.name}: ${err.message}`,
+              ),
+            );
         }
       } else {
         this.logger.debug('✅ Todos los servidores tienen estado correcto');

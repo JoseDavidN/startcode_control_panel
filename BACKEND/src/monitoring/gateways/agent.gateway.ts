@@ -21,6 +21,7 @@ import {
   AgentMessageType,
   MetricsDataDto,
 } from '../dto/agent-message.dto';
+import { NotificationsService } from '@/notifications/notifications.service';
 
 /**
  * WebSocket Gateway para comunicación con agentes de monitoreo
@@ -53,6 +54,7 @@ export class AgentGateway
     private metricsHistoryRepository: Repository<AgentMetricsHistory>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -60,6 +62,13 @@ export class AgentGateway
    */
   afterInit(server: Server) {
     this.logger.log('🚀 Agent WebSocket Gateway inicializado');
+
+    /* El service avisa por aquí cuando crea una notificación. Sin payload: el
+       namespace es broadcast global, así que el cliente solo recibe la señal y
+       recarga su lista con su propio JWT. */
+    this.notificationsService.setBroadcaster(() =>
+      this.server.emit('notifications:changed'),
+    );
     this.logger.log(
       `📡 Escuchando en: ws://localhost:${process.env.PORT || 3001}/agent`,
     );
@@ -93,6 +102,17 @@ export class AgentGateway
 
         // Emitir evento al frontend
         this.server.emit('agent:disconnected', { serverId });
+
+        const offline = await this.serversRepository.findOne({
+          where: { id: serverId },
+        });
+        if (offline) {
+          await this.notificationsService
+            .serverWentOffline(offline)
+            .catch((err) =>
+              this.logger.error(`Error notificando desconexión: ${err.message}`),
+            );
+        }
         break;
       }
     }
@@ -146,6 +166,14 @@ export class AgentGateway
           serverId: server.id,
           serverName: server.name,
         });
+
+        if (server.status === ServerStatus.OFFLINE) {
+          await this.notificationsService
+            .serverCameBack(server)
+            .catch((err) =>
+              this.logger.error(`Error notificando reconexión: ${err.message}`),
+            );
+        }
       }
 
       // Procesar según tipo de mensaje
@@ -385,18 +413,26 @@ export class AgentGateway
       lastSeen: new Date(),
     });
 
+    const live = {
+      cpu: metricsData.cpu.usage,
+      memory: metricsData.memory.usagePercent,
+      disk: metricsData.disk.filesystems[0]?.usagePercent || 0,
+    };
+
     // Emitir evento en tiempo real al frontend
     this.server.emit('server:metrics:realtime', {
       serverId: server.id,
       serverName: server.name,
-      metrics: {
-        cpu: metricsData.cpu.usage,
-        memory: metricsData.memory.usagePercent,
-        disk: metricsData.disk.filesystems[0]?.usagePercent || 0,
-        uptime: metricsData.system.uptime,
-      },
+      metrics: { ...live, uptime: metricsData.system.uptime },
       timestamp: new Date(),
     });
+
+    // Umbrales del dueño del servidor: crea notificación solo en el cruce
+    await this.notificationsService
+      .evaluateMetrics(server, live)
+      .catch((err) =>
+        this.logger.error(`Error evaluando umbrales: ${err.message}`),
+      );
   }
 
   /**

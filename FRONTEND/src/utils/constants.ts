@@ -19,6 +19,8 @@ export const API_CONFIG = {
 		HEALTH: '/health',
 		STORAGE_STATS: '/agent-data/storage-stats',
 		CLEANUP_METRICS: '/agent-data/cleanup',
+		NOTIFICATIONS: '/notifications',
+		NOTIFICATIONS_UNREAD: '/notifications/unread-count',
 	},
 };
 
@@ -43,6 +45,8 @@ export const ROUTES = {
 	SERVICE_DETAIL: '/services/:id',
 	SERVICE_CREATE: '/services/create',
 	SERVICE_EDIT: '/services/:id/edit',
+	// Notifications
+	NOTIFICATIONS: '/notifications',
 	// Settings
 	SETTINGS: '/settings',
 	PROFILE: '/profile',

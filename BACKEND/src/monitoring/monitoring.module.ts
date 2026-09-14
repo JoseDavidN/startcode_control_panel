@@ -12,12 +12,14 @@ import { AgentMetricsHistory } from './entities/agent-metrics-history.entity';
 import { AgentGateway } from './gateways/agent.gateway';
 import { AgentDataController } from './agent-data.controller';
 import { ServersModule } from '@servers/servers.module';
+import { NotificationsModule } from '@/notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Server, AgentMetrics, AgentMetricsHistory]),
     AuthModule,
     forwardRef(() => ServersModule),
+    NotificationsModule,
   ],
   controllers: [AgentDataController],
   providers: [AgentGateway, AgentDataService, ServerStatusService, SSHService, ServiceControlService],

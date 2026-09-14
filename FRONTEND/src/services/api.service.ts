@@ -109,7 +109,12 @@ class ApiService {
 						this.failedQueue = [];
 
 						TokenManager.clearTokens();
-						window.location.href = '/login';
+						/* Si ya estamos en el login, no recargamos: una petición
+						   sin sesión desde esa pantalla dejaría la app en bucle
+						   de recargas. */
+						if (!window.location.pathname.startsWith('/login')) {
+							window.location.href = '/login';
+						}
 
 						return Promise.reject(refreshError);
 					} finally {

@@ -1,16 +1,37 @@
 import { toast } from 'sonner';
+import { IS_TAURI } from '@lib/tauriStore';
 
-/* Intenta cargar el plugin nativo de Tauri, silenciando el fallo en navegador */
-let _sendNative: ((opts: { title: string; body: string; icon?: string }) => void) | null = null;
+/* Notificación nativa del sistema operativo.
 
-(async () => {
+   El gate es IS_TAURI, no un try/catch alrededor del import: Vite resuelve el
+   módulo del plugin también en el navegador, así que el catch no saltaba nunca
+   y el respaldo web quedaba inalcanzable. Los permisos ya están declarados en
+   src-tauri/capabilities/default.json, pero hay que pedirlos igualmente. */
+async function sendNativeTauri(title: string, body: string): Promise<boolean> {
   try {
     const mod = await import('@tauri-apps/plugin-notification');
-    _sendNative = (opts) => mod.sendNotification({ title: opts.title, body: opts.body });
+    let granted = await mod.isPermissionGranted();
+    if (!granted) granted = (await mod.requestPermission()) === 'granted';
+    if (!granted) return false;
+    mod.sendNotification({ title, body });
+    return true;
   } catch {
-    /* no estamos en Tauri */
+    return false;
   }
-})();
+}
+
+function sendNativeWeb(title: string, body: string): void {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+    return;
+  }
+  if (Notification.permission !== 'denied') {
+    void Notification.requestPermission().then(p => {
+      if (p === 'granted') new Notification(title, { body });
+    });
+  }
+}
 
 /* ── Toast styles compartidos ─────────────────────────────────────── */
 const BASE = {
@@ -40,19 +61,12 @@ export const notify = {
   /* Notificación nativa del SO — funciona fuera del foco de la app.
      Para alertas de seguridad. También muestra toast interno como respaldo. */
   native: (title: string, body: string) => {
-    if (_sendNative) {
-      _sendNative({ title, body });
+    if (IS_TAURI) {
+      void sendNativeTauri(title, body).then(sent => {
+        if (!sent) sendNativeWeb(title, body);
+      });
     } else {
-      /* Fallback Web Notification API (dev browser) */
-      if (typeof Notification !== 'undefined') {
-        if (Notification.permission === 'granted') {
-          new Notification(title, { body });
-        } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission().then(p => {
-            if (p === 'granted') new Notification(title, { body });
-          });
-        }
-      }
+      sendNativeWeb(title, body);
     }
     /* Siempre muestra toast interno también */
     toast.error(title, { ...BASE, description: body, duration: 9000 });

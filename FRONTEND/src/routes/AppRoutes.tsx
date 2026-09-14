@@ -17,6 +17,9 @@ import { Dashboard } from '@pages/dashboard/Dashboard';
 // Settings
 import { Settings } from '@pages/settings';
 
+// Notifications
+import { Notifications } from '@pages/notifications';
+
 // Servers
 import { Servers } from '@pages/servers';
 
@@ -53,6 +56,7 @@ export const AppRoutes = () => {
         <Route element={<AppLayout />}>
           <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
           <Route path={ROUTES.SERVERS} element={<Servers />} />
+          <Route path={ROUTES.NOTIFICATIONS} element={<Notifications />} />
           <Route path={ROUTES.SETTINGS} element={<Settings />} />
         </Route>
       </Route>

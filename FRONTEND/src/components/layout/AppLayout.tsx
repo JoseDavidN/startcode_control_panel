@@ -4,6 +4,7 @@ import { ROUTES } from '@utils/constants';
 import { useAuth } from '@hooks/useAuth';
 import { useServers } from '@hooks/useServers';
 import { useAppearance } from '@contexts/AppearanceContext';
+import { useUnreadCount } from '@hooks/useNotificationsFeed';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
@@ -107,6 +108,7 @@ export const AppLayout = () => {
   const { data: servers = [] } = useServers();
 
   const { isSidebarCollapsed: collapsed } = useAppearance();
+  const { data: unreadCount = 0 } = useUnreadCount();
   const ready = useFirstFrameReady();
 
   const primaryServer = servers[0] ?? null;
@@ -121,8 +123,8 @@ export const AppLayout = () => {
     ['/files',         'Archivos',       'folder'],
   ];
   const meta: [string, string, IconName, string?][] = [
-    ['/notifications', 'Notificaciones', 'bell', '3'],
-    [ROUTES.SETTINGS,  'Configuración',  'gear'],
+    [ROUTES.NOTIFICATIONS, 'Notificaciones', 'bell', unreadCount > 0 ? String(unreadCount) : undefined],
+    [ROUTES.SETTINGS,      'Configuración',  'gear'],
   ];
 
   const userInitials = user

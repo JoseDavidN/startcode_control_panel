@@ -210,3 +210,82 @@ input[type="checkbox"].chk:checked::after {
 .modal-scroll::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(168,85,247,0.7) 0%, rgba(236,72,153,0.7) 100%);
 }
+
+/* ── Sidebar colapsable ───────────────────────────────────────────── */
+.sidebar {
+  --sb-expanded: 240px;
+  --sb-rail:      70px;   /* 1 borde + 14 + 40 (slot) + 14 + 1 borde */
+  --sb-pad:       14px;
+  --sb-slot:      40px;
+  --sb-dur:      220ms;
+  --sb-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  width: var(--sb-expanded);
+  flex: 0 0 auto;
+  contain: layout paint;          /* aísla el recálculo al subárbol del sidebar */
+}
+.sidebar[data-sb="collapsed"] { width: var(--sb-rail); }
+
+/* La transición sólo existe desde el segundo frame ⇒ nada se anima al arrancar */
+.sidebar.is-ready { transition: width var(--sb-dur) var(--sb-ease); }
+
+/* ── Geometría congelada: nada se mueve horizontalmente ───────────── */
+.sb-slot {
+  width: var(--sb-slot);
+  height: var(--sb-slot);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.sb-row {
+  position: relative;
+  width: 100%;
+  height: var(--sb-slot);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;  /* reserva el borde de .nav-active ⇒ sin salto de 1px */
+}
+.sb-label {
+  position: absolute;
+  left: calc(var(--sb-slot) + 4px);
+  right: 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sb-trail { position: absolute; right: 8px; }   /* badge / botón de logout */
+
+/* ── Fades asimétricos según estado ───────────────────────────────── */
+.sidebar[data-sb="expanded"]  .sb-fade      { opacity: 1; transition: opacity 150ms ease-in 90ms; }
+.sidebar[data-sb="collapsed"] .sb-fade      { opacity: 0; transition: opacity 100ms ease-out; }
+.sidebar[data-sb="expanded"]  .sb-fade-rail { opacity: 0; transition: opacity  90ms ease-out; }
+.sidebar[data-sb="collapsed"] .sb-fade-rail { opacity: 1; transition: opacity 150ms ease-in 90ms; }
+
+/* El scroller comparte el mismo padding que el resto de filas: el borde
+   izquierdo del slot no se mueve aunque aparezca la barra de scroll. */
+.sb-scroll { padding-inline: var(--sb-pad); }
+
+/* Foco visible */
+.sb-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(8,3,20,0.95), 0 0 0 4px rgba(168,85,247,0.75);
+}
+
+/* ── Reducir animaciones ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar *, .sb-preview, .sb-preview * {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+  .aurora { animation: none !important; }
+}
+html[data-reduced-motion="true"] .sidebar,
+html[data-reduced-motion="true"] .sidebar *,
+html[data-reduced-motion="true"] .sb-preview,
+html[data-reduced-motion="true"] .sb-preview * {
+  transition-duration: 1ms !important;
+  animation-duration: 1ms !important;
+}
+html[data-reduced-motion="true"] .aurora { animation: none !important; }

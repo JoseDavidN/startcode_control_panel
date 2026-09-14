@@ -6,6 +6,7 @@ import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto, TwoFactorPendingDto } from './dto/auth-response.dto';
 import { TwoFactorCodeDto, TwoFactorVerifyLoginDto, TwoFactorSetupResponseDto } from './dto/two-factor.dto';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 
 @ApiTags('Auth')
@@ -85,7 +86,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async getProfile(@Request() req) {
-    return req.user;
+    return this.authService.getProfile(req.user.id);
   }
 
   @Patch('profile')
@@ -116,6 +117,25 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Información del usuario' })
   async getMe(@Request() req) {
     return this.authService.getProfile(req.user.id);
+  }
+
+  @Get('preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Preferencias del usuario actual' })
+  @ApiResponse({ status: 200, description: 'Preferencias completas' })
+  async getPreferences(@Request() req) {
+    return this.authService.getPreferences(req.user.id);
+  }
+
+  @Patch('preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Actualizar preferencias — merge por sección' })
+  @ApiResponse({ status: 200, description: 'Preferencias actualizadas' })
+  @ApiBody({ type: UpdatePreferencesDto })
+  async updatePreferences(@Request() req, @Body() dto: UpdatePreferencesDto) {
+    return this.authService.updatePreferences(req.user.id, dto);
   }
 
   @Post('refresh')

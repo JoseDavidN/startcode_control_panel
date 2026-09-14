@@ -18,6 +18,9 @@ import { Dashboard } from '@pages/dashboard/Dashboard';
 import { Settings } from '@pages/settings';
 
 // Servers
+import { Servers } from '@pages/servers';
+
+// Servers (pendientes)
 // import { ServerList } from '../pages/servers/ServerList';
 // import { ServerDetail } from '../pages/servers/ServerDetail';
 // import { ServerCreate } from '../pages/servers/ServerCreate';
@@ -49,6 +52,7 @@ export const AppRoutes = () => {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
+          <Route path={ROUTES.SERVERS} element={<Servers />} />
           <Route path={ROUTES.SETTINGS} element={<Settings />} />
         </Route>
       </Route>

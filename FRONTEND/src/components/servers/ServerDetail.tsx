@@ -127,9 +127,6 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                 shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)] transition">
               <PlusIcon /> Instalar Servicio
             </button>
-            <button className="w-9 h-9 rounded-xl glass-soft flex items-center justify-center text-white/65 hover:text-white transition">
-              <GearIcon />
-            </button>
           </div>
         </div>
 

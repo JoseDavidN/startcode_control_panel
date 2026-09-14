@@ -349,7 +349,7 @@ export const Login = () => {
           <div className="flex-1" />
           <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-white/45">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            4 regiones · 12 nodos · 99.99% SLA
+            Online
           </div>
         </div>
 
@@ -402,7 +402,8 @@ export const Login = () => {
                 </div>
 
                 {error && (
-                  <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm text-center border border-rose-400/20">{error}</div>
+                  <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm text-center border border-rose-400/20">{error}
+                  </div>
                 )}
 
                 <button
@@ -441,10 +442,10 @@ export const Login = () => {
                     <span className="text-grad-brand">StartCode</span>
                   </h1>
                   <div className="text-sm text-white/55 mt-1">Cloud Console · Acceso seguro</div>
-                  <div className="mt-3 flex items-center gap-1.5 text-[10px] font-mono text-emerald-300 uppercase tracking-wider">
+                  {/* <div className="mt-3 flex items-center gap-1.5 text-[10px] font-mono text-emerald-300 uppercase tracking-wider">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     Endpoint operativo · v0.1.0
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className="space-y-3.5 mt-8">

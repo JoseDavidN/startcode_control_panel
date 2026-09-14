@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { Server } from '@servers/entities/server.entity';
+import type { UserPreferences } from '../types/user-preferences.type';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -39,8 +40,17 @@ export class User {
   @Exclude()
   twoFactorSecret: string | null;
 
+  @Column({ type: 'jsonb', nullable: true, name: 'json_preferences' })
+  preferences: UserPreferences | null;
+
   @OneToMany(() => Server, (server) => server.owner)
   servers: Server[];
+
+  @Column({ type: 'timestamp', nullable: true, name: 'dat_last_login' })
+  lastLogin: Date;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'dat_password_changed_at' })
+  passwordChangedAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

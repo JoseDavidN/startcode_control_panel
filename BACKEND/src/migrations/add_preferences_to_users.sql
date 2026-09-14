@@ -1,0 +1,2 @@
+ALTER TABLE tbl_users
+  ADD COLUMN IF NOT EXISTS json_preferences JSONB DEFAULT NULL;

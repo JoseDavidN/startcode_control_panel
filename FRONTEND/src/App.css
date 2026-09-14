@@ -1,12 +1,30 @@
 @import "tailwindcss";
 
+/* ── Temas ────────────────────────────────────────────────────────────
+   Un archivo por tema, misma lista de variables en los tres. El tema
+   activo es el atributo data-theme del <html> (PreferencesContext lo
+   escribe; index.html lo adelanta antes del primer paint).
+   Los @import van todos aquí arriba: CSS exige que precedan a cualquier
+   regla, y al no estar en @layer ganan a la capa theme de Tailwind. */
+@import "./styles/themes/dark.css";
+@import "./styles/themes/aurora.css";
+@import "./styles/themes/solar.css";
+
+/* Capa de movimiento: tokens, keyframes y el interruptor de "Reducir
+   animaciones". Es la misma en todos los temas. */
+@import "./styles/motion.css";
+
+/* Tipografías empaquetadas (WOFF2 en src/assets/fonts) y la familia
+   activa según data-font del <html>. Tampoco depende del tema. */
+@import "./styles/fonts.css";
+
 /* ── Base ─────────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: #07050d;
-  font-family: 'Inter', system-ui, sans-serif;
-  color: #f4f1ff;
+  background: var(--bg-base);
+  font-family: var(--font-ui);
+  color: var(--ink);
   overflow: hidden;
 }
 
@@ -17,54 +35,56 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
 .scroll-area::-webkit-scrollbar { width: 10px; height: 10px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
 .scroll-area::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.06);
+  background: var(--scroll-thumb);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .scroll-area::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.12);
+  background: var(--scroll-thumb-hover);
   background-clip: padding-box;
 }
 .scroll-thin::-webkit-scrollbar { width: 6px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--scroll-thumb-thin); border-radius: 999px; }
 
 /* ── Glass ────────────────────────────────────────────────────────── */
 .glass {
-  background-color: rgba(8, 3, 20, 0.62);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  background-color: rgb(var(--surface-rgb) / var(--glass-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-1) 0%, var(--sheen-2) 100%);
   backdrop-filter: blur(28px) saturate(200%);
   -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid rgba(255,255,255,0.09);
-  box-shadow:
-    0 1px 0 0 rgba(255,255,255,0.07) inset,
-    0 24px 60px -24px rgba(0,0,0,0.7),
-    0 1px 2px rgba(0,0,0,0.5);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 0 var(--inset-hi) inset, var(--shadow-panel);
 }
 .glass-soft {
-  background-color: rgba(8, 3, 20, 0.40);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  background-color: rgb(var(--surface-rgb) / var(--glass-soft-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-soft-1) 0%, var(--sheen-2) 100%);
   backdrop-filter: blur(18px) saturate(180%);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid var(--hairline-soft);
 }
 .glass-input {
-  background-color: rgba(8, 3, 20, 0.30);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.04) 100%);
-  border: 1px solid rgba(255,255,255,0.09);
+  background-color: rgb(var(--surface-rgb) / var(--glass-input-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-input-1) 0%, var(--sheen-input-2) 100%);
+  border: 1px solid var(--hairline);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 .glass-input:focus-within {
-  border-color: rgba(168,85,247,0.5);
-  box-shadow: 0 0 0 4px rgba(168,85,247,0.12);
+  border-color: rgb(var(--brand-1-rgb) / 0.5);
+  box-shadow: 0 0 0 4px rgb(var(--brand-1-rgb) / 0.12);
 }
 
 /* ── Brand gradients ──────────────────────────────────────────────── */
-.grad-brand { background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); }
-.grad-brand-soft { background: linear-gradient(135deg, rgba(168,85,247,0.18) 0%, rgba(236,72,153,0.18) 100%); }
+.grad-brand {
+  background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+}
+/* Tinta sobre la marca. Sin @layer ⇒ gana a las utilidades text-white de
+   Tailwind, que sí van en capa, sin tener que tocarlas una por una. */
+.grad-brand, .grad-brand * { color: var(--on-brand); }
+.grad-brand-soft { background: linear-gradient(135deg, rgb(var(--brand-1-rgb) / 0.18) 0%, rgb(var(--brand-2-rgb) / 0.18) 100%); }
 .text-grad-brand {
-  background: linear-gradient(135deg, #c084fc 0%, #f472b6 100%);
+  background: linear-gradient(135deg, var(--brand-light-1) 0%, var(--brand-light-2) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -75,7 +95,7 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
   position: absolute;
   border-radius: 50%;
   filter: blur(72px);
-  opacity: 0.72;
+  opacity: var(--aurora-opacity);
   pointer-events: none;
   will-change: transform;
 }
@@ -105,9 +125,9 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
 
 /* ── Sidebar nav active ───────────────────────────────────────────── */
 .nav-active {
-  background: linear-gradient(135deg, rgba(168,85,247,0.28), rgba(236,72,153,0.28));
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 8px 24px -8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, rgb(var(--brand-1-rgb) / 0.28), rgb(var(--brand-2-rgb) / 0.28));
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 8px 24px -8px rgb(var(--brand-1-rgb) / 0.45), inset 0 1px 0 var(--inset-hi);
 }
 
 /* ── Progress shimmer ─────────────────────────────────────────────── */
@@ -126,7 +146,7 @@ input[type="range"] {
   appearance: none;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.08);
+  background: var(--track);
   outline: none;
 }
 input[type="range"]::-webkit-slider-thumb {
@@ -135,31 +155,19 @@ input[type="range"]::-webkit-slider-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #c084fc, #f472b6);
+  background: linear-gradient(135deg, var(--brand-light-1), var(--brand-light-2));
   cursor: pointer;
-  box-shadow: 0 0 0 4px rgba(168,85,247,0.2), 0 2px 6px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 4px rgb(var(--brand-1-rgb) / 0.2), 0 2px 6px rgba(0,0,0,0.4);
 }
 
 /* ── Select options dark bg ───────────────────────────────────────── */
-select option { background: #1a0f3d; color: #f4f1ff; }
-
-/* ── Modal animations ─────────────────────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(18px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0)     scale(1);    }
-}
-.animate-fadeIn { animation: fadeIn  160ms ease forwards; }
-.animate-slideUp { animation: slideUp 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+select option { background: var(--select-bg); color: var(--ink); font-family: var(--font-ui); }
 
 /* ── Login: grid background ───────────────────────────────────────── */
 .grid-bg {
   background-image:
-    linear-gradient(rgba(168,85,247,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(168,85,247,0.06) 1px, transparent 1px);
+    linear-gradient(rgb(var(--brand-1-rgb) / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--brand-1-rgb) / 0.06) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
   -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
@@ -183,19 +191,19 @@ select option { background: #1a0f3d; color: #f4f1ff; }
 input[type="checkbox"].chk {
   appearance: none; -webkit-appearance: none;
   width: 16px; height: 16px;
-  border: 1px solid rgba(255,255,255,0.18);
+  border: 1px solid var(--chk-border);
   border-radius: 4px;
-  background: rgba(255,255,255,0.03);
+  background: var(--chk-bg);
   cursor: pointer; position: relative; transition: all 150ms;
 }
 input[type="checkbox"].chk:checked {
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
   border-color: transparent;
 }
 input[type="checkbox"].chk:checked::after {
   content: ''; position: absolute;
   left: 4px; top: 1px; width: 5px; height: 9px;
-  border: solid white; border-width: 0 2px 2px 0;
+  border: solid var(--on-brand); border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 
@@ -204,11 +212,11 @@ input[type="checkbox"].chk:checked::after {
 .modal-scroll::-webkit-scrollbar { width: 4px; }
 .modal-scroll::-webkit-scrollbar-track { background: transparent; }
 .modal-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(168,85,247,0.45) 0%, rgba(236,72,153,0.45) 100%);
+  background: linear-gradient(180deg, rgb(var(--brand-1-rgb) / 0.45) 0%, rgb(var(--brand-2-rgb) / 0.45) 100%);
   border-radius: 999px;
 }
 .modal-scroll::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(168,85,247,0.7) 0%, rgba(236,72,153,0.7) 100%);
+  background: linear-gradient(180deg, rgb(var(--brand-1-rgb) / 0.7) 0%, rgb(var(--brand-2-rgb) / 0.7) 100%);
 }
 
 /* ── Sidebar colapsable ───────────────────────────────────────────── */
@@ -270,22 +278,7 @@ input[type="checkbox"].chk:checked::after {
 /* Foco visible */
 .sb-focus:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(8,3,20,0.95), 0 0 0 4px rgba(168,85,247,0.75);
+  box-shadow: 0 0 0 2px var(--focus-halo), 0 0 0 4px rgb(var(--brand-1-rgb) / 0.75);
 }
 
-/* ── Reducir animaciones ──────────────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  .sidebar, .sidebar *, .sb-preview, .sb-preview * {
-    transition-duration: 1ms !important;
-    animation-duration: 1ms !important;
-  }
-  .aurora { animation: none !important; }
-}
-html[data-reduced-motion="true"] .sidebar,
-html[data-reduced-motion="true"] .sidebar *,
-html[data-reduced-motion="true"] .sb-preview,
-html[data-reduced-motion="true"] .sb-preview * {
-  transition-duration: 1ms !important;
-  animation-duration: 1ms !important;
-}
-html[data-reduced-motion="true"] .aurora { animation: none !important; }
+/* Reducir animaciones: el interruptor vive en styles/motion.css. */

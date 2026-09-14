@@ -36,7 +36,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       {/* Modal — max 88vh, flex-col so header stays fixed and body scrolls */}
       <div
         className={`relative w-full ${sizeMap[size]} max-h-[88vh] flex flex-col glass grain rounded-2xl animate-slideUp`}
-        style={{ boxShadow: '0 32px 80px -16px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset' }}
+        style={{ boxShadow: 'var(--shadow-modal)' }}
       >
         {/* Header — never scrolls */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] shrink-0">

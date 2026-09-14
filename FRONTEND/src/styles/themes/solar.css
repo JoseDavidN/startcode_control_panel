@@ -1,0 +1,122 @@
+/* ══════════════════════════════════════════════════════════════════════
+   TEMA SOLAR (id: solar)
+   Claro: blanco cálido con acentos anaranjados.
+   Misma lista de variables que dark.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="solar"] {
+  color-scheme: light;
+
+  /* Fondo */
+  --bg-base: #fdfaf6;
+  --bg-mid: #fff4e8;
+  --bg-radial: radial-gradient(ellipse at 20% 0%, #ffe8d1 0%, #fff4e8 35%, #fdfaf6 80%);
+
+  /* Superficies glass */
+  --surface-rgb: 255 255 255;
+  --glass-alpha: 0.72;
+  --glass-soft-alpha: 0.55;
+  --glass-input-alpha: 0.75;
+  --sheen-1: rgba(255,255,255,0.55);
+  --sheen-2: rgba(255,255,255,0.15);
+  --sheen-soft-1: rgba(255,255,255,0.45);
+  --sheen-input-1: rgba(255,255,255,0.6);
+  --sheen-input-2: rgba(255,255,255,0.3);
+  --hairline: rgba(124,45,18,0.14);
+  --hairline-soft: rgba(124,45,18,0.10);
+  --hairline-strong: rgba(124,45,18,0.20);
+  --inset-hi: rgba(255,255,255,0.8);
+  --shadow-panel: 0 18px 40px -22px rgba(124,45,18,0.35), 0 1px 2px rgba(124,45,18,0.10);
+  --shadow-modal: 0 28px 70px -20px rgba(124,45,18,0.35), 0 0 0 1px rgba(124,45,18,0.08) inset;
+
+  /* Tinta y controles */
+  --ink: #2a1a0c;
+  --track: rgba(124,45,18,0.12);
+  --knob: #ffffff;
+  --scroll-thumb: rgba(124,45,18,0.18);
+  --scroll-thumb-hover: rgba(124,45,18,0.30);
+  --scroll-thumb-thin: rgba(124,45,18,0.20);
+  --chk-border: rgba(124,45,18,0.30);
+  --chk-bg: rgba(255,255,255,0.7);
+
+  /* Marca */
+  --brand-1: #f97316;
+  --brand-2: #fb923c;
+  --brand-1-rgb: 249 115 22;
+  --brand-2-rgb: 251 146 60;
+  --brand-light-1: #ea580c;
+  --brand-light-2: #f59e0b;
+  --on-brand: #ffffff;
+
+  /* Auroras del fondo */
+  --aurora-1: #fb923c;
+  --aurora-2: #f59e0b;
+  --aurora-3: #fca5a5;
+  --aurora-opacity: 0.35;
+  --aurora-2-opacity: 0.28;
+  --aurora-3-opacity: 0.25;
+
+  /* Varios */
+  --select-bg: #fff4e8;
+  --focus-halo: rgba(255,250,246,0.95);
+
+  /* ── Remapeo de la paleta de Tailwind ───────────────────────────
+     La familia de marca pasa a naranja/ámbar y los semánticos se oscurecen
+     para contrastar sobre fondo claro.
+     ─────────────────────────────────────────────────────────── */
+  /* Canal de tinta y overlays: text-white/NN, bg-white/NN, border-white/NN */
+  --color-white: #2a1a0c;
+
+  /* Familia de marca */
+  --color-violet-200: #c2410c;
+  --color-violet-300: #ea580c;
+  --color-violet-400: #f97316;
+  --color-violet-500: #f97316;
+  --color-violet-600: #c2410c;
+  --color-purple-300: #ea580c;
+  --color-purple-400: #f97316;
+  --color-purple-500: #f97316;
+  --color-purple-600: #c2410c;
+  --color-fuchsia-300: #ea580c;
+  --color-fuchsia-400: #f97316;
+  --color-fuchsia-500: #f97316;
+  --color-pink-300: #d97706;
+  --color-pink-400: #f59e0b;
+  --color-pink-500: #f59e0b;
+  --color-pink-600: #b45309;
+  --color-indigo-500: #fb923c;
+
+  /* Semánticos: ok / atención / error / info */
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-emerald-500: #10b981;
+  --color-green-400: #059669;
+  --color-green-500: #10b981;
+  --color-green-600: #047857;
+  --color-teal-400: #0d9488;
+  --color-teal-500: #14b8a6;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-sky-500: #0ea5e9;
+  --color-blue-400: #2563eb;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #1d4ed8;
+  --color-cyan-400: #0891b2;
+  --color-amber-200: #b45309;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-amber-500: #f59e0b;
+  --color-yellow-400: #d97706;
+  --color-yellow-500: #f59e0b;
+  --color-yellow-600: #b45309;
+  --color-rose-200: #be123c;
+  --color-rose-300: #be123c;
+  --color-rose-400: #e11d48;
+  --color-rose-500: #f43f5e;
+  --color-red-400: #e11d48;
+  --color-red-500: #f43f5e;
+  --color-red-600: #be123c;
+  --color-gray-300: #a8a29e;
+  --color-gray-400: #78716c;
+  --color-gray-500: #57534e;
+}

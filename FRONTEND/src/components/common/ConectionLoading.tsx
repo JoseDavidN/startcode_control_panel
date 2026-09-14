@@ -120,7 +120,7 @@ export const ConnectionLoading = () => {
         <div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-700 ease-out"
-            style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #a855f7, #ec4899)' }}
+            style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--brand-1), var(--brand-2))' }}
           />
         </div>
 

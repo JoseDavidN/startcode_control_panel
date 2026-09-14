@@ -50,11 +50,11 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
         richColors
         toastOptions={{
           style: {
-            background: 'rgba(8,3,20,0.92)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgb(var(--surface-rgb) / 0.92)',
+            border: '1px solid var(--hairline)',
             backdropFilter: 'blur(28px)',
-            color: '#f4f1ff',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            color: 'var(--ink)',
+            fontFamily: 'var(--font-ui)',
           },
         }}
       />

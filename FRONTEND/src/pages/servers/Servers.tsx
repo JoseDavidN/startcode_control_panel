@@ -248,9 +248,9 @@ const ViewToggle = ({ value, onChange }: { value: ServersView; onChange: (v: Ser
             aria-label={label}
             title={label}
             onClick={() => onChange(mode)}
-            className={`w-9 h-8 rounded-lg flex items-center justify-center transition
+            className={`mo-tab w-9 h-8 rounded-lg flex items-center justify-center
               ${active
-                ? 'grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]'
+                ? 'mo-tab-on grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]'
                 : 'text-white/50 hover:text-white hover:bg-white/[0.06]'}`}
           >
             {icon}
@@ -299,7 +299,7 @@ export const Servers: React.FC = () => {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-5">
+    <div className="mo-view h-full min-h-0 flex flex-col gap-5">
       {/* Page header */}
       <Card className="px-6 py-5 flex items-center gap-4 shrink-0">
         <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
@@ -356,7 +356,7 @@ export const Servers: React.FC = () => {
         )}
 
         {!isLoading && !isError && serversView === 'cards' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="mo-panel grid grid-cols-1 xl:grid-cols-2 gap-5">
             {filteredServers.map(server => (
               <GlassServerCard
                 key={server.id}
@@ -369,9 +369,9 @@ export const Servers: React.FC = () => {
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="glass rounded-2xl transition group flex items-center justify-center min-h-[280px] grain relative cursor-pointer"
-              style={{ border: '1.5px dashed rgba(255,255,255,0.18)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.45)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)')}
+              style={{ border: '1.5px dashed var(--hairline-strong)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgb(var(--brand-1-rgb) / 0.45)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--hairline-strong)')}
             >
               <div className="flex flex-col items-center gap-3 text-white/40 group-hover:text-white/70 transition">
                 <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-white/10 flex items-center justify-center">
@@ -387,7 +387,7 @@ export const Servers: React.FC = () => {
         )}
 
         {!isLoading && !isError && serversView === 'list' && (
-          <div className="space-y-3">
+          <div className="mo-panel space-y-3">
             {filteredServers.length > 0 && (
               <Card className="overflow-hidden divide-y divide-white/[0.06]">
                 {filteredServers.map(server => (
@@ -404,9 +404,9 @@ export const Servers: React.FC = () => {
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="w-full glass rounded-2xl grain relative group flex items-center gap-4 px-5 py-4 transition cursor-pointer"
-              style={{ border: '1.5px dashed rgba(255,255,255,0.18)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.45)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)')}
+              style={{ border: '1.5px dashed var(--hairline-strong)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgb(var(--brand-1-rgb) / 0.45)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--hairline-strong)')}
             >
               <div className="w-10 h-10 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-white/50 group-hover:text-white/80 transition shrink-0">
                 {icons.plusSm}

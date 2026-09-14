@@ -1,0 +1,122 @@
+/* ══════════════════════════════════════════════════════════════════════
+   TEMA AURORA (id: aurora)
+   Oscuro más claro y vivo: azul noche con acentos cian y azul eléctrico.
+   Misma lista de variables que dark.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="aurora"] {
+  color-scheme: dark;
+
+  /* Fondo */
+  --bg-base: #050d1a;
+  --bg-mid: #0a1a33;
+  --bg-radial: radial-gradient(ellipse at 20% 0%, #102a4d 0%, #0a1a33 35%, #050d1a 80%);
+
+  /* Superficies glass */
+  --surface-rgb: 10 26 51;
+  --glass-alpha: 0.55;
+  --glass-soft-alpha: 0.35;
+  --glass-input-alpha: 0.28;
+  --sheen-1: rgba(255,255,255,0.08);
+  --sheen-2: rgba(255,255,255,0.03);
+  --sheen-soft-1: rgba(255,255,255,0.06);
+  --sheen-input-1: rgba(255,255,255,0.09);
+  --sheen-input-2: rgba(255,255,255,0.05);
+  --hairline: rgba(255,255,255,0.12);
+  --hairline-soft: rgba(255,255,255,0.09);
+  --hairline-strong: rgba(255,255,255,0.18);
+  --inset-hi: rgba(255,255,255,0.07);
+  --shadow-panel: 0 24px 60px -24px rgba(0,10,30,0.7), 0 1px 2px rgba(0,10,30,0.5);
+  --shadow-modal: 0 32px 80px -16px rgba(0,10,30,0.8), 0 0 0 1px rgba(255,255,255,0.08) inset;
+
+  /* Tinta y controles */
+  --ink: #eaf4ff;
+  --track: rgba(255,255,255,0.08);
+  --knob: #ffffff;
+  --scroll-thumb: rgba(255,255,255,0.09);
+  --scroll-thumb-hover: rgba(255,255,255,0.16);
+  --scroll-thumb-thin: rgba(255,255,255,0.10);
+  --chk-border: rgba(255,255,255,0.18);
+  --chk-bg: rgba(255,255,255,0.03);
+
+  /* Marca */
+  --brand-1: #22d3ee;
+  --brand-2: #3b82f6;
+  --brand-1-rgb: 34 211 238;
+  --brand-2-rgb: 59 130 246;
+  --brand-light-1: #67e8f9;
+  --brand-light-2: #60a5fa;
+  --on-brand: #03121f;
+
+  /* Auroras del fondo */
+  --aurora-1: #22d3ee;
+  --aurora-2: #3b82f6;
+  --aurora-3: #6366f1;
+  --aurora-opacity: 0.6;
+  --aurora-2-opacity: 0.5;
+  --aurora-3-opacity: 0.45;
+
+  /* Varios */
+  --select-bg: #0d2440;
+  --focus-halo: rgba(5,13,26,0.95);
+
+  /* ── Remapeo de la paleta de Tailwind ───────────────────────────
+     La familia de marca (violet/purple/fuchsia/pink/indigo) pasa a cian y
+     azul. Los semánticos se quedan como en Nocturno: ya contrastan bien.
+     ─────────────────────────────────────────────────────────── */
+  /* Canal de tinta y overlays: text-white/NN, bg-white/NN, border-white/NN */
+  --color-white: #f2f9ff;
+
+  /* Familia de marca */
+  --color-violet-200: #a5f3fc;
+  --color-violet-300: #67e8f9;
+  --color-violet-400: #22d3ee;
+  --color-violet-500: #06b6d4;
+  --color-violet-600: #0891b2;
+  --color-purple-300: #67e8f9;
+  --color-purple-400: #22d3ee;
+  --color-purple-500: #06b6d4;
+  --color-purple-600: #0891b2;
+  --color-fuchsia-300: #93c5fd;
+  --color-fuchsia-400: #60a5fa;
+  --color-fuchsia-500: #3b82f6;
+  --color-pink-300: #93c5fd;
+  --color-pink-400: #60a5fa;
+  --color-pink-500: #3b82f6;
+  --color-pink-600: #2563eb;
+  --color-indigo-500: #3b82f6;
+
+  /* Semánticos: ok / atención / error / info */
+  --color-emerald-300: oklch(84.5% .143 164.978);
+  --color-emerald-400: oklch(76.5% .177 163.223);
+  --color-emerald-500: oklch(69.6% .17 162.48);
+  --color-green-400: oklch(79.2% .209 151.711);
+  --color-green-500: oklch(72.3% .219 149.579);
+  --color-green-600: oklch(62.7% .194 149.214);
+  --color-teal-400: oklch(77.7% .152 181.912);
+  --color-teal-500: oklch(70.4% .14 182.503);
+  --color-sky-300: oklch(82.8% .111 230.318);
+  --color-sky-400: oklch(74.6% .16 232.661);
+  --color-sky-500: oklch(68.5% .169 237.323);
+  --color-blue-400: oklch(70.7% .165 254.624);
+  --color-blue-500: oklch(62.3% .214 259.815);
+  --color-blue-600: oklch(54.6% .245 262.881);
+  --color-cyan-400: oklch(78.9% .154 211.53);
+  --color-amber-200: oklch(92.4% .12 95.746);
+  --color-amber-300: oklch(87.9% .169 91.605);
+  --color-amber-400: oklch(82.8% .189 84.429);
+  --color-amber-500: oklch(76.9% .188 70.08);
+  --color-yellow-400: oklch(85.2% .199 91.936);
+  --color-yellow-500: oklch(79.5% .184 86.047);
+  --color-yellow-600: oklch(68.1% .162 75.834);
+  --color-rose-200: oklch(89.2% .058 10.001);
+  --color-rose-300: oklch(81% .117 11.638);
+  --color-rose-400: oklch(71.2% .194 13.428);
+  --color-rose-500: oklch(64.5% .246 16.439);
+  --color-red-400: oklch(70.4% .191 22.216);
+  --color-red-500: oklch(63.7% .237 25.331);
+  --color-red-600: oklch(57.7% .245 27.325);
+  --color-gray-300: oklch(87.2% .01 258.338);
+  --color-gray-400: oklch(70.7% .022 261.325);
+  --color-gray-500: oklch(55.1% .027 264.364);
+}

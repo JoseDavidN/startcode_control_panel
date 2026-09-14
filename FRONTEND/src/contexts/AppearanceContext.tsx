@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { usePreferences } from '@contexts/PreferencesContext';
-import type { AppearancePrefs, ServersView, SidebarMode } from '@typings/preferences.types';
+import type { AppearancePrefs, FontFamily, ServersView, SidebarMode, Theme } from '@typings/preferences.types';
 
-export type { SidebarMode, ServersView };
+export type { SidebarMode, ServersView, Theme, FontFamily };
 export type AppearanceSettings = AppearancePrefs;
 
 /**
@@ -17,6 +17,8 @@ export const useAppearance = () => {
     () => ({
       ...appearance,
       isSidebarCollapsed: appearance.sidebarMode === 'collapsed',
+      setTheme: (theme: Theme) => patch('appearance', { theme }),
+      setFont: (font: FontFamily) => patch('appearance', { font }),
       setSidebarMode: (sidebarMode: SidebarMode) => patch('appearance', { sidebarMode }),
       setReducedMotion: (reducedMotion: boolean) => patch('appearance', { reducedMotion }),
       setServersView: (serversView: ServersView) => patch('appearance', { serversView }),

@@ -45,7 +45,7 @@ const I = {
 };
 
 /* ── LiveSpark ────────────────────────────────────────────────────── */
-function LiveSpark({ stroke = '#c084fc', height = 56 }: { stroke?: string; height?: number }) {
+function LiveSpark({ stroke = 'var(--brand-light-1)', height = 56 }: { stroke?: string; height?: number }) {
   const [pts, setPts] = useState(() => Array.from({ length: 28 }, () => 30 + Math.random() * 50));
   useEffect(() => {
     const id = setInterval(() => {
@@ -119,15 +119,15 @@ function ServerOrbit() {
       <div className="absolute inset-6 rounded-full border border-white/[0.05] border-dashed" />
       <div className="absolute inset-12 rounded-full border border-white/[0.04]" />
       <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full" style={{ animation: 'spin 22s linear infinite' }}>
-        <circle cx="150" cy="150" r="138" fill="none" stroke="rgba(168,85,247,0.25)" strokeDasharray="2 6" />
-        <circle cx="150" cy="12" r="5" fill="#c084fc" />
-        <circle cx="288" cy="150" r="4" fill="#f472b6" />
-        <circle cx="150" cy="288" r="3.5" fill="#a5b4fc" />
+        <circle cx="150" cy="150" r="138" fill="none" stroke="rgb(var(--brand-1-rgb) / 0.25)" strokeDasharray="2 6" />
+        <circle cx="150" cy="12" r="5" fill="var(--brand-light-1)" />
+        <circle cx="288" cy="150" r="4" fill="var(--brand-light-2)" />
+        <circle cx="150" cy="288" r="3.5" fill="var(--aurora-3)" />
       </svg>
       <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full" style={{ animation: 'spinR 30s linear infinite' }}>
-        <circle cx="150" cy="150" r="100" fill="none" stroke="rgba(236,72,153,0.18)" strokeDasharray="4 8" />
-        <circle cx="250" cy="150" r="3" fill="#f472b6" />
-        <circle cx="50" cy="150" r="3" fill="#a78bfa" />
+        <circle cx="150" cy="150" r="100" fill="none" stroke="rgb(var(--brand-2-rgb) / 0.18)" strokeDasharray="4 8" />
+        <circle cx="250" cy="150" r="3" fill="var(--brand-light-2)" />
+        <circle cx="50" cy="150" r="3" fill="var(--brand-1)" />
       </svg>
       <NodeLabel pos="top-0 left-1/2 -translate-x-1/2 -translate-y-2" name="eu-west-1" status="ok" />
       <NodeLabel pos="bottom-0 left-1/2 -translate-x-1/2 translate-y-2" name="ap-south-2" status="ok" />
@@ -259,7 +259,7 @@ function TechShowcase() {
               </div>
               <span className="font-mono text-xs text-violet-200">live</span>
             </div>
-            <LiveSpark stroke="#c084fc" />
+            <LiveSpark stroke="var(--brand-light-1)" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <MetricChip icon={I.database} label="Base de datos" value="6/100" sub="conexiones · 12ms p50" tone="amber" accent="text-amber-300" />

@@ -5,8 +5,19 @@
 
 export type SidebarMode = 'expanded' | 'collapsed';
 export type ServersView = 'cards' | 'list';
+/** Piel de la aplicación; los tokens de cada tema viven en App.css. */
+export type Theme = 'dark' | 'aurora' | 'solar';
+
+export const THEMES: readonly Theme[] = ['dark', 'aurora', 'solar'];
+
+/** Familia tipográfica de la interfaz; las fuentes van empaquetadas en src/assets/fonts. */
+export type FontFamily = 'grotesk' | 'mono' | 'rounded';
+
+export const FONTS: readonly FontFamily[] = ['grotesk', 'mono', 'rounded'];
 
 export interface AppearancePrefs {
+	theme: Theme;
+	font: FontFamily;
 	sidebarMode: SidebarMode;
 	reducedMotion: boolean;
 	serversView: ServersView;
@@ -52,7 +63,7 @@ export function prefersReducedMotion(): boolean {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-	appearance: { sidebarMode: 'expanded', reducedMotion: false, serversView: 'cards' },
+	appearance: { theme: 'dark', font: 'grotesk', sidebarMode: 'expanded', reducedMotion: false, serversView: 'cards' },
 	notifications: {
 		serverOffline: true,
 		highCpuUsage: true,
@@ -89,9 +100,11 @@ function defined<T extends object>(source: T | undefined | null): Partial<T> {
 }
 
 /** Merge por sección: lo que no se envía no se pisa. */
+export type PartialPreferences = { [K in PreferenceSection]?: Partial<UserPreferences[K]> };
+
 export function mergePreferences(
-	current: Partial<UserPreferences> | null | undefined,
-	patch: Partial<UserPreferences>
+	current: PartialPreferences | null | undefined,
+	patch: PartialPreferences
 ): UserPreferences {
 	const base = current ?? {};
 	return {
@@ -108,6 +121,8 @@ export function mergePreferences(
    usando exactamente los mismos rangos que update-preferences.dto.ts. */
 
 const ENUMS: Record<string, readonly string[]> = {
+	theme: THEMES,
+	font: FONTS,
 	sidebarMode: ['expanded', 'collapsed'],
 	serversView: ['cards', 'list'],
 };

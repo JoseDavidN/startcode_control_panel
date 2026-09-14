@@ -15,10 +15,10 @@ let _sendNative: ((opts: { title: string; body: string; icon?: string }) => void
 /* ── Toast styles compartidos ─────────────────────────────────────── */
 const BASE = {
   style: {
-    background: 'rgba(8,3,20,0.92)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgb(var(--surface-rgb) / 0.92)',
+    border: '1px solid var(--hairline)',
     backdropFilter: 'blur(28px)',
-    color: '#f4f1ff',
+    color: 'var(--ink)',
   } as React.CSSProperties,
   duration: 5000,
 };

@@ -229,6 +229,18 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
     document.documentElement.dataset.reducedMotion = prefs.appearance.reducedMotion ? 'true' : 'false';
   }, [prefs.appearance.reducedMotion]);
 
+  /* El tema se aplica como atributo del <html>; los tokens viven en App.css.
+     El script inline de index.html ya lo fijó antes del primer paint. */
+  useEffect(() => {
+    document.documentElement.dataset.theme = prefs.appearance.theme;
+  }, [prefs.appearance.theme]);
+
+  /* Tipografía: las familias están empaquetadas, styles/fonts.css resuelve
+     --font-ui según este atributo. */
+  useEffect(() => {
+    document.documentElement.dataset.font = prefs.appearance.font;
+  }, [prefs.appearance.font]);
+
   /* Otras ventanas/pestañas: aplicamos lo recibido sin reenviarlo */
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {

@@ -1,9 +1,19 @@
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min, ValidateNested } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { ServersView, SidebarMode } from '../types/user-preferences.type';
+import type { FontFamily, ServersView, SidebarMode, Theme } from '../types/user-preferences.type';
 
 export class AppearancePrefsDto {
+  @ApiPropertyOptional({ enum: ['dark', 'aurora', 'solar'] })
+  @IsOptional()
+  @IsIn(['dark', 'aurora', 'solar'])
+  theme?: Theme;
+
+  @ApiPropertyOptional({ enum: ['grotesk', 'mono', 'rounded'] })
+  @IsOptional()
+  @IsIn(['grotesk', 'mono', 'rounded'])
+  font?: FontFamily;
+
   @ApiPropertyOptional({ enum: ['expanded', 'collapsed'] })
   @IsOptional()
   @IsIn(['expanded', 'collapsed'])

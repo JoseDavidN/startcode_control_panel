@@ -1,7 +1,11 @@
 export type SidebarMode = 'expanded' | 'collapsed';
 export type ServersView = 'cards' | 'list';
+export type Theme = 'dark' | 'aurora' | 'solar';
+export type FontFamily = 'grotesk' | 'mono' | 'rounded';
 
 export interface AppearancePrefs {
+  theme: Theme;
+  font: FontFamily;
   sidebarMode: SidebarMode;
   reducedMotion: boolean;
   serversView: ServersView;
@@ -38,7 +42,7 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  appearance: { sidebarMode: 'expanded', reducedMotion: false, serversView: 'cards' },
+  appearance: { theme: 'dark', font: 'grotesk', sidebarMode: 'expanded', reducedMotion: false, serversView: 'cards' },
   notifications: {
     serverOffline: true,
     highCpuUsage: true,
@@ -78,9 +82,11 @@ function defined<T extends object>(source: T | undefined | null): Partial<T> {
  * Merge por sección: lo que no se envía no se pisa.
  * Solo hay dos niveles, así que no hace falta un deep-merge genérico.
  */
+export type PartialPreferences = { [K in keyof UserPreferences]?: Partial<UserPreferences[K]> };
+
 export function mergePreferences(
-  current: Partial<UserPreferences> | null | undefined,
-  patch: Partial<UserPreferences>,
+  current: PartialPreferences | null | undefined,
+  patch: PartialPreferences,
 ): UserPreferences {
   const base = current ?? {};
   return {

@@ -47,7 +47,7 @@ const RailRow = ({
     title={collapsed ? label : undefined}
     aria-label={badge ? `${label}, ${badge} sin leer` : label}
     aria-current={active ? 'page' : undefined}
-    className={`sb-row sb-focus rounded-xl text-sm font-medium
+    className={`sb-row sb-focus mo-tab rounded-xl text-sm font-medium
       ${active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-white/[0.04]'}`}
   >
     <span className="sb-slot">
@@ -136,10 +136,10 @@ export const AppLayout = () => {
     <>
       {/* ── Fixed background ────────────────────────────────────── */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none"
-        style={{ zIndex: -1, background: 'radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%)' }}>
-        <div className="aurora" style={{ width: 580, height: 580, background: '#a855f7', top: -140, left: -100, animation: 'float1 22s ease-in-out infinite' }} />
-        <div className="aurora" style={{ width: 520, height: 520, background: '#ec4899', top: '35%', right: -120, opacity: 0.58, animation: 'float2 28s ease-in-out infinite' }} />
-        <div className="aurora" style={{ width: 600, height: 600, background: '#6366f1', bottom: -140, left: '25%', opacity: 0.52, animation: 'float3 32s ease-in-out infinite' }} />
+        style={{ zIndex: -1, background: 'var(--bg-radial)' }}>
+        <div className="aurora" style={{ width: 580, height: 580, background: 'var(--aurora-1)', top: -140, left: -100, animation: 'float1 22s ease-in-out infinite' }} />
+        <div className="aurora" style={{ width: 520, height: 520, background: 'var(--aurora-2)', top: '35%', right: -120, opacity: 'var(--aurora-2-opacity)', animation: 'float2 28s ease-in-out infinite' }} />
+        <div className="aurora" style={{ width: 600, height: 600, background: 'var(--aurora-3)', bottom: -140, left: '25%', opacity: 'var(--aurora-3-opacity)', animation: 'float3 32s ease-in-out infinite' }} />
       </div>
 
       <div className="h-full flex p-5 gap-5">
@@ -243,7 +243,10 @@ export const AppLayout = () => {
 
           <div className="flex-1 min-h-0 glass rounded-2xl rounded-t-none border-t-0 overflow-hidden grain relative">
             <div className="h-full overflow-y-auto scroll-area p-6">
-              <Outlet />
+              {/* key por ruta ⇒ cada página entra con .mo-view */}
+              <div key={location.pathname} className="mo-view h-full">
+                <Outlet />
+              </div>
             </div>
           </div>
         </main>

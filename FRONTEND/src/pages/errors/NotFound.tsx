@@ -110,7 +110,7 @@ export const NotFound = () => {
 
         {/* Glow */}
         <div className="mt-1 mx-auto w-2/3 h-3 blur-xl rounded-full opacity-30"
-          style={{ background: 'linear-gradient(90deg, #a855f7, #ec4899)' }} />
+          style={{ background: 'linear-gradient(90deg, var(--brand-1), var(--brand-2))' }} />
       </div>
     </div>
   );

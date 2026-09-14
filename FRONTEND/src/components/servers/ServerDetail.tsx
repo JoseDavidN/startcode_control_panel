@@ -100,7 +100,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const [installOpen, setInstallOpen] = useState(false);
 
   return (
-    <div className="space-y-5">
+    <div className="mo-view space-y-5">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <header className="glass rounded-2xl grain p-5">
@@ -159,9 +159,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       <div className="glass rounded-2xl grain p-2 flex gap-1 flex-wrap">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 h-9 px-4 rounded-xl text-sm font-medium transition ${
+            className={`mo-tab flex items-center gap-2 h-9 px-4 rounded-xl text-sm font-medium ${
               activeTab === id
-                ? 'grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]'
+                ? 'mo-tab-on grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]'
                 : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
             }`}>
             <Icon className="w-4 h-4" />{label}
@@ -171,7 +171,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Overview ────────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="mo-panel grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Sistema */}
           <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
@@ -232,7 +232,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Services ────────────────────────────────────────────────── */}
       {activeTab === 'services' && (
-        <div className="glass rounded-2xl grain p-5">
+        <div className="mo-panel glass rounded-2xl grain p-5">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-white">Servicios Instalados</h2>
             <button onClick={() => setInstallOpen(true)}
@@ -282,7 +282,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Websites ────────────────────────────────────────────────── */}
       {activeTab === 'websites' && (
-        <div className="glass rounded-2xl grain p-5">
+        <div className="mo-panel glass rounded-2xl grain p-5">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-white">Sitios Web</h2>
             <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
@@ -337,7 +337,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Databases ───────────────────────────────────────────────── */}
       {activeTab === 'databases' && (
-        <div className="glass rounded-2xl grain p-5">
+        <div className="mo-panel glass rounded-2xl grain p-5">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-white">Bases de Datos</h2>
             <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
@@ -391,7 +391,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Files placeholder ───────────────────────────────────────── */}
       {activeTab === 'files' && (
-        <div className="glass rounded-2xl grain p-10 flex flex-col items-center justify-center text-center gap-3">
+        <div className="mo-panel glass rounded-2xl grain p-10 flex flex-col items-center justify-center text-center gap-3">
           <FolderIcon className="w-10 h-10 text-white/20" />
           <p className="text-sm text-white/40">Gestor de archivos próximamente</p>
         </div>

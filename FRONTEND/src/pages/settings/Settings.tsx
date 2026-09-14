@@ -8,7 +8,7 @@ import type { TwoFactorSetupResponse } from '@typings/auth.types';
 import { useNotifications } from '@contexts/NotificationContext';
 import { useAppearance } from '@contexts/AppearanceContext';
 import { usePreferences } from '@contexts/PreferencesContext';
-import type { SidebarMode } from '@contexts/AppearanceContext';
+import type { SidebarMode, Theme, FontFamily } from '@contexts/AppearanceContext';
 import type { NotifPrefs } from '@contexts/NotificationContext';
 import { useSecuritySettings, passwordAgeDays } from '@hooks/useSecuritySettings';
 import { useSystemInfo } from '@hooks/useSystemInfo';
@@ -104,7 +104,7 @@ const Toggle = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   <button role="switch" aria-checked={on} onClick={() => onChange(!on)}
     className={`toggle-track w-12 h-7 rounded-full relative shrink-0 border border-white/10
       ${on ? 'grad-brand shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]' : 'bg-white/10'}`}>
-    <span className={`toggle-dot absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md ${on ? 'translate-x-5' : ''}`} />
+    <span className={`toggle-dot absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-[var(--knob)] shadow-md ${on ? 'translate-x-5' : ''}`} />
   </button>
 );
 
@@ -143,13 +143,13 @@ const RangeSlider = ({
   return (
     <div className={`relative flex items-center ${className}`} style={{ height: 24 }}>
       {/* Track */}
-      <div className="absolute left-0 right-0 h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+      <div className="absolute left-0 right-0 h-1.5 rounded-full" style={{ background: 'var(--track)' }}>
         {/* Filled portion */}
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
             width: `${pct}%`,
-            background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)',
+            background: 'linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%)',
           }}
         />
       </div>
@@ -158,8 +158,8 @@ const RangeSlider = ({
         className="absolute w-[18px] h-[18px] rounded-full pointer-events-none"
         style={{
           left: `calc(${pct}% - 9px)`,
-          background: 'linear-gradient(135deg, #c084fc 0%, #f472b6 100%)',
-          boxShadow: '0 0 0 4px rgba(168,85,247,0.22), 0 2px 6px rgba(0,0,0,0.5)',
+          background: 'linear-gradient(135deg, var(--brand-light-1) 0%, var(--brand-light-2) 100%)',
+          boxShadow: '0 0 0 4px rgb(var(--brand-1-rgb) / 0.22), 0 2px 6px rgba(0,0,0,0.5)',
           zIndex: 1,
         }}
       />
@@ -211,7 +211,7 @@ const StrengthBar = ({ pw }: { pw: string }) => {
         <span className="text-xs text-white/45">Nivel de seguridad</span>
         <span className={`text-xs font-medium ${pw ? 'text-grad-brand' : 'text-white/30'}`}>{pw ? label : '—'}</span>
       </div>
-      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--track)' }}>
         <div className="h-full rounded-full grad-brand transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -1369,6 +1369,83 @@ const SystemPane = () => {
 };
 
 /* ── Pane: Aspecto ────────────────────────────────────────────────── */
+/* ── Tipografías ──────────────────────────────────────────────────────
+   Las tres familias van empaquetadas (src/assets/fonts) y se declaran en
+   styles/fonts.css, así que el preview puede pintarse con la familia real
+   aunque no sea la activa. */
+const FONT_OPTIONS: { id: FontFamily; name: string; weight: string; desc: string; stack: string }[] = [
+  {
+    id: 'grotesk', name: 'Space Grotesk', weight: 'Delgada',
+    desc: 'Geométrica de trazo fino, con aire técnico. La más compacta de las tres.',
+    stack: "'Space Grotesk', ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: 'mono', name: 'JetBrains Mono', weight: 'Media',
+    desc: 'Monoespaciada de programación: todo alineado, cifras inconfundibles.',
+    stack: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  {
+    id: 'rounded', name: 'Nunito', weight: 'Gruesa',
+    desc: 'Terminales redondeados y trazo grueso. La más legible a tamaño pequeño.',
+    stack: "'Nunito', ui-rounded, ui-sans-serif, system-ui, sans-serif",
+  },
+];
+
+const FontPreview = ({ stack }: { stack: string }) => (
+  <div className="h-[104px] rounded-xl glass-soft border border-white/[0.06] px-3.5 py-3 flex flex-col justify-center gap-1.5 overflow-hidden"
+    style={{ fontFamily: stack }}>
+    <div className="text-xl font-semibold leading-none">Aa Bb Cc</div>
+    <div className="text-sm text-white/70 leading-none">cpu 47% · ram 2.1 GB</div>
+    <div className="text-xs text-white/45 leading-none tracking-tight">0123456789 {'{ } ( ) [ ] & @ #'}</div>
+  </div>
+);
+
+/* ── Temas ────────────────────────────────────────────────────────────
+   Los literales de cada tarjeta son deliberados: el preview debe mostrar
+   los tres temas a la vez, no el tema activo. Deben coincidir con los
+   tokens de App.css. */
+type ThemeSwatch = { bg: string; panel: string; accent: string; ink: string; border: string };
+
+const THEME_OPTIONS: { id: Theme; name: string; desc: string; sw: ThemeSwatch }[] = [
+  {
+    id: 'dark', name: 'Nocturno', desc: 'El tema original: violeta y rosa sobre negro profundo.',
+    sw: { bg: 'radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%)',
+          panel: 'rgba(255,255,255,0.07)', accent: 'linear-gradient(135deg, #a855f7, #ec4899)',
+          ink: 'rgba(255,255,255,0.85)', border: 'rgba(255,255,255,0.10)' },
+  },
+  {
+    id: 'aurora', name: 'Aurora', desc: 'Oscuro más claro y vivo, con acentos cian y azul eléctrico.',
+    sw: { bg: 'radial-gradient(ellipse at 20% 0%, #102a4d 0%, #0a1a33 35%, #050d1a 80%)',
+          panel: 'rgba(255,255,255,0.10)', accent: 'linear-gradient(135deg, #22d3ee, #3b82f6)',
+          ink: 'rgba(242,249,255,0.9)', border: 'rgba(255,255,255,0.14)' },
+  },
+  {
+    id: 'solar', name: 'Solar', desc: 'Claro, sobre blanco cálido y con acentos anaranjados.',
+    sw: { bg: 'radial-gradient(ellipse at 20% 0%, #ffe8d1 0%, #fff4e8 35%, #fdfaf6 80%)',
+          panel: 'rgba(255,255,255,0.85)', accent: 'linear-gradient(135deg, #f97316, #fb923c)',
+          ink: 'rgba(42,26,12,0.75)', border: 'rgba(124,45,18,0.16)' },
+  },
+];
+
+const ThemePreview = ({ sw }: { sw: ThemeSwatch }) => (
+  <div className="h-[104px] rounded-xl overflow-hidden border p-2.5 flex gap-2"
+    style={{ background: sw.bg, borderColor: sw.border }}>
+    <div className="rounded-lg p-1.5 flex flex-col gap-1.5 shrink-0 w-[42px] border"
+      style={{ background: sw.panel, borderColor: sw.border }}>
+      <div className="w-3 h-3 rounded" style={{ background: sw.accent }} />
+      {[0, 1, 2].map(i => (
+        <div key={i} className="h-1.5 rounded-full" style={{ background: sw.ink, opacity: i === 0 ? 0.55 : 0.25 }} />
+      ))}
+    </div>
+    <div className="flex-1 rounded-lg p-2 flex flex-col gap-2 border"
+      style={{ background: sw.panel, borderColor: sw.border }}>
+      <div className="h-1.5 w-2/3 rounded-full" style={{ background: sw.ink, opacity: 0.45 }} />
+      <div className="h-2 w-full rounded-full" style={{ background: sw.accent }} />
+      <div className="h-1.5 w-1/2 rounded-full" style={{ background: sw.ink, opacity: 0.25 }} />
+    </div>
+  </div>
+);
+
 const SidebarPreview = ({ mode }: { mode: SidebarMode }) => (
   <div className="sb-preview h-[104px] rounded-xl bg-black/25 border border-white/[0.06] p-2.5 flex gap-2">
     <div
@@ -1398,10 +1475,76 @@ const SIDEBAR_OPTIONS: [SidebarMode, string, string][] = [
 ];
 
 const AppearancePane = () => {
-  const { sidebarMode, setSidebarMode, reducedMotion, setReducedMotion } = useAppearance();
+  const { theme, setTheme, font, setFont, sidebarMode, setSidebarMode, reducedMotion, setReducedMotion } = useAppearance();
 
   return (
     <div className="space-y-8">
+      <Group title="Tema">
+        <div role="radiogroup" aria-label="Tema de la aplicación" className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {THEME_OPTIONS.map(({ id, name, desc, sw }) => {
+            const selected = theme === id;
+            return (
+              <button
+                key={id}
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setTheme(id)}
+                className={`glass-soft rounded-xl p-3 text-left transition
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-white/[0.06]' : 'hover:bg-white/[0.05]'}`}
+              >
+                <ThemePreview sw={sw} />
+                <div className="mt-3 flex items-center gap-2">
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
+                    ${selected ? 'grad-brand border-transparent' : 'border-white/20'}`}>
+                    {selected && <Icon name="check" className="w-2.5 h-2.5" />}
+                  </span>
+                  <span className="text-sm font-medium">{name}</span>
+                </div>
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{desc}</p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-white/40">
+          El tema se guarda en tu cuenta y se aplica en todos tus equipos.
+        </p>
+      </Group>
+
+      <Group title="Tipografía">
+        <div role="radiogroup" aria-label="Tipografía de la aplicación" className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {FONT_OPTIONS.map(({ id, name, weight, desc, stack }) => {
+            const selected = font === id;
+            return (
+              <button
+                key={id}
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setFont(id)}
+                className={`mo-tab glass-soft rounded-xl p-3 text-left
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-white/[0.06]' : 'hover:bg-white/[0.05]'}`}
+              >
+                <FontPreview stack={stack} />
+                <div className="mt-3 flex items-center gap-2">
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
+                    ${selected ? 'grad-brand border-transparent' : 'border-white/20'}`}>
+                    {selected && <Icon name="check" className="w-2.5 h-2.5" />}
+                  </span>
+                  <span className="text-sm font-medium">{name}</span>
+                  <span className="text-xs text-white/40 ml-auto">{weight}</span>
+                </div>
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{desc}</p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-white/40">
+          Las tres fuentes viajan dentro de la aplicación: no se descargan de internet al abrirla.
+          Las métricas y direcciones siguen en monoespaciada sea cual sea la elección.
+        </p>
+      </Group>
+
       <Group title="Barra lateral">
         <div role="radiogroup" aria-label="Modo de la barra lateral" className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SIDEBAR_OPTIONS.map(([value, title, desc]) => {
@@ -1496,7 +1639,7 @@ export const Settings: React.FC = () => {
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`w-full h-11 px-3.5 rounded-xl flex items-center gap-3 text-sm font-medium transition
+                className={`mo-tab w-full h-11 px-3.5 rounded-xl flex items-center gap-3 text-sm font-medium
                   ${activeTab === id
                     ? 'nav-active text-white'
                     : 'text-white/65 hover:text-white hover:bg-white/[0.05]'}`}
@@ -1511,12 +1654,15 @@ export const Settings: React.FC = () => {
         {/* Content pane — único contenedor con scroll */}
         <Card className="min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto scroll-thin p-7">
-            {activeTab === 'profile' && <ProfilePane />}
-            {activeTab === 'appearance' && <AppearancePane />}
-            {activeTab === 'notifications' && <NotifPane />}
-            {activeTab === 'security' && <SecurityPane />}
-            {activeTab === 'monitoring' && <MonitoringPane />}
-            {activeTab === 'system' && <SystemPane />}
+            {/* key ⇒ React remonta al cambiar de pestaña y .mo-panel vuelve a animar */}
+            <div key={activeTab} className="mo-panel">
+              {activeTab === 'profile' && <ProfilePane />}
+              {activeTab === 'appearance' && <AppearancePane />}
+              {activeTab === 'notifications' && <NotifPane />}
+              {activeTab === 'security' && <SecurityPane />}
+              {activeTab === 'monitoring' && <MonitoringPane />}
+              {activeTab === 'system' && <SystemPane />}
+            </div>
           </div>
         </Card>
       </div>

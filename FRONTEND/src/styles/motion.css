@@ -1,0 +1,93 @@
+/* ══════════════════════════════════════════════════════════════════════
+   CAPA DE MOVIMIENTO
+   Única fuente de animación compartida de la app: cambio y selección de
+   tab, hover de tab, y entrada de ventanas nuevas (páginas y modales).
+
+   El movimiento NO depende del tema: estos tokens viven aquí y ningún
+   archivo de styles/themes/ los redefine. Todo se apaga desde
+   Configuración → Aspecto → Movimiento ("Reducir animaciones"), que
+   escribe data-reduced-motion en el <html>.
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --mo-fast: 140ms;
+  --mo-base: 200ms;
+  --mo-slow: 260ms;
+  --mo-ease: cubic-bezier(0.22, 1, 0.36, 1);        /* entradas: sale rápido, asienta suave */
+  --mo-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);    /* hover y cambios de estado */
+  --mo-rise: 8px;
+}
+
+/* ── Keyframes ────────────────────────────────────────────────────── */
+@keyframes moPop {
+  from { opacity: 0.6; transform: scale(0.97); }
+  to   { opacity: 1;   transform: scale(1); }
+}
+@keyframes moPanelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes moViewIn {
+  from { opacity: 0; transform: translateY(var(--mo-rise)); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────── */
+/* Transición explícita: la clase `transition` de Tailwind deja 150ms sin
+   curva propia. Sin transform en hover — la geometría del sidebar está
+   congelada (.sb-row reserva 1px de borde) y saltaría. */
+.mo-tab {
+  transition:
+    color var(--mo-fast) var(--mo-ease-inout),
+    background-color var(--mo-fast) var(--mo-ease-inout),
+    border-color var(--mo-fast) var(--mo-ease-inout),
+    box-shadow var(--mo-fast) var(--mo-ease-inout),
+    opacity var(--mo-fast) var(--mo-ease-inout);
+}
+.mo-tab:active { transform: scale(0.98); }
+
+/* Selección: el keyframe arranca al ganar la clase. `.nav-active` la usan
+   el nav del sidebar y las pestañas de Configuración; `.mo-tab-on` es para
+   los tabs que marcan el activo con `grad-brand`. */
+.mo-tab-on,
+.nav-active { animation: moPop var(--mo-base) var(--mo-ease); }
+
+/* ── Paneles de tab ───────────────────────────────────────────────── */
+/* El contenido de cada tab se monta con `&&`; con key={activeTab} en el
+   wrapper React lo remonta y el keyframe vuelve a correr. */
+.mo-panel { animation: moPanelIn var(--mo-base) var(--mo-ease); }
+
+/* ── Ventanas nuevas: páginas y vistas ────────────────────────────── */
+.mo-view { animation: moViewIn var(--mo-slow) var(--mo-ease); }
+
+/* ── Ventanas nuevas: overlays y modales ──────────────────────────── */
+.animate-fadeIn  { animation: fadeIn var(--mo-fast) ease forwards; }
+.animate-slideUp { animation: slideUp var(--mo-slow) var(--mo-ease) forwards; }
+
+/* ── Interruptor ──────────────────────────────────────────────────── */
+/* Preferencia del sistema operativo… */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .aurora { animation: none !important; }
+}
+/* …y ajuste explícito de la app (Aspecto → Movimiento). */
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}
+html[data-reduced-motion="true"] .aurora { animation: none !important; }

@@ -73,7 +73,10 @@ export function normalizeUser(user: any): User {
 		roles: user.roles || (role ? [role] : []),
 		isActive,
 		twoFactorEnabled: user.twoFactorEnabled ?? user.bol_two_factor_enabled ?? false,
+		lastLogin: user.lastLogin ?? null,
+		passwordChangedAt: user.passwordChangedAt ?? null,
 		createdAt: user.createdAt,
+		preferences: user.preferences ?? null,
 		permissions: user.permissions || getPermissionsFromRole(role),
 	};
 }

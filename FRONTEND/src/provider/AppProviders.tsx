@@ -1,4 +1,5 @@
 // src/providers/AppProviders.tsx
+import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -6,27 +7,43 @@ import { Toaster } from 'sonner';
 import { AuthProvider } from './AuthProvider';
 import { RealtimeMetricsProvider } from '@contexts/RealtimeMetricsContext';
 import { NotificationProvider } from '@contexts/NotificationContext';
+import { PreferencesProvider } from '@contexts/PreferencesContext';
+import { PreferencesSync } from '@components/PreferencesSync';
 import { queryClient } from '@lib/queryClient';
+import { useAuth } from '@hooks/useAuth';
+import { useInactivityLogout } from '@hooks/useInactivityLogout';
+import { useSecuritySettings } from '@hooks/useSecuritySettings';
+
+/* Monta el watcher de inactividad una vez dentro del AuthProvider */
+const InactivityWatcher = () => {
+  const { logout, isAuthenticated } = useAuth();
+  const { settings } = useSecuritySettings();
+  const handleLogout = useCallback(() => { if (isAuthenticated) logout(); }, [isAuthenticated, logout]);
+  useInactivityLogout(isAuthenticated ? settings.sessionTimeout : 0, handleLogout);
+  return null;
+};
 
 interface AppProvidersProps {
   children: ReactNode;
 }
 
 export const AppProviders = ({ children }: AppProvidersProps) => {
-  // La URL del WebSocket debe ser sin /api/v1
-  // Si VITE_API_URL es http://localhost:3001/api/v1, extraemos solo http://localhost:3001
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
   const backendUrl = apiUrl.replace('/api/v1', '');
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RealtimeMetricsProvider backendUrl={backendUrl}>
-          <NotificationProvider>
-            {children}
-          </NotificationProvider>
-        </RealtimeMetricsProvider>
-      </AuthProvider>
+      <PreferencesProvider>
+        <AuthProvider>
+          <PreferencesSync />
+          <InactivityWatcher />
+          <RealtimeMetricsProvider backendUrl={backendUrl}>
+            <NotificationProvider>
+              {children}
+            </NotificationProvider>
+          </RealtimeMetricsProvider>
+        </AuthProvider>
+      </PreferencesProvider>
       <Toaster
         position="bottom-right"
         expand
@@ -45,4 +62,3 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
     </QueryClientProvider>
   );
 };
-

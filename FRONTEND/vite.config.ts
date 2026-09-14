@@ -24,13 +24,14 @@ export default defineConfig({
     },
   },
   server: {
-    host: host || false,
+    host: '0.0.0.0' || false,
     port: 5173,
     strictPort: true,
     hmr: host ? { host, protocol: 'ws', port: 5183 } : undefined,
     watch: {
       ignored: ['**/src-tauri/**'],
     },
+    allowedHosts: ['devstar'],
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {

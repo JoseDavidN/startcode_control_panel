@@ -1,3 +1,5 @@
+import type { UserPreferences } from './preferences.types';
+
 export interface User {
 	id: string;
 	email: string;
@@ -10,7 +12,11 @@ export interface User {
 	isActive: boolean;
 	avatar?: string;
 	twoFactorEnabled?: boolean;
+	lastLogin?: Date | string | null;
+	passwordChangedAt?: Date | string | null;
 	createdAt?: Date;
+	/** null = el usuario nunca guardó preferencias en el servidor */
+	preferences?: UserPreferences | null;
 }
 
 // Roles del backend: admin, user, viewer

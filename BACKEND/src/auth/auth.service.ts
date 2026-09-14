@@ -14,9 +14,12 @@ import * as QRCode from 'qrcode';
 import { User } from './entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { AuthResponseDto, TwoFactorPendingDto } from './dto/auth-response.dto';
+import { AuthResponseDto, TwoFactorPendingDto, UserProfileDto } from './dto/auth-response.dto';
 import { TwoFactorSetupResponseDto } from './dto/two-factor.dto';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
+import { mergePreferences } from './types/user-preferences.type';
+import type { UserPreferences } from './types/user-preferences.type';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -74,6 +77,9 @@ export class AuthService {
         'role',
         'isActive',
         'twoFactorEnabled',
+        'lastLogin',
+        'passwordChangedAt',
+        'preferences',
         'createdAt',
       ],
     });
@@ -91,6 +97,8 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+
+    await this.usersRepository.update(user.id, { lastLogin: new Date() });
 
     if (user.twoFactorEnabled) {
       return {
@@ -119,7 +127,8 @@ export class AuthService {
 
     const user = await this.usersRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'firstname', 'lastname', 'role', 'isActive', 'twoFactorSecret', 'createdAt'],
+      select: ['id', 'email', 'firstname', 'lastname', 'role', 'isActive', 'twoFactorEnabled',
+        'twoFactorSecret', 'lastLogin', 'passwordChangedAt', 'preferences', 'createdAt'],
     });
 
     if (!user || !user.isActive) {
@@ -232,7 +241,11 @@ export class AuthService {
         name: `${user.firstname} ${user.lastname}`,
         role: user.role,
         isActive: user.isActive,
+        twoFactorEnabled: user.twoFactorEnabled,
+        lastLogin: user.lastLogin,
+        passwordChangedAt: user.passwordChangedAt,
         createdAt: user.createdAt,
+        preferences: user.preferences ?? null,
       },
       token,
       refreshToken,
@@ -240,7 +253,12 @@ export class AuthService {
     };
   }
 
-  async getProfile(userId: string): Promise<User> {
+  /**
+   * Perfil del usuario actual. Se mapea campo a campo a propósito: la entidad cruda
+   * expondría el hash de la contraseña y el secreto TOTP (los @Exclude() no se aplican
+   * porque no hay ClassSerializerInterceptor registrado).
+   */
+  async getProfile(userId: string): Promise<UserProfileDto> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
     });
@@ -249,7 +267,47 @@ export class AuthService {
       throw new UnauthorizedException('Usuario no encontrado');
     }
 
-    return user;
+    return {
+      id: user.id,
+      email: user.email,
+      firstname: user.firstname,
+      lastname: user.lastname,
+      name: `${user.firstname} ${user.lastname}`,
+      role: user.role,
+      isActive: user.isActive,
+      twoFactorEnabled: user.twoFactorEnabled,
+      lastLogin: user.lastLogin,
+      passwordChangedAt: user.passwordChangedAt,
+      createdAt: user.createdAt,
+      // null ⇒ el usuario nunca guardó preferencias; el cliente hará el primer push
+      preferences: user.preferences ?? null,
+    };
+  }
+
+  async getPreferences(userId: string): Promise<UserPreferences> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'preferences'],
+    });
+
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    return mergePreferences(user.preferences, {});
+  }
+
+  /** Merge por sección: un PATCH parcial no pisa las secciones que no vienen en el body. */
+  async updatePreferences(userId: string, dto: UpdatePreferencesDto): Promise<UserPreferences> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'preferences'],
+    });
+
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const merged = mergePreferences(user.preferences, dto as Partial<UserPreferences>);
+    await this.usersRepository.update(userId, { preferences: merged });
+
+    return merged;
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<{ message: string; user: Partial<User> }> {
@@ -294,7 +352,7 @@ export class AuthService {
     if (!isValid) throw new UnauthorizedException('Contraseña actual incorrecta');
 
     const hashed = await bcrypt.hash(dto.newPassword, this.BCRYPT_SALT_ROUNDS);
-    await this.usersRepository.update(userId, { password: hashed });
+    await this.usersRepository.update(userId, { password: hashed, passwordChangedAt: new Date() });
 
     return { message: 'Contraseña actualizada correctamente' };
   }
@@ -327,24 +385,7 @@ export class AuthService {
         throw new UnauthorizedException('Usuario no autorizado');
       }
 
-      // Generar nuevos tokens
-      const token = this.generateToken(user);
-      const newRefreshToken = this.generateRefreshToken(user);
-      const expiresIn = this.configService.get('JWT_EXPIRES_IN', '30m');
-
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.firstname + ' ' + user.lastname,
-          role: user.role,
-          isActive: user.isActive,
-          createdAt: user.createdAt,
-        },
-        token,
-        refreshToken: newRefreshToken,
-        expiresIn,
-      };
+      return this.buildAuthResponse(user);
     } catch (error) {
       throw new UnauthorizedException('Token de actualización inválido o expirado');
     }

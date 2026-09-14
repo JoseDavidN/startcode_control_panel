@@ -15,6 +15,10 @@ export const API_CONFIG = {
 		TWO_FACTOR_VERIFY_LOGIN: '/auth/2fa/verify-login',
 		UPDATE_PROFILE: '/auth/profile',
 		CHANGE_PASSWORD: '/auth/change-password',
+		PREFERENCES: '/auth/preferences',
+		HEALTH: '/health',
+		STORAGE_STATS: '/agent-data/storage-stats',
+		CLEANUP_METRICS: '/agent-data/cleanup',
 	},
 };
 

@@ -11,6 +11,8 @@
     "updater:default",
     "process:allow-restart",
     "notification:default",
-    "notification:allow-send"
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "notification:allow-check-permissions"
   ]
 }

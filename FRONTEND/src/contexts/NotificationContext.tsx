@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { notify } from '@services/notification.service';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { usePreferences } from '@contexts/PreferencesContext';
 
 /* ── Tipos ────────────────────────────────────────────────────────── */
 export interface NotifPrefs {
@@ -28,15 +29,6 @@ interface NotificationContextType {
   testToast: (type: keyof NotifPrefs) => void;
   testNative: () => void;
 }
-
-/* ── Defaults ─────────────────────────────────────────────────────── */
-const DEFAULT_PREFS: NotifPrefs = {
-  serverOffline: true, highCpuUsage: true, highMemoryUsage: true,
-  highDiskUsage: false, securityAlerts: true, weeklyReport: true, productNews: false,
-};
-const DEFAULT_THRESHOLDS: NotifThresholds = {
-  cpuThreshold: 80, memoryThreshold: 85, diskThreshold: 90,
-};
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
@@ -85,8 +77,18 @@ function MetricWatcher({ prefs, thresholds }: { prefs: NotifPrefs; thresholds: N
 
 /* ── Provider ─────────────────────────────────────────────────────── */
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
-  const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULT_PREFS);
-  const [thresholds, setThresholds] = useState<NotifThresholds>(DEFAULT_THRESHOLDS);
+  /* Las preferencias viven en la cuenta del usuario: aquí solo se derivan */
+  const { prefs: all, patch } = usePreferences();
+  const prefs = all.notifications;
+
+  const thresholds = useMemo<NotifThresholds>(() => ({
+    cpuThreshold:    all.monitoring.cpuThreshold,
+    memoryThreshold: all.monitoring.memoryThreshold,
+    diskThreshold:   all.monitoring.diskThreshold,
+  }), [all.monitoring]);
+
+  const setPrefs      = useCallback((p: NotifPrefs)      => patch('notifications', p), [patch]);
+  const setThresholds = useCallback((t: NotifThresholds) => patch('monitoring', t),    [patch]);
 
   const testToast = (type: keyof NotifPrefs) => {
     switch (type) {

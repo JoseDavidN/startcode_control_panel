@@ -385,7 +385,14 @@ export const Login = () => {
   };
 
   return (
-    <div className="h-full w-full flex items-center justify-center p-5">
+    /* El login no sigue las preferencias de Aspecto: se muestra siempre en
+       Nocturno y en Space Grotesk, incluso para quien tenga Solar o Nunito.
+       Las clases fijan los tokens en este subárbol y el fondo se pinta aquí,
+       porque el de la app vive en el <html> y sí cambia con el tema. */
+    <div
+      className="theme-nocturno font-grotesk h-full w-full flex items-center justify-center p-5"
+      style={{ background: 'var(--bg-radial)', color: 'var(--ink)', fontFamily: 'var(--font-ui)' }}
+    >
       {/* Window card */}
       <div className="w-full max-w-[1280px] h-full max-h-[820px] glass rounded-2xl flex flex-col grain relative overflow-hidden">
 

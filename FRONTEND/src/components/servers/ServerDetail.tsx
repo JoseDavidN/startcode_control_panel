@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { type ServerData } from '@typings/DashboardTypes';
 import { Modal } from '@components/common/Modal';
+import { ServerTerminal } from '@components/servers/ServerTerminal';
+import { useServerDetail } from '@hooks/useServerDetail';
+import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
+import { useServiceAction } from '@hooks/useServiceAction';
+import { timeAgo } from '@utils/time';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -21,7 +26,6 @@ const NetworkIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={classN
 const ActivityIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
 const CpuIcon      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
 const CodeIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>;
-const ShieldIcon   = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>;
 const PlayIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><polygon points="5 3 19 12 5 21 5 3"/></svg>;
 const PauseIcon    = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
 const CubeIcon     = ({ className='w-8 h-8' }) => <svg {...sp} className={className}><path d="M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>;
@@ -72,20 +76,36 @@ const serviceIconMap: Record<string, React.ReactNode> = {
 };
 const getServiceIcon = (type: string) => serviceIconMap[type] ?? <PackageIcon />;
 
+/* ── Estado de una unidad systemd ─────────────────────────────────── */
+const ServiceStateBadge = ({ state }: { state: string }) => {
+  const tone =
+    state === 'active'  ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20' :
+    state === 'failed'  ? 'bg-rose-500/15 text-rose-300 ring-rose-400/20' :
+                          'bg-white/[0.06] text-white/50 ring-white/10';
+  const label =
+    state === 'active' ? 'Activo' : state === 'failed' ? 'Fallido' :
+    state === 'inactive' ? 'Inactivo' : 'Desconocido';
+
+  return (
+    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${tone}`}>
+      {label}
+    </span>
+  );
+};
+
+/** systemd reporta la memoria de cada unidad en bytes. */
+const formatBytes = (bytes: number): string => {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+};
+
 /* ── Component ────────────────────────────────────────────────────── */
 interface ServerDetailProps {
   server: ServerData;
   onBack: () => void;
 }
-
-const staticData = {
-  system: { os: 'Ubuntu 22.04.3 LTS', kernel: '5.15.0-91-generic', hostname: 'cloud.startcode.com.co', uptime: '3 días, 7 horas' },
-  cpu: { usage: 100, cores: 4, loadAverage: '0.50, 0.45, 0.40' },
-  memory: { total: 8192, used: 3440, free: 4752, usagePercent: 42 },
-  disk: [{ total: 100, used: 14, free: 86, usagePercent: 14, mountPoint: '/' }],
-  network: { privateIp: '192.168.1.100', publicIp: '203.0.113.1', interface: 'eth0' },
-  processes: { running: 145, zombie: 12, total: 157 },
-};
 
 const TABS = [
   { id: 'overview',   label: 'Resumen',        icon: ChartIcon },
@@ -98,6 +118,69 @@ const TABS = [
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
   const [installOpen, setInstallOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+
+  /* Datos reales del agente. El WebSocket manda para cpu/memoria/disco por ser
+     instantáneo; el resto (kernel, IPs, procesos, discos por montaje) solo llega
+     por HTTP, que es lo que trae este hook. */
+  const { data: detail, isLoading, isError } = useServerDetail(server.id);
+  const rt = useServerMetrics(server.id);
+
+  const live = {
+    cpu: rt.metrics?.cpu ?? detail?.cpu.usage ?? server.cpu,
+    memory: rt.metrics?.memory ?? detail?.memory.usagePercent ?? server.memory,
+    disk: rt.metrics?.disk ?? detail?.disk?.[0]?.usagePercent ?? server.disk,
+  };
+
+  const uptime = detail?.system.uptime ?? server.uptime;
+  const dash = '—';
+
+  /* ── Servicios systemd ── */
+  const serviceAction = useServiceAction(server.id);
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [onlyActive, setOnlyActive] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  /* useMemo estabiliza la referencia: si no, la lista se recrea en cada render
+     y el filtrado de abajo se recalcula siempre. */
+  const services = React.useMemo(() => detail?.services.list ?? [], [detail]);
+  const websites = detail?.websites.list ?? [];
+  const databases = detail?.databases.list ?? [];
+  const activeServices = services.filter(s => s.state === 'active');
+  const failedServices = services.filter(s => s.state === 'failed');
+
+  /* Con ~160 unidades, pintarlas todas es ruido: primero las que fallan, luego
+     las activas, y se corta la lista salvo que el usuario filtre. */
+  const visibleServices = React.useMemo(() => {
+    const term = serviceFilter.trim().toLowerCase();
+    const weight = (state: string) => (state === 'failed' ? 0 : state === 'active' ? 1 : 2);
+
+    return services
+      .filter(s => (onlyActive ? s.state === 'active' : true))
+      .filter(s =>
+        !term ||
+        s.name.toLowerCase().includes(term) ||
+        (s.displayName ?? '').toLowerCase().includes(term),
+      )
+      .sort((a, b) => weight(a.state) - weight(b.state) || a.name.localeCompare(b.name))
+      .slice(0, term ? 200 : 60);
+  }, [services, serviceFilter, onlyActive]);
+
+  const runServiceAction = (serviceName: string, action: 'start' | 'stop' | 'restart') => {
+    setActionError(null);
+    serviceAction.mutate(
+      { serviceName, action },
+      {
+        onError: (err: unknown) => {
+          const message =
+            typeof err === 'object' && err !== null && 'message' in err
+              ? String((err as { message?: unknown }).message)
+              : 'No se pudo ejecutar la acción';
+          setActionError(`${serviceName}: ${message}`);
+        },
+      },
+    );
+  };
 
   return (
     <div className="mo-view space-y-5">
@@ -122,9 +205,14 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={() => setTerminalOpen(true)}
+              title="Abrir una shell SSH en este servidor"
+              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+              <TerminalIcon className="w-4 h-4" /> Abrir Terminal
+            </button>
             <button onClick={() => setInstallOpen(true)}
-              className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)] transition">
+              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)]">
               <PlusIcon /> Instalar Servicio
             </button>
           </div>
@@ -133,14 +221,14 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         {/* Quick stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: 'CPU',     value: server.cpu,    gradient: barGradient(server.cpu) },
-            { label: 'Memoria', value: server.memory, gradient: barGradient(server.memory) },
-            { label: 'Disco',   value: server.disk,   gradient: barGradient(server.disk) },
+            { label: 'CPU',     value: live.cpu,    gradient: barGradient(live.cpu) },
+            { label: 'Memoria', value: live.memory, gradient: barGradient(live.memory) },
+            { label: 'Disco',   value: live.disk,   gradient: barGradient(live.disk) },
           ].map(({ label, value, gradient }) => (
             <div key={label} className="glass-soft rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-white/55">{label}</span>
-                <span className="text-xs font-mono font-semibold text-white">{value}%</span>
+                <span className="text-xs font-mono font-semibold text-white tabular-nums">{value.toFixed(1)}%</span>
               </div>
               <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
@@ -150,7 +238,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           ))}
           <div className="glass-soft rounded-xl p-3 flex flex-col justify-center">
             <span className="text-xs text-white/55 mb-1">Tiempo activo</span>
-            <span className="text-sm font-mono font-semibold text-white truncate">{server.uptime}</span>
+            <span className="text-sm font-mono font-semibold text-white truncate">{uptime}</span>
           </div>
         </div>
       </header>
@@ -170,6 +258,16 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       </div>
 
       {/* ── Overview ────────────────────────────────────────────────── */}
+      {activeTab === 'overview' && !isLoading && (isError || !detail) && (
+        <div className="mo-panel glass-soft rounded-2xl p-5 border border-amber-400/20 flex items-center gap-3">
+          <ActivityIcon className="w-5 h-5 text-amber-300 shrink-0" />
+          <p className="text-sm text-white/70">
+            Sin datos del agente para este servidor. Los valores del resumen aparecerán
+            en cuanto el agente de monitoreo reporte.
+          </p>
+        </div>
+      )}
+
       {activeTab === 'overview' && (
         <div className="mo-panel grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Sistema */}
@@ -178,10 +276,11 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               <TerminalIcon className="w-4 h-4 text-violet-300" /> Información del Sistema
             </h3>
             <div className="space-y-0.5">
-              <InfoRow label="Sistema Operativo" value={staticData.system.os} />
-              <InfoRow label="Kernel"            value={staticData.system.kernel} />
-              <InfoRow label="Hostname"          value={staticData.system.hostname} />
-              <InfoRow label="Load Average"      value={staticData.cpu.loadAverage} />
+              <InfoRow label="Sistema Operativo" value={detail?.system.os ?? dash} />
+              <InfoRow label="Kernel"            value={detail?.system.kernel ?? dash} />
+              <InfoRow label="Hostname"          value={detail?.system.hostname ?? dash} />
+              <InfoRow label="Load Average"      value={detail?.cpu.loadAverage ?? dash} />
+              <InfoRow label="Núcleos"           value={detail ? String(detail.cpu.cores) : dash} />
             </div>
           </div>
 
@@ -191,9 +290,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               <NetworkIcon className="w-4 h-4 text-violet-300" /> Red
             </h3>
             <div className="space-y-0.5">
-              <InfoRow label="IP Privada" value={staticData.network.privateIp} />
-              <InfoRow label="IP Pública"  value={staticData.network.publicIp} />
-              <InfoRow label="Interfaz"    value={staticData.network.interface} />
+              <InfoRow label="IP Privada" value={detail?.network.privateIp ?? dash} />
+              <InfoRow label="IP Pública"  value={detail?.network.publicIp ?? dash} />
+              <InfoRow label="Host"        value={server.ip} />
             </div>
           </div>
 
@@ -204,9 +303,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
             </h3>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'En ejecución', value: staticData.processes.running, color: 'text-emerald-300' },
-                { label: 'Zombies',      value: staticData.processes.zombie,  color: 'text-rose-300' },
-                { label: 'Total',        value: staticData.processes.total,   color: 'text-white' },
+                { label: 'En ejecución', value: detail?.processes.running ?? 0, color: 'text-emerald-300' },
+                { label: 'Zombies',      value: detail?.processes.zombie  ?? 0, color: 'text-rose-300' },
+                { label: 'Total',        value: detail?.processes.total   ?? 0, color: 'text-white' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="glass rounded-xl p-3 text-center">
                   <p className={`text-2xl font-bold ${color} mb-1`}>{value}</p>
@@ -222,9 +321,23 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               <CpuIcon className="w-4 h-4 text-violet-300" /> Recursos Detallados
             </h3>
             <div className="space-y-4">
-              <MetricBar label="CPU"         value={staticData.cpu.usage} />
-              <MetricBar label="Memoria RAM" value={staticData.memory.usagePercent} />
-              <MetricBar label={`Disco (${staticData.disk[0].mountPoint})`} value={staticData.disk[0].usagePercent} />
+              <MetricBar label="CPU" value={live.cpu} />
+              <MetricBar
+                label={
+                  detail
+                    ? `Memoria RAM (${Math.round(detail.memory.used / 1024)} / ${Math.round(detail.memory.total / 1024)} GB)`
+                    : 'Memoria RAM'
+                }
+                value={live.memory}
+              />
+              {(detail?.disk ?? []).map(fs => (
+                <MetricBar
+                  key={fs.mountPoint}
+                  label={`Disco ${fs.mountPoint} (${fs.used.toFixed(1)} / ${fs.total.toFixed(1)} GB)`}
+                  value={fs.usagePercent}
+                />
+              ))}
+              {!detail && <MetricBar label="Disco" value={live.disk} />}
             </div>
           </div>
         </div>
@@ -233,50 +346,124 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       {/* ── Services ────────────────────────────────────────────────── */}
       {activeTab === 'services' && (
         <div className="mo-panel glass rounded-2xl grain p-5">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-white">Servicios Instalados</h2>
-            <button onClick={() => setInstallOpen(true)}
-              className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
-              <PlusIcon /> Nuevo Servicio
-            </button>
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            <div>
+              <h2 className="text-base font-semibold text-white">Servicios systemd</h2>
+              <p className="text-xs text-white/45 mt-0.5">
+                {services.length > 0
+                  ? `${activeServices.length} activos · ${failedServices.length} fallidos · ${services.length} en total`
+                  : 'Sin inventario del agente'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="glass-input rounded-xl h-9 flex items-center px-3 gap-2">
+                <input
+                  value={serviceFilter}
+                  onChange={e => setServiceFilter(e.target.value)}
+                  placeholder="Filtrar servicios…"
+                  className="bg-transparent outline-none text-sm text-white/90 placeholder:text-white/30 w-44"
+                />
+              </div>
+              <button
+                onClick={() => setOnlyActive(v => !v)}
+                className={`mo-tab h-9 px-3.5 rounded-xl text-xs font-medium border
+                  ${onlyActive
+                    ? 'mo-tab-on grad-brand-soft text-white border-white/10'
+                    : 'glass-soft text-white/60 hover:text-white border-transparent'}`}
+              >
+                Solo activos
+              </button>
+              <button onClick={() => setInstallOpen(true)}
+                className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+                  shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
+                <PlusIcon /> Nuevo Servicio
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {server.services.map(service => (
-              <div key={service.id} className="glass-soft rounded-xl p-4 hover:bg-white/[0.05] transition border border-white/[0.05]">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
-                      {getServiceIcon(service.type)}
+          {actionError && (
+            <div className="glass-soft rounded-xl p-3 mb-4 text-sm text-rose-300 border border-rose-400/20">
+              {actionError}
+            </div>
+          )}
+
+          {services.length === 0 ? (
+            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+              <p className="text-sm text-white/55">Sin servicios reportados</p>
+              <p className="text-xs text-white/35 mt-1">
+                El agente envía el inventario de systemd cada pocos minutos.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {visibleServices.map(service => {
+                const busy =
+                  serviceAction.isPending && serviceAction.variables?.serviceName === service.name;
+
+                return (
+                  <div key={service.name}
+                    className="glass-soft rounded-xl p-4 border border-white/[0.05] hover:bg-white/[0.05] transition">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
+                          {getServiceIcon(service.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate" title={service.name}>
+                            {service.name}
+                          </p>
+                          <p className="text-xs text-white/45 truncate" title={service.displayName}>
+                            {service.displayName || service.subState}
+                          </p>
+                        </div>
+                      </div>
+                      <ServiceStateBadge state={service.state} />
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{service.name}</p>
-                      <p className="text-xs text-white/45">v{service.version} · Puerto {service.port}</p>
+
+                    <div className="flex items-center gap-3 text-xs text-white/45 mb-3 flex-wrap">
+                      <span>{service.enabled ? 'Habilitado al arranque' : 'No habilitado'}</span>
+                      {service.pid && <span className="font-mono">PID {service.pid}</span>}
+                      {service.memory > 0 && (
+                        <span className="font-mono tabular-nums">{formatBytes(service.memory)}</span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => runServiceAction(service.name, 'start')}
+                        disabled={busy || service.state === 'active'}
+                        className="mo-tab flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40"
+                      >
+                        <PlayIcon /> Iniciar
+                      </button>
+                      <button
+                        onClick={() => runServiceAction(service.name, 'stop')}
+                        disabled={busy || service.state !== 'active'}
+                        className="mo-tab flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-rose-500/15 border border-rose-400/20 text-rose-300 hover:bg-rose-500/25 text-xs font-medium disabled:opacity-40"
+                      >
+                        <PauseIcon /> Parar
+                      </button>
+                      <button
+                        onClick={() => runServiceAction(service.name, 'restart')}
+                        disabled={busy}
+                        title="Reiniciar"
+                        className="mo-tab w-8 h-8 rounded-lg glass-soft flex items-center justify-center text-white/55 hover:text-white disabled:opacity-40"
+                      >
+                        <GearIcon className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  {statusIcon(service.status)}
-                </div>
+                );
+              })}
+            </div>
+          )}
 
-                <div className="space-y-2.5 mb-3">
-                  <MetricBar label="CPU"     value={service.cpu} />
-                  <MetricBar label="Memoria" value={service.memory} />
-                </div>
-
-                <div className="flex gap-2">
-                  <button className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium transition">
-                    <PlayIcon /> Iniciar
-                  </button>
-                  <button className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-rose-500/15 border border-rose-400/20 text-rose-300 hover:bg-rose-500/25 text-xs font-medium transition">
-                    <PauseIcon /> Parar
-                  </button>
-                  <button className="w-8 h-8 rounded-lg glass-soft flex items-center justify-center text-white/55 hover:text-white transition">
-                    <GearIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          {services.length > visibleServices.length && (
+            <p className="text-xs text-white/35 mt-4 text-center">
+              Mostrando {visibleServices.length} de {services.length}. Afina el filtro para ver el resto.
+            </p>
+          )}
         </div>
       )}
 
@@ -284,54 +471,59 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       {activeTab === 'websites' && (
         <div className="mo-panel glass rounded-2xl grain p-5">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-white">Sitios Web</h2>
-            <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
+            <div>
+              <h2 className="text-base font-semibold text-white">Sitios Web</h2>
+              <p className="text-xs text-white/45 mt-0.5">
+                {websites.length > 0 ? `${websites.length} detectados` : 'Sin inventario del agente'}
+              </p>
+            </div>
+            <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
               <PlusIcon /> Nuevo Sitio
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {server.websites.map(website => (
-              <div key={website.id} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
-                      <GlobeIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{website.domain}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-white/45 capitalize">{website.type}</span>
-                        {website.ssl && <ShieldIcon className="w-3.5 h-3.5 text-emerald-300" />}
+          {websites.length === 0 ? (
+            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+              <p className="text-sm text-white/55">No se detectaron sitios web</p>
+              <p className="text-xs text-white/35 mt-1">
+                El agente busca virtual hosts de nginx y Apache; si no hay ninguno configurado, esta lista queda vacía.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {websites.map(site => (
+                <div key={site.domain} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
+                        <GlobeIcon className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{site.domain}</p>
+                        <p className="text-xs text-white/45 truncate">
+                          {site.server ?? 'servidor web'}{site.port ? ` · puerto ${site.port}` : ''}
+                        </p>
                       </div>
                     </div>
+                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0
+                      ${site.ssl
+                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
+                        : 'bg-amber-500/15 text-amber-300 ring-amber-400/20'}`}>
+                      {site.ssl ? 'SSL' : 'Sin SSL'}
+                    </span>
                   </div>
-                  {statusIcon(website.status)}
-                </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="glass rounded-xl p-3">
-                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Visitas</p>
-                    <p className="text-lg font-semibold text-white">{website.visits.toLocaleString()}</p>
-                  </div>
-                  <div className="glass rounded-xl p-3">
-                    <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Almacenamiento</p>
-                    <p className="text-lg font-semibold text-white">{website.storage} GB</p>
+                  <div className="space-y-0.5">
+                    {site.path && <InfoRow label="Raíz" value={site.path} />}
+                    {site.certExpiry && (
+                      <InfoRow label="Certificado" value={`vence ${timeAgo(site.certExpiry)}`} />
+                    )}
                   </div>
                 </div>
-
-                <div className="flex gap-2">
-                  <button className="flex-1 h-8 rounded-lg glass-soft text-white/75 hover:text-white hover:bg-white/[0.07] text-xs font-medium transition">
-                    Gestionar
-                  </button>
-                  <button className="flex-1 h-8 rounded-lg bg-sky-500/15 border border-sky-400/20 text-sky-300 hover:bg-sky-500/25 text-xs font-medium transition">
-                    Visitar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -339,53 +531,67 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       {activeTab === 'databases' && (
         <div className="mo-panel glass rounded-2xl grain p-5">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-white">Bases de Datos</h2>
-            <button className="flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] transition">
-              <PlusIcon /> Nueva Base de Datos
+            <div>
+              <h2 className="text-base font-semibold text-white">Bases de Datos</h2>
+              <p className="text-xs text-white/45 mt-0.5">
+                {databases.length > 0 ? `${databases.length} motores detectados` : 'Sin inventario del agente'}
+              </p>
+            </div>
+            <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
+              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
+              <PlusIcon /> Nueva Base
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {server.databases.map(database => (
-              <div key={database.id} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70">
-                      <DbIcon className="w-5 h-5" />
+          {databases.length === 0 ? (
+            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+              <p className="text-sm text-white/55">No se detectaron motores de base de datos</p>
+              <p className="text-xs text-white/35 mt-1">
+                El agente reconoce MySQL/MariaDB, PostgreSQL, MongoDB y Redis instalados en el sistema.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {databases.map(db => (
+                <div key={db.type} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
+                        <DbIcon className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{db.type}</p>
+                        <p className="text-xs text-white/45 truncate">
+                          {db.version ? `v${db.version}` : 'versión desconocida'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{database.name}</p>
-                      <p className="text-xs text-white/45 uppercase">{database.type}</p>
-                    </div>
+                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0
+                      ${db.running
+                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
+                        : 'bg-white/[0.06] text-white/50 ring-white/10'}`}>
+                      {db.running ? 'En ejecución' : 'Detenido'}
+                    </span>
                   </div>
-                  {statusIcon(database.status)}
-                </div>
 
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[
-                    { label: 'Tamaño',     value: `${database.size} MB` },
-                    { label: 'Tablas',     value: `${database.tables}` },
-                    { label: 'Conexiones', value: `${database.connections}` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="glass rounded-xl p-2.5 text-center">
-                      <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">{label}</p>
-                      <p className="text-sm font-semibold text-white">{value}</p>
+                  <div className="space-y-0.5">
+                    {db.size !== undefined && <InfoRow label="Tamaño" value={String(db.size)} />}
+                    <InfoRow label="Bases" value={String(db.databases?.length ?? 0)} />
+                  </div>
+
+                  {(db.databases?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {db.databases!.slice(0, 8).map(name => (
+                        <span key={name} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/[0.05] text-white/60">
+                          {name}
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-
-                <div className="flex gap-2">
-                  <button className="flex-1 h-8 rounded-lg glass-soft text-white/75 hover:text-white hover:bg-white/[0.07] text-xs font-medium transition">
-                    Gestionar
-                  </button>
-                  <button className="flex-1 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium transition">
-                    Backup
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -395,6 +601,15 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           <FolderIcon className="w-10 h-10 text-white/20" />
           <p className="text-sm text-white/40">Gestor de archivos próximamente</p>
         </div>
+      )}
+
+      {/* ── Terminal SSH ─────────────────────────────────────────────── */}
+      {terminalOpen && (
+        <ServerTerminal
+          serverId={server.id}
+          serverName={server.name}
+          onClose={() => setTerminalOpen(false)}
+        />
       )}
 
       {/* ── Install Modal ────────────────────────────────────────────── */}

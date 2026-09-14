@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ServerDetail } from '@components/servers';
-import { AddServerModal } from '@components/common';
+import { AddServerModal, EditServerModal, DeleteServerModal } from '@components/common';
 import { type ServerData } from '@typings/DashboardTypes';
 import { useServers, useRefreshAllServers } from '@hooks/useServers';
 import type { Server } from '@services/server.service';
@@ -61,7 +61,31 @@ const icons = {
   chevron:  <I d="M9 6l6 6-6 6" className="w-5 h-5" />,
   cards:    <I d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" className="w-4 h-4" />,
   list:     <I d="M4 6h16M4 12h16M4 18h16" className="w-4 h-4" />,
+  edit:     <I d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" className="w-4 h-4" />,
+  trash:    <I d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" className="w-4 h-4" />,
 };
+
+/* ── Acciones de la tarjeta ───────────────────────────────────────── */
+/* Van fuera del área clicable: la tarjeta entera abre el detalle, así que
+   estos botones paran la propagación para no arrastrar al usuario con ellos. */
+const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
+  <div className="flex items-center gap-1 shrink-0">
+    <button
+      onClick={e => { e.stopPropagation(); onEdit(); }}
+      title="Editar servidor" aria-label="Editar servidor"
+      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/55 hover:text-white hover:bg-white/[0.08] flex items-center justify-center"
+    >
+      {icons.edit}
+    </button>
+    <button
+      onClick={e => { e.stopPropagation(); onDelete(); }}
+      title="Eliminar servidor" aria-label="Eliminar servidor"
+      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/50 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center"
+    >
+      {icons.trash}
+    </button>
+  </div>
+);
 
 /* ── Métricas derivadas — compartidas por la tarjeta y la fila ────── */
 function formatUptime(u: string | number | undefined): string {
@@ -109,11 +133,24 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 /* ── Server card (glassmorphism) ──────────────────────────────────── */
-const GlassServerCard = ({ server, onClick }: { server: ServerData; onClick: (s: ServerData) => void }) => {
+const GlassServerCard = ({ server, onClick, onEdit, onDelete }: {
+  server: ServerData;
+  onClick: (s: ServerData) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) => {
   const rt = useServerRuntime(server);
 
   return (
-    <button onClick={() => onClick(server)} className="text-left group w-full">
+    /* No es un <button>: dentro hay botones de acción y anidarlos sería HTML
+       inválido además de robarles el clic. */
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onClick(server)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
+      className="text-left group w-full cursor-pointer"
+    >
       <Card className="p-5 hover:bg-white/[0.05] transition relative">
         {/* Header */}
         <div className="flex items-start gap-4">
@@ -132,9 +169,12 @@ const GlassServerCard = ({ server, onClick }: { server: ServerData; onClick: (s:
               {server.ip} · {server.os}
             </div>
           </div>
-          <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition">
-            {icons.chevron}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <RowActions onEdit={onEdit} onDelete={onDelete} />
+            <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition">
+              {icons.chevron}
+            </span>
+          </div>
         </div>
 
         {/* Metric tiles row 1 */}
@@ -163,7 +203,7 @@ const GlassServerCard = ({ server, onClick }: { server: ServerData; onClick: (s:
           </div>
         </div>
       </Card>
-    </button>
+    </div>
   );
 };
 
@@ -182,13 +222,21 @@ const MiniMetric = ({ label, value, gradient }: { label: string; value: number; 
 );
 
 /* ── Fila (vista de lista) ────────────────────────────────────────── */
-const ServerRow = ({ server, onClick }: { server: ServerData; onClick: (s: ServerData) => void }) => {
+const ServerRow = ({ server, onClick, onEdit, onDelete }: {
+  server: ServerData;
+  onClick: (s: ServerData) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) => {
   const rt = useServerRuntime(server);
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onClick(server)}
-      className="w-full text-left group flex items-center gap-4 px-5 py-4 hover:bg-white/[0.04] transition"
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
+      className="w-full text-left group flex items-center gap-4 px-5 py-4 hover:bg-white/[0.04] transition cursor-pointer"
     >
       <div className="w-10 h-10 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-violet-200 shrink-0">
         {icons.monitor}
@@ -223,10 +271,12 @@ const ServerRow = ({ server, onClick }: { server: ServerData; onClick: (s: Serve
         </span>
       </div>
 
+      <RowActions onEdit={onEdit} onDelete={onDelete} />
+
       <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition shrink-0">
         {icons.chevron}
       </span>
-    </button>
+    </div>
   );
 };
 
@@ -267,6 +317,9 @@ const ViewToggle = ({ value, onChange }: { value: ServersView; onChange: (v: Ser
 export const Servers: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedServer, setSelectedServer] = useState<ServerData | null>(null);
+  /* Los modales trabajan con el servidor crudo del backend, no con ServerData. */
+  const [editing, setEditing] = useState<Server | null>(null);
+  const [deleting, setDeleting] = useState<Server | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   /* Preferencia persistida en la cuenta del usuario */
@@ -362,6 +415,8 @@ export const Servers: React.FC = () => {
                 key={server.id}
                 server={transformServer(server)}
                 onClick={setSelectedServer}
+                onEdit={() => setEditing(server)}
+                onDelete={() => setDeleting(server)}
               />
             ))}
 
@@ -395,6 +450,8 @@ export const Servers: React.FC = () => {
                     key={server.id}
                     server={transformServer(server)}
                     onClick={setSelectedServer}
+                    onEdit={() => setEditing(server)}
+                    onDelete={() => setDeleting(server)}
                   />
                 ))}
               </Card>
@@ -428,6 +485,9 @@ export const Servers: React.FC = () => {
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={() => setIsAddModalOpen(false)}
       />
+
+      <EditServerModal server={editing} onClose={() => setEditing(null)} />
+      <DeleteServerModal server={deleting} onClose={() => setDeleting(null)} />
     </div>
   );
 };

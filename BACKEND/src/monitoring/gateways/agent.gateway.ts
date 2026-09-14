@@ -22,6 +22,7 @@ import {
   MetricsDataDto,
 } from '../dto/agent-message.dto';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { AgentDataService } from '../services/agent-data.service';
 
 /**
  * WebSocket Gateway para comunicación con agentes de monitoreo
@@ -45,6 +46,22 @@ export class AgentGateway
   // Mapa de conexiones activas: serverId -> socket
   private connections = new Map<string, Socket>();
 
+  /* Última vez que se escribió `lastSeen` de cada servidor. Sin esto era un
+     UPDATE por mensaje: con 50 servidores a 30 s, 144.000 escrituras al día
+     para un dato cuya precisión al segundo no aporta nada. */
+  private lastSeenWrites = new Map<string, number>();
+  private readonly LAST_SEEN_THROTTLE_MS = 60_000;
+
+  /** Refresca `lastSeen` como mucho una vez por minuto y servidor. */
+  private async touchLastSeen(serverId: string): Promise<void> {
+    const now = Date.now();
+    const previous = this.lastSeenWrites.get(serverId) ?? 0;
+    if (now - previous < this.LAST_SEEN_THROTTLE_MS) return;
+
+    this.lastSeenWrites.set(serverId, now);
+    await this.serversRepository.update(serverId, { lastSeen: new Date() });
+  }
+
   constructor(
     @InjectRepository(ServerEntity)
     private serversRepository: Repository<ServerEntity>,
@@ -66,8 +83,8 @@ export class AgentGateway
     /* El service avisa por aquí cuando crea una notificación. Sin payload: el
        namespace es broadcast global, así que el cliente solo recibe la señal y
        recarga su lista con su propio JWT. */
-    this.notificationsService.setBroadcaster(() =>
-      this.server.emit('notifications:changed'),
+    this.notificationsService.setBroadcaster((userId) =>
+      this.emitToOwner(userId, 'notifications:changed'),
     );
     this.logger.log(
       `📡 Escuchando en: ws://localhost:${process.env.PORT || 3001}/agent`,
@@ -77,11 +94,55 @@ export class AgentGateway
   /**
    * Lifecycle: Cliente conectado
    */
+  /**
+   * Conexión entrante. Puede ser un agente (se autentica en su primer mensaje)
+   * o el panel de un usuario, que manda su token de acceso en el handshake.
+   *
+   * El panel se mete en una room por usuario: antes todo se emitía con
+   * `server.emit`, así que cada cliente recibía las métricas de TODOS los
+   * servidores, incluidos los de otras cuentas.
+   */
   async handleConnection(client: Socket) {
-    this.logger.log(`🔌 Nuevo cliente conectando: ${client.id}`);
+    const token = (client.handshake.auth as { token?: string })?.token;
 
-    // El cliente debe enviar un mensaje de autenticación
-    // Por ahora solo logueamos, la autenticación se hace en el primer mensaje
+    if (!token) {
+      // Sin token es un agente; se autentica por mensaje.
+      this.logger.log(`🔌 Nuevo cliente conectando: ${client.id}`);
+      return;
+    }
+
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+
+      if (payload.type !== 'access' || !payload.sub) {
+        throw new Error('Token no válido para esta conexión');
+      }
+
+      await client.join(this.userRoom(payload.sub));
+      client.emit('panel:ready');
+      this.logger.debug(`👤 Panel suscrito a la room del usuario ${payload.sub}`);
+    } catch (error) {
+      this.logger.warn(
+        `Panel rechazado: ${error instanceof Error ? error.message : 'token inválido'}`,
+      );
+      client.emit('error', { message: 'Autenticación inválida' });
+      client.disconnect(true);
+    }
+  }
+
+  /** Room de un usuario: recibe los eventos de todos sus servidores. */
+  private userRoom(userId: string): string {
+    return `user:${userId}`;
+  }
+
+  /**
+   * Emite un evento solo al dueño del servidor.
+   * `ownerId` viaja en la entidad, así que no hace falta consulta extra.
+   */
+  private emitToOwner(ownerId: string, event: string, payload?: unknown): void {
+    this.server.to(this.userRoom(ownerId)).emit(event, payload);
   }
 
   /**
@@ -100,13 +161,13 @@ export class AgentGateway
         });
         this.logger.log(`🔴 Estado actualizado a OFFLINE: ${serverId}`);
 
-        // Emitir evento al frontend
-        this.server.emit('agent:disconnected', { serverId });
-
         const offline = await this.serversRepository.findOne({
           where: { id: serverId },
         });
+
+        // Emitir evento solo al dueño
         if (offline) {
+          this.emitToOwner(offline.ownerId, 'agent:disconnected', { serverId });
           await this.notificationsService
             .serverWentOffline(offline)
             .catch((err) =>
@@ -161,8 +222,8 @@ export class AgentGateway
         });
         this.logger.log(`🟢 Estado actualizado a ONLINE: ${server.name}`);
 
-        // Emitir evento al frontend
-        this.server.emit('agent:connected', {
+        // Emitir evento al dueño del servidor
+        this.emitToOwner(server.ownerId, 'agent:connected', {
           serverId: server.id,
           serverName: server.name,
         });
@@ -285,10 +346,7 @@ export class AgentGateway
   ): Promise<void> {
     this.logger.debug(`💓 Heartbeat recibido: ${server.name}`);
 
-    // Actualizar última vez visto
-    await this.serversRepository.update(server.id, {
-      lastSeen: new Date(),
-    });
+    await this.touchLastSeen(server.id);
   }
 
   /**
@@ -311,7 +369,7 @@ export class AgentGateway
     });
 
     // Emitir evento al frontend
-    this.server.emit('server:info:updated', {
+    this.emitToOwner(server.ownerId, 'server:info:updated', {
       serverId: server.id,
       systemInfo,
     });
@@ -408,19 +466,18 @@ export class AgentGateway
         this.logger.error(`Error guardando historial de métricas: ${err.message}`),
       );
 
-    // Actualizar última vez visto
-    await this.serversRepository.update(server.id, {
-      lastSeen: new Date(),
-    });
+    await this.touchLastSeen(server.id);
 
     const live = {
       cpu: metricsData.cpu.usage,
       memory: metricsData.memory.usagePercent,
-      disk: metricsData.disk.filesystems[0]?.usagePercent || 0,
+      /* Mismo criterio que el resumen del dashboard (montaje raíz): antes aquí
+         se usaba filesystems[0] y el mismo dato salía distinto en dos pantallas. */
+      disk: AgentDataService.rootDiskUsage(metricsData.disk.filesystems),
     };
 
     // Emitir evento en tiempo real al frontend
-    this.server.emit('server:metrics:realtime', {
+    this.emitToOwner(server.ownerId, 'server:metrics:realtime', {
       serverId: server.id,
       serverName: server.name,
       metrics: { ...live, uptime: metricsData.system.uptime },
@@ -474,7 +531,7 @@ export class AgentGateway
     this.logger.debug(`✅ Servicios guardados correctamente (${services.length} servicios)`);
 
     // Emitir al frontend
-    this.server.emit('server:services:updated', {
+    this.emitToOwner(server.ownerId, 'server:services:updated', {
       serverId: server.id,
       services: services,
     });
@@ -507,7 +564,7 @@ export class AgentGateway
       .execute();
 
     // Emitir al frontend
-    this.server.emit('server:processes:updated', {
+    this.emitToOwner(server.ownerId, 'server:processes:updated', {
       serverId: server.id,
       processes: processesData,
     });
@@ -537,7 +594,7 @@ export class AgentGateway
       .execute();
 
     // Emitir al frontend
-    this.server.emit('server:websites:updated', {
+    this.emitToOwner(server.ownerId, 'server:websites:updated', {
       serverId: server.id,
       websites: websites,
     });
@@ -569,7 +626,7 @@ export class AgentGateway
       .execute();
 
     // Emitir al frontend
-    this.server.emit('server:databases:updated', {
+    this.emitToOwner(server.ownerId, 'server:databases:updated', {
       serverId: server.id,
       databases: databases,
     });

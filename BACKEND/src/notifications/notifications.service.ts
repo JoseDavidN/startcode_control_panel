@@ -83,7 +83,7 @@ export class NotificationsService {
    * Avisa a los clientes de que su lista cambió. Lo registra AgentGateway al
    * arrancar: así el service no depende del gateway y no hay ciclo de módulos.
    */
-  private broadcast: (() => void) | null = null;
+  private broadcast: ((userId: string) => void) | null = null;
 
   constructor(
     @InjectRepository(Notification)
@@ -92,7 +92,7 @@ export class NotificationsService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  setBroadcaster(fn: () => void): void {
+  setBroadcaster(fn: (userId: string) => void): void {
     this.broadcast = fn;
   }
 
@@ -112,7 +112,8 @@ export class NotificationsService {
     );
 
     await this.trim(userId);
-    this.broadcast?.();
+    /* Solo al dueño: la señal viaja por la room del usuario, no en difusión. */
+    this.broadcast?.(userId);
     return saved;
   }
 

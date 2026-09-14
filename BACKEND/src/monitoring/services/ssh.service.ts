@@ -1,6 +1,7 @@
 // src/monitoring/services/ssh.service.ts
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Client } from 'ssh2';
+import type { ConnectConfig } from 'ssh2';
 import { Server } from '@servers/entities/server.entity';
 
 export interface SSHExecResult {
@@ -77,51 +78,39 @@ export class SSHService {
         });
 
         // Intentar conectar
-        conn.connect({
-          host: server.host,
-          port: server.port,
-          username: server.username,
-          privateKey: Buffer.from(cleanPrivateKey, 'utf8'),
-          readyTimeout: 15000,
-          keepaliveInterval: 10000,
-          keepaliveCountMax: 3,
-          algorithms: {
-            kex: [
-              'curve25519-sha256',
-              'curve25519-sha256@libssh.org',
-              'ecdh-sha2-nistp256',
-              'ecdh-sha2-nistp384',
-              'ecdh-sha2-nistp521',
-              'diffie-hellman-group-exchange-sha256',
-              'diffie-hellman-group14-sha256',
-              'diffie-hellman-group14-sha1',
-              'diffie-hellman-group1-sha1',
-            ],
-            serverHostKey: [
-              'ssh-rsa',
-              'rsa-sha2-512',
-              'rsa-sha2-256',
-              'ssh-ed25519',
-              'ecdsa-sha2-nistp256',
-              'ecdsa-sha2-nistp384',
-              'ecdsa-sha2-nistp521',
-            ],
-            cipher: [
-              'aes128-ctr',
-              'aes192-ctr',
-              'aes256-ctr',
-              'aes128-gcm',
-              'aes128-gcm@openssh.com',
-              'aes256-gcm',
-              'aes256-gcm@openssh.com',
-              'aes256-cbc',
-            ],
-          },
-        });
+        conn.connect(this.connectOptions(server));
       } catch (error) {
         this.logger.error(`Error al preparar conexión: ${error.message}`);
         reject(error);
       }
+    });
+  }
+
+  /**
+   * Cliente SSH dedicado, fuera del pool. Lo usa la terminal interactiva: el
+   * pool se recicla en cada `connect()`, así que compartirlo cortaría la sesión
+   * del usuario cada vez que el monitoreo ejecuta un comando (y al revés).
+   */
+  async createDedicatedClient(server: Server): Promise<Client> {
+    return new Promise((resolve, reject) => {
+      const conn = new Client();
+      const timeout = setTimeout(() => {
+        conn.end();
+        reject(new Error('Timeout de conexión SSH (15 segundos)'));
+      }, 15000);
+
+      conn.on('ready', () => {
+        clearTimeout(timeout);
+        this.logger.log(`🖥️  Terminal SSH abierta en ${server.name}`);
+        resolve(conn);
+      });
+
+      conn.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+
+      conn.connect(this.connectOptions(server));
     });
   }
 
@@ -268,6 +257,51 @@ export class SSHService {
    * @param privateKey - La llave privada a limpiar
    * @returns La llave privada limpia
    */
+  /** Opciones de conexión compartidas por el pool y por la terminal. */
+  private connectOptions(server: Server): ConnectConfig {
+    return {
+      host: server.host,
+      port: server.port,
+      username: server.username,
+      privateKey: Buffer.from(this.cleanPrivateKey(server.privateKey), 'utf8'),
+      readyTimeout: 15000,
+      keepaliveInterval: 10000,
+      keepaliveCountMax: 3,
+          algorithms: {
+            kex: [
+              'curve25519-sha256',
+              'curve25519-sha256@libssh.org',
+              'ecdh-sha2-nistp256',
+              'ecdh-sha2-nistp384',
+              'ecdh-sha2-nistp521',
+              'diffie-hellman-group-exchange-sha256',
+              'diffie-hellman-group14-sha256',
+              'diffie-hellman-group14-sha1',
+              'diffie-hellman-group1-sha1',
+            ],
+            serverHostKey: [
+              'ssh-rsa',
+              'rsa-sha2-512',
+              'rsa-sha2-256',
+              'ssh-ed25519',
+              'ecdsa-sha2-nistp256',
+              'ecdsa-sha2-nistp384',
+              'ecdsa-sha2-nistp521',
+            ],
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-gcm',
+              'aes128-gcm@openssh.com',
+              'aes256-gcm',
+              'aes256-gcm@openssh.com',
+              'aes256-cbc',
+            ],
+          },
+    };
+  }
+
   private cleanPrivateKey(privateKey: string): string {
     if (!privateKey) {
       throw new BadRequestException('La llave privada está vacía');

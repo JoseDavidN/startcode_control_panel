@@ -714,7 +714,35 @@ const SecurityPane = () => {
   };
 
   /* Configuración de sesión */
-  const { settings: sec, setSettings: setSec } = useSecuritySettings();
+  /* A diferencia del resto de paneles, Seguridad NO guarda al vuelo: se edita
+     un borrador y solo el botón lo envía. Cambiar el tiempo de inactividad sin
+     querer cerraría la sesión en el acto. */
+  const { settings: saved, setSettings: setSaved } = useSecuritySettings();
+  const { flush } = usePreferences();
+  const [sec, setSec] = useState(saved);
+  const [savingSec, setSavingSec] = useState(false);
+  const [savedSec, setSavedSec] = useState(false);
+
+  /* Si llegan valores nuevos del servidor (hidratación u otra pestaña) y no hay
+     nada a medio editar, el borrador los adopta. */
+  const secDirty =
+    sec.sessionTimeout !== saved.sessionTimeout ||
+    sec.passwordExpiration !== saved.passwordExpiration;
+  const dirtyRef = React.useRef(secDirty);
+  dirtyRef.current = secDirty;
+
+  React.useEffect(() => {
+    if (!dirtyRef.current) setSec(saved);
+  }, [saved]);
+
+  const handleSaveSecurity = async () => {
+    setSavingSec(true);
+    setSaved(sec);
+    await flush();
+    setSavingSec(false);
+    setSavedSec(true);
+    setTimeout(() => setSavedSec(false), 3000);
+  };
   const pwdAge = passwordAgeDays(user?.passwordChangedAt);
   const pwdExpired = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration;
   const pwdWarn    = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration * 0.85;
@@ -966,6 +994,30 @@ const SecurityPane = () => {
         )}
       </div>
 
+      <div className="pt-2 flex items-center justify-end gap-3">
+        {secDirty && (
+          <span className="text-xs text-amber-300 mr-auto flex items-center gap-2">
+            <Icon name="alert" className="w-3.5 h-3.5" />
+            Cambios sin guardar
+          </span>
+        )}
+        <button
+          onClick={() => setSec(saved)}
+          disabled={!secDirty || savingSec}
+          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium disabled:opacity-40"
+        >
+          Descartar
+        </button>
+        <button
+          onClick={() => void handleSaveSecurity()}
+          disabled={!secDirty || savingSec}
+          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] disabled:opacity-50"
+        >
+          <Icon name={savingSec ? 'loader' : savedSec ? 'check' : 'save'} className="w-4 h-4" />
+          {savingSec ? 'Guardando…' : savedSec ? 'Guardado' : 'Guardar cambios'}
+        </button>
+      </div>
+
       {/* ── Sesiones Activas ─────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -1029,7 +1081,6 @@ const SecurityPane = () => {
         </p>
       </div>
 
-      <SaveBar label="Guardar seguridad" />
     </div>
   );
 };

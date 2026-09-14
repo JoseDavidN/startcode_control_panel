@@ -51,11 +51,50 @@ export class HistoricalMetricsDto {
   @ApiProperty({ type: [MetricPointDto] })
   disk: MetricPointDto[];
 
+  @ApiProperty({ type: [MetricPointDto], description: 'Carga media de 1 minuto' })
+  loadAverage: MetricPointDto[];
+
+  @ApiProperty({ type: [MetricPointDto], description: 'Conexiones de red activas' })
+  connections: MetricPointDto[];
+
   @ApiProperty()
   startTime: Date;
 
   @ApiProperty()
   endTime: Date;
+}
+
+/** Agregado de todos los servidores del usuario, en una sola consulta. */
+export class AccountOverviewDto {
+  @ApiProperty({ description: 'Servidores registrados', example: 4 })
+  servers: number;
+
+  @ApiProperty({ description: 'Servidores que han reportado alguna métrica', example: 3 })
+  reporting: number;
+
+  @ApiProperty({ example: 160 })
+  services: number;
+
+  @ApiProperty({ example: 12 })
+  websites: number;
+
+  @ApiProperty({ example: 5 })
+  databases: number;
+
+  @ApiProperty({ example: 393 })
+  processes: number;
+
+  @ApiProperty({ description: 'CPU media entre los servidores que reportan', example: 41.2 })
+  avgCpu: number;
+
+  @ApiProperty({ example: 67.6 })
+  avgMemory: number;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Métrica más reciente de la cuenta; null si nunca ha reportado nadie',
+  })
+  lastReportAt: Date | null;
 }
 
 /**

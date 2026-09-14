@@ -25,11 +25,19 @@ Todos los mensajes que envía el agente tienen esta estructura base:
   agentVersion: string,       // Versión del agente: "1.0.0"
   timestamp: number,          // Unix timestamp: 1705834800000
   serverId: string,           // UUID del servidor: "3c89cbc3-4378-46f0-ab3a-deb9b4a8e4eb"
-  token: string,              // Token de autenticación (actualmente = serverId)
+  token: string,              // JWT del agente (POST /servers/:id/agent-token). NO es el serverId
   type: AgentMessageType,     // Tipo de mensaje (ver abajo)
   data: any                   // Datos específicos del tipo de mensaje
 }
 ```
+
+> **Sobre el `token`.** Es el JWT de larga duración que emite
+> `POST /api/v1/servers/:id/agent-token`, con `type: "agent"` y `sub` igual al
+> `serverId`. El gateway lo verifica con el secreto del panel y comprueba que
+> `sub` coincida con el `serverId` del mensaje. Enviar el UUID del servidor —como
+> decía esta guía— produce `jwt malformed` y el agente queda reintentando sin
+> conectar. Si el servidor se borra y se vuelve a crear, cambian **ambos**
+> valores: `serverId` y `token`.
 
 ---
 

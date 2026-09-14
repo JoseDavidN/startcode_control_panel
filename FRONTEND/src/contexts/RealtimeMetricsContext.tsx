@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { TokenManager } from '@utils/tokenManager';
+import { useAuth } from '@hooks/useAuth';
 
 // Tipos para las métricas en tiempo real
 export interface ServerMetrics {
@@ -82,19 +84,33 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
   children,
   backendUrl = 'http://localhost:3001',
 }) => {
+  const { isAuthenticated } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [data, setData] = useState<RealtimeData>({});
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    /* Sin sesión no hay nada que escuchar (y el gateway rechazaría la conexión).
+       Al iniciar o cerrar sesión el socket se rehace para viajar con el token
+       correcto. */
+    if (!isAuthenticated) {
+      setConnected(false);
+      setData({});
+      return;
+    }
+
     // Crear conexión WebSocket
     console.log('🔌 Conectando a WebSocket:', `${backendUrl}/agent`);
+    /* El token identifica al panel y lo mete en la room de su usuario: antes el
+       gateway emitía en difusión y este cliente recibía las métricas de todos
+       los servidores, incluidos los de otras cuentas. */
     const newSocket = io(`${backendUrl}/agent`, {
       transports: ['websocket'],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      auth: { token: TokenManager.getAccessToken() },
     });
 
     // Eventos de conexión
@@ -217,7 +233,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
       console.log('🔌 Cerrando conexión WebSocket');
       newSocket.close();
     };
-  }, [backendUrl]);
+  }, [backendUrl, isAuthenticated]);
 
   return (
     <RealtimeMetricsContext.Provider value={{ socket, data, connected }}>

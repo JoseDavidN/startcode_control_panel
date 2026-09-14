@@ -67,9 +67,39 @@ export interface ProcessInfo {
 /**
  * Interfaz para información de servicios
  */
+/** Servicio systemd tal y como lo envía el agente. */
+export interface SystemdServiceInfo {
+  name: string;
+  displayName: string;
+  state: 'active' | 'inactive' | 'failed' | 'unknown';
+  subState: string;
+  enabled: boolean;
+  pid: number | null;
+  /** Bytes; systemd no reporta CPU por unidad, llega siempre en 0 */
+  memory: number;
+  cpuPercent: number;
+}
+
 export interface ServicesInfo {
-  count: number;        // Total de servicios
-  list: any[];          // Lista de servicios detectados
+  count: number;
+  list: SystemdServiceInfo[];
+}
+
+export interface WebsiteInfo {
+  domain: string;
+  port?: number;
+  ssl?: boolean;
+  certExpiry?: string | null;
+  path?: string;
+  server?: string;
+}
+
+export interface DatabaseInfo {
+  type: string;
+  version?: string;
+  running?: boolean;
+  size?: string | number;
+  databases?: string[];
 }
 
 /**
@@ -85,6 +115,8 @@ export interface ServerDetailMetrics {
   system: SystemInfo;       // Información del sistema
   processes: ProcessInfo;   // Información de procesos
   services: ServicesInfo;   // Información de servicios
+  websites: { count: number; list: WebsiteInfo[] };
+  databases: { count: number; list: DatabaseInfo[] };
   timestamp: string;        // Timestamp de la última actualización
   status: string;           // Estado del servidor (online, offline, etc.)
 }
@@ -159,6 +191,14 @@ export function useServerDetail(
           const hours = Math.floor((seconds % 86400) / 3600);
           const minutes = Math.floor((seconds % 3600) / 60);
           return `${days} days, ${hours} hours, ${minutes} minutes`;
+        };
+
+        /* Los inventarios sí tienen forma conocida: se acotan una vez aquí en
+           lugar de hacer accesos sueltos sobre el `any` del payload. */
+        const inventory = rawData as {
+          services?: { count?: number; list?: SystemdServiceInfo[] };
+          websites?: { count?: number; list?: WebsiteInfo[] };
+          databases?: { count?: number; list?: DatabaseInfo[] };
         };
 
         // Transformar la estructura del agente a la estructura esperada
@@ -236,8 +276,18 @@ export function useServerDetail(
           },
 
           services: {
-            count: rawData.services?.count || 0,
-            list: rawData.services?.list || [],
+            count: Number(inventory.services?.count) || 0,
+            list: Array.isArray(inventory.services?.list) ? inventory.services.list : [],
+          },
+
+          websites: {
+            count: Number(inventory.websites?.count) || 0,
+            list: Array.isArray(inventory.websites?.list) ? inventory.websites.list : [],
+          },
+
+          databases: {
+            count: Number(inventory.databases?.count) || 0,
+            list: Array.isArray(inventory.databases?.list) ? inventory.databases.list : [],
           },
         };
 

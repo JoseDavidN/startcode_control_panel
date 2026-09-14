@@ -71,8 +71,11 @@
    usan `font-mono` quedan monoespaciadas sea cual sea la elección.
    --font-sans sigue a --font-ui para que la utilidad `font-sans` no se
    salga del sistema. */
+/* `.font-grotesk` fija la familia en un subárbol, al margen de data-font: lo usa
+   el login, que no sigue la preferencia del usuario. */
 :root,
-html[data-font="grotesk"] {
+html[data-font="grotesk"],
+.font-grotesk {
   --font-ui: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-sans: var(--font-ui);

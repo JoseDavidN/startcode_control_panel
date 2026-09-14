@@ -29,3 +29,11 @@ export class ChangePasswordDto {
   @MinLength(8, { message: 'La nueva contraseña debe tener al menos 8 caracteres' })
   newPassword: string;
 }
+
+/** Cambio de contraseña sin sesión, con el token temporal que emite el login. */
+export class ChangeExpiredPasswordDto extends ChangePasswordDto {
+  @ApiProperty({ description: 'Token temporal devuelto por el login' })
+  @IsString()
+  @IsNotEmpty()
+  tempToken: string;
+}

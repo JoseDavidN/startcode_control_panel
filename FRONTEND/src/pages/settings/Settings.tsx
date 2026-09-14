@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES, STORAGE_KEYS, API_CONFIG } from '@utils/constants';
-import { useTwoFactorSetup, useTwoFactorEnable, useTwoFactorDisable } from '@hooks/useTwoFactor';
+import {
+  useTwoFactorSetup,
+  useTwoFactorEnable,
+  useTwoFactorDisable,
+  useRegenerateBackupCodes,
+} from '@hooks/useTwoFactor';
+import { useSessions, useRevokeSession } from '@hooks/useSessions';
 import { useAuth } from '@hooks/useAuth';
 import { useUpdateProfile, useChangePassword } from '@hooks/useProfile';
 import type { TwoFactorSetupResponse } from '@typings/auth.types';
@@ -626,9 +632,16 @@ const SecurityPane = () => {
   const [setupData, setSetupData]       = useState<TwoFactorSetupResponse | null>(null);
   const [tfCode, setTfCode]             = useState('');
   const [disCode, setDisCode]           = useState('');
+  const [disPwd, setDisPwd]             = useState('');
   const [showDis, setShowDis]           = useState(false);
   const [tfMsg, setTfMsg]               = useState('');
   const [tfErr, setTfErr]               = useState('');
+
+  /* Códigos de respaldo: se ven una única vez, al generarlos. */
+  const [backupCodes, setBackupCodes]   = useState<string[] | null>(null);
+  const [showRegen, setShowRegen]       = useState(false);
+  const [regenCode, setRegenCode]       = useState('');
+  const [regenPwd, setRegenPwd]         = useState('');
 
   /* Sincronizar cuando el usuario se recarga */
   React.useEffect(() => { setTf(user?.twoFactorEnabled ?? false); }, [user?.twoFactorEnabled]);
@@ -636,31 +649,68 @@ const SecurityPane = () => {
   const setupMutation   = useTwoFactorSetup();
   const enableMutation  = useTwoFactorEnable();
   const disableMutation = useTwoFactorDisable();
+  const regenMutation   = useRegenerateBackupCodes();
+
+  const errorText = (e: unknown, fallback: string) => {
+    if (typeof e === 'object' && e !== null && 'message' in e) {
+      const m = (e as { message?: unknown }).message;
+      if (typeof m === 'string' && m.trim()) return m;
+    }
+    return fallback;
+  };
+
+  const copyCodes = (codes: string[]) => navigator.clipboard.writeText(codes.join('\n'));
+
+  const downloadCodes = (codes: string[]) => {
+    const blob = new Blob(
+      [`Códigos de respaldo — StartCode Panel\nCuenta: ${user?.email ?? ''}\n\n${codes.join('\n')}\n`],
+      { type: 'text/plain' },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'startcode-codigos-respaldo.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleSetup = async () => {
     setTfErr(''); setTfMsg('');
     try { const d = await setupMutation.mutateAsync(); setSetupData(d); setTfCode(''); }
-    catch (e: any) { setTfErr(e.message || 'Error al iniciar 2FA'); }
+    catch (e: unknown) { setTfErr(errorText(e, 'Error al iniciar 2FA')); }
   };
 
   const handleEnable = async () => {
     if (tfCode.length !== 6) return;
     setTfErr('');
     try {
-      await enableMutation.mutateAsync(tfCode);
+      const res = await enableMutation.mutateAsync(tfCode);
       setTf(true); setSetupData(null); setTfCode('');
+      setBackupCodes(res.backupCodes ?? []);
       setTfMsg('2FA activado correctamente');
-    } catch (e: any) { setTfErr(e.message || 'Código inválido'); }
+    } catch (e: unknown) { setTfErr(errorText(e, 'Código inválido')); }
   };
 
   const handleDisable = async () => {
-    if (disCode.length !== 6) return;
+    if (disCode.length !== 6 || !disPwd) return;
     setTfErr('');
     try {
-      await disableMutation.mutateAsync(disCode);
-      setTf(false); setShowDis(false); setDisCode('');
+      await disableMutation.mutateAsync({ code: disCode, password: disPwd });
+      setTf(false); setShowDis(false); setDisCode(''); setDisPwd('');
+      setBackupCodes(null);
       setTfMsg('2FA desactivado correctamente');
-    } catch (e: any) { setTfErr(e.message || 'Código inválido'); }
+    } catch (e: unknown) { setTfErr(errorText(e, 'Contraseña o código inválidos')); }
+  };
+
+  const handleRegenerate = async () => {
+    if (regenCode.length !== 6 || !regenPwd) return;
+    setTfErr('');
+    try {
+      const res = await regenMutation.mutateAsync({ code: regenCode, password: regenPwd });
+      setBackupCodes(res.backupCodes ?? []);
+      setShowRegen(false); setRegenCode(''); setRegenPwd('');
+      setTfMsg('Códigos de respaldo regenerados');
+    } catch (e: unknown) { setTfErr(errorText(e, 'Contraseña o código inválidos')); }
   };
 
   /* Configuración de sesión */
@@ -669,9 +719,9 @@ const SecurityPane = () => {
   const pwdExpired = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration;
   const pwdWarn    = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration * 0.85;
 
-  /* Sesión actual */
-  const { browser, os } = parseUserAgent(navigator.userAgent);
-  const sessionStart = user?.lastLogin;
+  /* Sesiones reales del servidor (con sesión única, será una) */
+  const { data: sessions = [], isLoading: sessionsLoading } = useSessions();
+  const revokeSession = useRevokeSession();
 
   return (
     <div className="space-y-8">
@@ -747,28 +797,127 @@ const SecurityPane = () => {
                   <div className="text-xs text-white/55 mt-0.5">Tu cuenta está protegida con TOTP</div>
                 </div>
               </div>
-              <button onClick={() => { setShowDis(v => !v); setDisCode(''); setTfErr(''); }}
-                className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-xs font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition">
+              <button onClick={() => { setShowDis(v => !v); setDisCode(''); setDisPwd(''); setTfErr(''); }}
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl text-xs font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20">
                 <Icon name="shieldOff" className="w-4 h-4" />Desactivar
               </button>
             </div>
-            {showDis && (
+
+            {/* Códigos de respaldo */}
+            <div className="border-t border-white/[0.06] pt-4 flex items-center gap-3 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">Códigos de respaldo</div>
+                <div className="text-xs text-white/55 mt-0.5">
+                  {(user?.backupCodesRemaining ?? 0) > 0
+                    ? `Te quedan ${user?.backupCodesRemaining} de 10 sin usar.`
+                    : 'No te quedan códigos: regenéralos para no perder el acceso.'}
+                </div>
+              </div>
+              <button onClick={() => { setShowRegen(v => !v); setRegenCode(''); setRegenPwd(''); setTfErr(''); }}
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-xs font-medium">
+                <Icon name="refresh" className="w-4 h-4" />Regenerar
+              </button>
+            </div>
+
+            {(user?.backupCodesRemaining ?? 0) > 0 && (user?.backupCodesRemaining ?? 0) <= 3 && (
+              <div className="glass-soft rounded-xl p-3 flex items-center gap-3 border border-amber-400/20">
+                <Icon name="alert" className="w-4 h-4 text-amber-300 shrink-0" />
+                <p className="text-xs text-amber-200/80">
+                  Quedan pocos códigos de respaldo. Regenéralos y guárdalos en un sitio seguro.
+                </p>
+              </div>
+            )}
+
+            {showRegen && (
               <div className="border-t border-white/[0.06] pt-4 space-y-3">
-                <p className="text-sm text-white/70">Ingresa el código de tu app para confirmar:</p>
-                <div className="flex gap-2">
-                  <div className="glass-input flex-1 rounded-xl h-12 flex items-center px-3.5">
-                    <input type="text" inputMode="numeric" maxLength={6} value={disCode}
-                      onChange={e => setDisCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="w-full bg-transparent outline-none text-center text-xl font-mono tracking-widest text-white placeholder:text-white/30" />
+                <p className="text-sm text-white/70">
+                  Los códigos actuales dejarán de servir. Confirma con tu contraseña y el código de la app:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <GlassInput icon={<Icon name="key" />} type="password" value={regenPwd}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRegenPwd(e.target.value)}
+                    placeholder="Contraseña actual" />
+                  <div className="flex gap-2">
+                    <div className="glass-input flex-1 rounded-xl h-11 flex items-center px-3.5">
+                      <input type="text" inputMode="numeric" maxLength={6} value={regenCode}
+                        onChange={e => setRegenCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        className="w-full bg-transparent outline-none text-center text-lg font-mono tracking-widest text-white placeholder:text-white/30" />
+                    </div>
+                    <button onClick={handleRegenerate}
+                      disabled={regenCode.length !== 6 || !regenPwd || regenMutation.isPending}
+                      className="mo-tab h-11 px-4 rounded-xl grad-brand text-white font-semibold text-sm disabled:opacity-50 flex items-center gap-2">
+                      <Icon name={regenMutation.isPending ? 'loader' : 'check'} className="w-4 h-4" />Generar
+                    </button>
                   </div>
-                  <button onClick={handleDisable} disabled={disCode.length !== 6 || disableMutation.isPending}
-                    className="h-12 px-4 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white font-semibold text-sm transition disabled:opacity-50 flex items-center gap-2">
-                    <Icon name={disableMutation.isPending ? 'loader' : 'shieldOff'} className="w-4 h-4" />Confirmar
-                  </button>
                 </div>
               </div>
             )}
+
+            {showDis && (
+              <div className="border-t border-white/[0.06] pt-4 space-y-3">
+                <p className="text-sm text-white/70">
+                  Desactivar exige contraseña y código: con el móvil robado, el código solo no basta.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <GlassInput icon={<Icon name="key" />} type="password" value={disPwd}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisPwd(e.target.value)}
+                    placeholder="Contraseña actual" />
+                  <div className="flex gap-2">
+                    <div className="glass-input flex-1 rounded-xl h-11 flex items-center px-3.5">
+                      <input type="text" inputMode="numeric" maxLength={6} value={disCode}
+                        onChange={e => setDisCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        className="w-full bg-transparent outline-none text-center text-lg font-mono tracking-widest text-white placeholder:text-white/30" />
+                    </div>
+                    <button onClick={handleDisable}
+                      disabled={disCode.length !== 6 || !disPwd || disableMutation.isPending}
+                      className="mo-tab h-11 px-4 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white font-semibold text-sm disabled:opacity-50 flex items-center gap-2">
+                      <Icon name={disableMutation.isPending ? 'loader' : 'shieldOff'} className="w-4 h-4" />Confirmar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Los códigos en claro solo existen aquí: el servidor guarda sus hashes. */}
+        {backupCodes && (
+          <div className="glass-soft rounded-xl p-5 mt-4 space-y-4 border border-amber-400/25">
+            <div className="flex items-start gap-3">
+              <Icon name="alert" className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold">Guarda estos códigos ahora</div>
+                <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                  Es la única vez que se muestran. Cada uno sirve una sola vez y permite entrar
+                  si pierdes el acceso a la app autenticadora.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {backupCodes.map(c => (
+                <code key={c} className="text-center text-sm font-mono tracking-wider py-2 rounded-lg bg-black/30 border border-white/10 text-violet-200">
+                  {c}
+                </code>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => copyCodes(backupCodes)}
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+                <Icon name="copy" className="w-4 h-4" />Copiar
+              </button>
+              <button onClick={() => downloadCodes(backupCodes)}
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+                <Icon name="download" className="w-4 h-4" />Descargar
+              </button>
+              <button onClick={() => setBackupCodes(null)}
+                className="mo-tab ml-auto inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium">
+                <Icon name="check" className="w-4 h-4" />Ya los guardé
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -822,29 +971,61 @@ const SecurityPane = () => {
         <div className="flex items-center justify-between mb-4">
           <SectionTitle>Sesiones activas</SectionTitle>
           <button onClick={() => logout()}
-            className="text-xs text-rose-300 hover:text-rose-200 transition flex items-center gap-1.5">
+            className="mo-tab text-xs text-rose-300 hover:text-rose-200 flex items-center gap-1.5">
             <Icon name="shieldOff" className="w-3.5 h-3.5" />
-            Cerrar todas las sesiones
+            Cerrar sesión
           </button>
         </div>
+
         <div className="space-y-2.5">
-          <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-400/15 flex items-center justify-center text-emerald-300">
-              <Icon name="monitor" />
+          {sessionsLoading && (
+            <div className="glass-soft rounded-xl p-4 flex items-center gap-3 text-sm text-white/45">
+              <Icon name="loader" className="w-4 h-4" />Cargando sesiones…
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">{os} · {browser}</div>
-              <div className="text-xs text-white/55 mt-0.5">
-                StartCode Panel (escritorio) · {sessionStart ? timeAgo(sessionStart) : 'sesión activa'}
+          )}
+
+          {!sessionsLoading && sessions.map(session => {
+            const ua = parseUserAgent(session.userAgent ?? '');
+            return (
+              <div key={session.id} className="glass-soft rounded-xl p-4 flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center border
+                  ${session.current
+                    ? 'bg-emerald-500/10 border-emerald-400/15 text-emerald-300'
+                    : 'bg-white/[0.04] border-white/5 text-white/50'}`}>
+                  <Icon name="monitor" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{ua.os} · {ua.browser}</div>
+                  <div className="text-xs text-white/55 mt-0.5">
+                    {session.ip ? <span className="font-mono">{session.ip}</span> : 'IP desconocida'}
+                    {' · activa '}{timeAgo(session.lastUsed)}
+                  </div>
+                </div>
+                {session.current ? (
+                  <span className="text-xs px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20 font-medium shrink-0">
+                    Sesión actual
+                  </span>
+                ) : (
+                  <button onClick={() => revokeSession.mutate(session.id)}
+                    disabled={revokeSession.isPending}
+                    className="mo-tab text-xs px-3 h-9 rounded-xl text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 disabled:opacity-50">
+                    Revocar
+                  </button>
+                )}
               </div>
+            );
+          })}
+
+          {!sessionsLoading && sessions.length === 0 && (
+            <div className="glass-soft rounded-xl p-4 text-sm text-white/45">
+              No hay sesiones registradas.
             </div>
-            <span className="text-xs px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20 font-medium shrink-0">
-              Sesión actual
-            </span>
-          </div>
+          )}
         </div>
+
         <p className="text-xs text-white/35 mt-3">
-          Las sesiones se gestionan mediante tokens JWT. Cerrar todas las sesiones revoca el token actual.
+          Solo puede haber una sesión abierta por cuenta: al entrar desde otro equipo, el anterior
+          se cierra al instante. Cerrar sesión revoca sus tokens en el servidor, no solo en este equipo.
         </p>
       </div>
 

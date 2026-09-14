@@ -4,13 +4,20 @@ import { apiService } from '@services/api.service';
 import { TokenManager } from '@utils/tokenManager';
 import { API_CONFIG } from '@utils/constants';
 import { normalizeAuthResponse } from '@services/auth.adapter';
-import type { LoginCredentials, AuthResponse, TwoFactorPendingResponse } from '@typings/auth.types';
+import type {
+	LoginCredentials,
+	AuthResponse,
+	PasswordChangeRequiredResponse,
+	TwoFactorPendingResponse,
+} from '@typings/auth.types';
 
 export function useLoginMutation() {
 	return useMutation({
 		mutationFn: async (
 			credentials: LoginCredentials
-		): Promise<AuthResponse | TwoFactorPendingResponse> => {
+		): Promise<
+			AuthResponse | TwoFactorPendingResponse | PasswordChangeRequiredResponse
+		> => {
 			const response = await apiService.post<any>(
 				API_CONFIG.ENDPOINTS.LOGIN,
 				credentials
@@ -18,9 +25,18 @@ export function useLoginMutation() {
 
 			const backendData = response && response.data ? response.data : response;
 
-			// Detectar respuesta 2FA antes de intentar normalizar
+			/* Respuestas sin sesión: hay que devolverlas tal cual, porque
+			   normalizeAuthResponse exige `user` y lanzaría "Respuesta inválida
+			   del servidor en login". */
 			if (backendData?.requiresTwoFactor === true) {
 				return { requiresTwoFactor: true, tempToken: backendData.tempToken } as TwoFactorPendingResponse;
+			}
+
+			if (backendData?.requiresPasswordChange === true) {
+				return {
+					requiresPasswordChange: true,
+					tempToken: backendData.tempToken,
+				} as PasswordChangeRequiredResponse;
 			}
 
 			const normalized = normalizeAuthResponse(backendData);

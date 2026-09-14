@@ -285,24 +285,46 @@ export const Login = () => {
   const [twoFactorPending, set2FA] = useState(false);
   const [tempToken, setTempToken]  = useState('');
   const [code, setCode]            = useState(['', '', '', '', '', '']);
+  const [useBackup, setUseBackup]  = useState(false);
+  const [backupCode, setBackupCode] = useState('');
   const inputRefs                  = useRef<(HTMLInputElement | null)[]>([]);
 
-  const { login, complete2FALogin, isLoading } = useAuth();
+  /* Contraseña caducada: el backend no emite sesión hasta cambiarla. */
+  const [pwdChangePending, setPwdChangePending] = useState(false);
+  const [newPwd, setNewPwd]         = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+
+  const { login, complete2FALogin, completeExpiredPasswordChange, isLoading } = useAuth();
   const navigate = useNavigate();
+
+  /* El interceptor rechaza con un objeto plano (ApiError), no con Error, así que
+     `instanceof Error` nunca se cumplía y el mensaje del backend no se veía. */
+  const messageOf = (err: unknown, fallback: string): string => {
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      const msg = (err as { message?: unknown }).message;
+      if (typeof msg === 'string' && msg.trim()) return msg;
+    }
+    return fallback;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     try {
       const result = await login({ email, password });
-      if (result?.requiresTwoFactor) {
+      if (result && 'requiresTwoFactor' in result) {
         setTempToken(result.tempToken);
         set2FA(true);
         return;
       }
+      if (result && 'requiresPasswordChange' in result) {
+        setTempToken(result.tempToken);
+        setPwdChangePending(true);
+        return;
+      }
       navigate(ROUTES.DASHBOARD);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Credenciales incorrectas.');
+      setError(messageOf(err, 'Credenciales incorrectas.'));
     }
   };
 
@@ -326,15 +348,39 @@ export const Login = () => {
   const handleVerify2FA = async (e: React.FormEvent) => {
     e.preventDefault();
     const joined = code.join('');
-    if (joined.length < 6) return;
+    if (useBackup ? backupCode.trim().length < 8 : joined.length < 6) return;
     setError('');
     try {
-      await complete2FALogin(tempToken, joined);
+      const result = await complete2FALogin(
+        tempToken,
+        useBackup ? { backupCode: backupCode.trim() } : { code: joined },
+      );
+      /* Puede encadenar con la contraseña caducada. */
+      if (result && 'requiresPasswordChange' in result) {
+        setTempToken(result.tempToken);
+        set2FA(false);
+        setPwdChangePending(true);
+        return;
+      }
       navigate(ROUTES.DASHBOARD);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Código inválido o expirado.');
+      setError(messageOf(err, 'Código inválido o expirado.'));
       setCode(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+      setBackupCode('');
+      if (!useBackup) inputRefs.current[0]?.focus();
+    }
+  };
+
+  const handleExpiredPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (newPwd.length < 8) { setError('La nueva contraseña debe tener al menos 8 caracteres.'); return; }
+    if (newPwd !== confirmPwd) { setError('Las contraseñas no coinciden.'); return; }
+    try {
+      await completeExpiredPasswordChange(tempToken, password, newPwd);
+      navigate(ROUTES.DASHBOARD);
+    } catch (err: unknown) {
+      setError(messageOf(err, 'No se pudo cambiar la contraseña.'));
     }
   };
 
@@ -365,7 +411,65 @@ export const Login = () => {
               <span>{I.zap}</span> 0.1.0-rc
             </div>
 
-            {twoFactorPending ? (
+            {pwdChangePending ? (
+              /* ── Contraseña caducada ── */
+              <form onSubmit={handleExpiredPasswordChange} className="w-full max-w-[420px] mx-auto space-y-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="relative">
+                    <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                      {I.shieldCheck}
+                    </div>
+                  </div>
+                  <h1 className="mt-5 text-3xl font-extrabold tracking-tight">
+                    <span className="text-grad-brand">Contraseña caducada</span>
+                  </h1>
+                  <p className="text-sm text-white/55 mt-1">
+                    Por política de seguridad debes cambiarla antes de entrar.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs text-white/55 font-medium mb-1.5">Nueva contraseña</div>
+                    <input
+                      type="password"
+                      value={newPwd}
+                      onChange={e => setNewPwd(e.target.value)}
+                      placeholder="Mínimo 8 caracteres"
+                      autoFocus
+                      className="w-full h-12 px-4 glass-input rounded-xl text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs text-white/55 font-medium mb-1.5">Repite la nueva contraseña</div>
+                    <input
+                      type="password"
+                      value={confirmPwd}
+                      onChange={e => setConfirmPwd(e.target.value)}
+                      placeholder="Repite la contraseña"
+                      className="w-full h-12 px-4 glass-input rounded-xl text-sm text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm text-center border border-rose-400/20">{error}</div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !newPwd || !confirmPwd}
+                  className="w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  Cambiar y entrar
+                </button>
+
+                <p className="text-xs text-white/35 text-center">
+                  Al cambiarla se cerrará cualquier otra sesión abierta.
+                </p>
+              </form>
+            ) : twoFactorPending ? (
               /* ── 2FA step ── */
               <form onSubmit={handleVerify2FA} className="w-full max-w-[420px] mx-auto space-y-6">
                 <div className="flex flex-col items-center text-center">
@@ -381,6 +485,25 @@ export const Login = () => {
                   <p className="text-sm text-white/55 mt-1">Ingresa el código de tu app autenticadora</p>
                 </div>
 
+                {useBackup ? (
+                  <div>
+                    <div className="text-xs text-white/55 font-medium mb-3 text-center">
+                      Código de respaldo
+                    </div>
+                    <input
+                      type="text"
+                      value={backupCode}
+                      onChange={e => setBackupCode(e.target.value.toUpperCase())}
+                      placeholder="XXXX-XXXX"
+                      autoFocus
+                      autoCapitalize="characters"
+                      className="w-full h-14 text-center text-xl font-bold font-mono glass-input rounded-xl text-white outline-none tracking-[0.2em]"
+                    />
+                    <p className="text-xs text-white/35 mt-2 text-center">
+                      Cada código sirve una sola vez.
+                    </p>
+                  </div>
+                ) : (
                 <div>
                   <div className="text-xs text-white/55 font-medium mb-3 text-center">Código de 6 dígitos</div>
                   <div className="flex justify-center gap-2" onPaste={handleCodePaste}>
@@ -400,6 +523,22 @@ export const Login = () => {
                     ))}
                   </div>
                 </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseBackup(v => !v);
+                    setError('');
+                    setCode(['', '', '', '', '', '']);
+                    setBackupCode('');
+                  }}
+                  className="w-full text-center text-sm text-violet-300 hover:text-violet-200 transition"
+                >
+                  {useBackup
+                    ? 'Usar el código de la app'
+                    : '¿No tienes el móvil? Usa un código de respaldo'}
+                </button>
 
                 {error && (
                   <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm text-center border border-rose-400/20">{error}
@@ -408,7 +547,7 @@ export const Login = () => {
 
                 <button
                   type="submit"
-                  disabled={isLoading || code.join('').length < 6}
+                  disabled={isLoading || (useBackup ? backupCode.trim().length < 8 : code.join('').length < 6)}
                   className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] hover:shadow-[0_14px_36px_-8px_rgba(236,72,153,0.6)] transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }} />
@@ -422,7 +561,13 @@ export const Login = () => {
 
                 <button
                   type="button"
-                  onClick={() => { set2FA(false); setError(''); setCode(['', '', '', '', '', '']); }}
+                  onClick={() => {
+                    set2FA(false);
+                    setError('');
+                    setCode(['', '', '', '', '', '']);
+                    setUseBackup(false);
+                    setBackupCode('');
+                  }}
                   className="w-full flex items-center justify-center gap-1.5 text-sm text-white/45 hover:text-white/75 transition"
                 >
                   {I.arrowLeft} Volver al inicio de sesión

@@ -1,20 +1,54 @@
-import { Controller, Post, Patch, Body, Get, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  ParseUUIDPipe,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import type { ClientContext } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { AuthResponseDto, TwoFactorPendingDto } from './dto/auth-response.dto';
-import { TwoFactorCodeDto, TwoFactorVerifyLoginDto, TwoFactorSetupResponseDto } from './dto/two-factor.dto';
-import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
+import {
+  AuthResponseDto,
+  PasswordChangeRequiredDto,
+  TwoFactorPendingDto,
+} from './dto/auth-response.dto';
+import {
+  TwoFactorCodeDto,
+  TwoFactorCodeWithPasswordDto,
+  TwoFactorEnabledResponseDto,
+  TwoFactorVerifyLoginDto,
+  TwoFactorSetupResponseDto,
+} from './dto/two-factor.dto';
+import { UpdateProfileDto, ChangePasswordDto, ChangeExpiredPasswordDto } from './dto/update-profile.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /** Dispositivo que hace la petición: alimenta la lista de sesiones activas. */
+  private clientOf(req: { headers?: Record<string, unknown>; ip?: string }): ClientContext {
+    return {
+      userAgent: (req.headers?.['user-agent'] as string) ?? null,
+      ip: (req.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip ?? null,
+    };
+  }
+
   @Post('register')
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   @ApiOperation({ summary: 'Registrar un nuevo usuario' })
   @ApiResponse({ status: 201, description: 'Usuario registrado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -25,13 +59,18 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { ttl: 60_000, limit: 8 } })
   @ApiOperation({ summary: 'Iniciar sesión' })
   @ApiResponse({ status: 200, description: 'Tokens de acceso', type: AuthResponseDto })
   @ApiResponse({ status: 200, description: 'Requiere 2FA', type: TwoFactorPendingDto })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiBody({ type: LoginDto })
-  async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto | TwoFactorPendingDto> {
-    return this.authService.login(loginDto);
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Request() req,
+    @Body() loginDto: LoginDto,
+  ): Promise<AuthResponseDto | TwoFactorPendingDto | PasswordChangeRequiredDto> {
+    return this.authService.login(loginDto, this.clientOf(req));
   }
 
   @Post('2fa/setup')
@@ -48,11 +87,11 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activar 2FA — confirmar con código de la app' })
-  @ApiResponse({ status: 200, description: '2FA activado' })
+  @ApiResponse({ status: 200, description: '2FA activado', type: TwoFactorEnabledResponseDto })
   @ApiResponse({ status: 400, description: 'Setup no iniciado o ya activado' })
   @ApiResponse({ status: 401, description: 'Código inválido' })
   @ApiBody({ type: TwoFactorCodeDto })
-  async enable2FA(@Request() req, @Body() dto: TwoFactorCodeDto) {
+  async enable2FA(@Request() req, @Body() dto: TwoFactorCodeDto): Promise<TwoFactorEnabledResponseDto> {
     return this.authService.enable2FA(req.user.id, dto.code);
   }
 
@@ -60,23 +99,44 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Desactivar 2FA — confirmar con código de la app' })
+  @ApiOperation({ summary: 'Desactivar 2FA — exige contraseña y código' })
   @ApiResponse({ status: 200, description: '2FA desactivado' })
   @ApiResponse({ status: 400, description: '2FA no está activado' })
-  @ApiResponse({ status: 401, description: 'Código inválido' })
-  @ApiBody({ type: TwoFactorCodeDto })
-  async disable2FA(@Request() req, @Body() dto: TwoFactorCodeDto) {
-    return this.authService.disable2FA(req.user.id, dto.code);
+  @ApiResponse({ status: 401, description: 'Contraseña o código inválidos' })
+  @ApiBody({ type: TwoFactorCodeWithPasswordDto })
+  async disable2FA(@Request() req, @Body() dto: TwoFactorCodeWithPasswordDto) {
+    return this.authService.disable2FA(req.user.id, dto.code, dto.password);
+  }
+
+  @Post('2fa/backup-codes/regenerate')
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerar los códigos de respaldo — exige contraseña y código' })
+  @ApiResponse({ status: 200, description: 'Nuevos códigos de respaldo' })
+  @ApiBody({ type: TwoFactorCodeWithPasswordDto })
+  async regenerateBackupCodes(@Request() req, @Body() dto: TwoFactorCodeWithPasswordDto) {
+    return this.authService.regenerateBackupCodes(req.user.id, dto.code, dto.password);
   }
 
   @Post('2fa/verify-login')
+  @Throttle({ default: { ttl: 60_000, limit: 8 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Completar login con código 2FA' })
   @ApiResponse({ status: 200, description: 'Tokens de acceso', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Token temporal o código 2FA inválidos' })
   @ApiBody({ type: TwoFactorVerifyLoginDto })
-  async verify2FALogin(@Body() dto: TwoFactorVerifyLoginDto): Promise<AuthResponseDto> {
-    return this.authService.verifyLogin2FA(dto.tempToken, dto.code);
+  async verify2FALogin(
+    @Request() req,
+    @Body() dto: TwoFactorVerifyLoginDto,
+  ): Promise<AuthResponseDto | PasswordChangeRequiredDto> {
+    return this.authService.verifyLogin2FA(
+      dto.tempToken,
+      dto.code,
+      dto.backupCode,
+      this.clientOf(req),
+    );
   }
 
   @Get('profile')
@@ -107,7 +167,65 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Contraseña actualizada' })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
   async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(req.user.id, dto);
+    return this.authService.changePassword(req.user.id, dto, req.user.sessionId);
+  }
+
+  @Post('change-expired-password')
+  @Throttle({ default: { ttl: 60_000, limit: 8 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cambiar la contraseña caducada',
+    description:
+      'Sin sesión: usa el token temporal que devuelve el login cuando la contraseña superó los días configurados. Al terminar emite la sesión.',
+  })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  @ApiBody({ type: ChangeExpiredPasswordDto })
+  async changeExpiredPassword(
+    @Request() req,
+    @Body() dto: ChangeExpiredPasswordDto,
+  ): Promise<AuthResponseDto> {
+    return this.authService.changeExpiredPassword(dto.tempToken, dto, this.clientOf(req));
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cerrar la sesión actual — revoca sus tokens' })
+  @ApiResponse({ status: 200, description: 'Sesión cerrada' })
+  async logout(@Request() req): Promise<{ message: string }> {
+    if (req.user.sessionId) {
+      await this.authService.revokeSession(req.user.id, req.user.sessionId);
+    }
+    return { message: 'Sesión cerrada' };
+  }
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Sesiones activas del usuario' })
+  @ApiResponse({ status: 200, description: 'Lista de sesiones' })
+  async listSessions(@Request() req) {
+    return this.authService.listSessions(req.user.id, req.user.sessionId);
+  }
+
+  @Delete('sessions/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Revocar una sesión concreta' })
+  @ApiParam({ name: 'id', description: 'Id de la sesión' })
+  async revokeSession(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
+    await this.authService.revokeSession(req.user.id, id);
+    return { revoked: true };
+  }
+
+  @Delete('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Cerrar las demás sesiones, conservando la actual' })
+  async revokeOtherSessions(@Request() req) {
+    const revoked = await this.authService.revokeOtherSessions(req.user.id, req.user.sessionId);
+    return { revoked };
   }
 
   @Get('me')
@@ -139,6 +257,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar token de acceso' })
   @ApiResponse({ status: 200, description: 'Token renovado exitosamente' })
@@ -152,7 +271,10 @@ export class AuthController {
       required: ['refreshToken'],
     },
   })
-  async refresh(@Body('refreshToken') refreshToken: string): Promise<AuthResponseDto> {
-    return this.authService.refreshToken(refreshToken);
+  async refresh(
+    @Request() req,
+    @Body('refreshToken') refreshToken: string,
+  ): Promise<AuthResponseDto> {
+    return this.authService.refreshToken(refreshToken, this.clientOf(req));
   }
 }

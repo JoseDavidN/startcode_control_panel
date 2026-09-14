@@ -41,6 +41,9 @@ export class UserProfileDto extends UserResponseDto {
 
   @ApiProperty()
   lastname: string;
+
+  @ApiProperty({ description: 'Códigos de respaldo de 2FA sin usar', example: 10 })
+  backupCodesRemaining: number;
 }
 
 export class AuthResponseDto {
@@ -55,6 +58,12 @@ export class AuthResponseDto {
 
   @ApiProperty()
   expiresIn: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'true si se entró con un código de respaldo en lugar del TOTP',
+  })
+  usedBackupCode?: boolean;
 }
 
 export class TwoFactorPendingDto {
@@ -62,5 +71,14 @@ export class TwoFactorPendingDto {
   requiresTwoFactor: boolean;
 
   @ApiProperty({ description: 'Token temporal válido por 5 minutos' })
+  tempToken: string;
+}
+
+/** La contraseña superó los días de `preferences.security.passwordExpiration`. */
+export class PasswordChangeRequiredDto {
+  @ApiProperty({ example: true })
+  requiresPasswordChange: boolean;
+
+  @ApiProperty({ description: 'Token temporal que solo permite cambiar la contraseña' })
   tempToken: string;
 }

@@ -9,6 +9,8 @@ import { ServersModule } from './servers/servers.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { CacheModule } from './cache/cache.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -20,6 +22,10 @@ import { NotificationsModule } from './notifications/notifications.module';
 
     // Habilitar tareas programadas (cron jobs)
     ScheduleModule.forRoot(),
+
+    /* Límite global de peticiones. Los endpoints sensibles (login, 2FA,
+       refresh) lo estrechan con @Throttle en su propio controlador. */
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
 
     // Configuracion de TypeORM
     TypeOrmModule.forRootAsync({
@@ -46,6 +52,6 @@ import { NotificationsModule } from './notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -7,6 +7,7 @@ import { AgentMetricsHistory } from '../entities/agent-metrics-history.entity';
 import { Server } from '@servers/entities/server.entity';
 import { AgentGateway } from '../gateways/agent.gateway';
 import {
+  AccountOverviewDto,
   HistoricalMetricsDto,
   MetricPointDto,
   ServerSummaryDto,
@@ -50,21 +51,30 @@ export class AgentDataService {
     });
   }
 
+  /**
+   * Uso del disco "del servidor": el del montaje raíz, con el primer sistema de
+   * archivos como último recurso. Es estático a propósito para que el gateway lo
+   * use también y el mismo dato no salga distinto en dos sitios de la interfaz.
+   */
+  static rootDiskUsage(filesystems: unknown): number {
+    if (!Array.isArray(filesystems)) return 0;
+    const root =
+      filesystems.find(
+        (f: any) => f?.mount === '/' || f?.mountPoint === '/',
+      ) ?? filesystems[0];
+    return Number((root as any)?.usagePercent) || 0;
+  }
+
   async getDashboardSummary(serverId: string): Promise<ServerSummaryDto | null> {
     const m = await this.getLatestMetrics(serverId, DASHBOARD_PROJECTION);
     if (!m) return null;
-
-    const diskFs = m.disk_filesystems as any[];
-    const rootFs = Array.isArray(diskFs)
-      ? (diskFs.find((f) => f.mount === '/' || f.mountPoint === '/') ?? diskFs[0])
-      : null;
 
     return {
       serverId,
       timestamp: m.timestamp,
       cpu: Number(m.cpu_usage) || 0,
       memory: Number(m.memory_usage_percent) || 0,
-      disk: Number(rootFs?.usagePercent) || 0,
+      disk: AgentDataService.rootDiskUsage(m.disk_filesystems),
       connections: m.network_connections_active || 0,
     };
   }
@@ -73,42 +83,112 @@ export class AgentDataService {
    * Obtiene métricas históricas de un servidor en un rango de tiempo.
    * Consulta tbl_agent_metrics_history (serie temporal append-only).
    */
+  /** Puntos que devuelve una serie histórica, independientemente del rango. */
+  private static readonly HISTORY_BUCKETS = 120;
+
   async getHistoricalMetrics(
     serverId: string,
     startTime: Date,
     endTime: Date,
   ): Promise<HistoricalMetricsDto> {
-    const rows = await this.metricsHistoryRepository.find({
-      where: {
-        server_id: serverId,
-        timestamp: Between(startTime, endTime),
-      },
-      order: { timestamp: 'ASC' },
-      select: ['timestamp', 'cpu_usage', 'memory_usage_percent', 'disk_usage_percent'],
-    });
+    /* Se agrega en el servidor: el agente reporta cada pocos segundos, así que
+       24 h son decenas de miles de filas por serie. Con 120 cubos la gráfica
+       queda igual de legible y la respuesta cabe en unos pocos KB. */
+    const spanMs = Math.max(1, endTime.getTime() - startTime.getTime());
+    const bucketSeconds = Math.max(
+      1,
+      Math.round(spanMs / 1000 / AgentDataService.HISTORY_BUCKETS),
+    );
 
-    const cpuPoints: MetricPointDto[] = rows.map((r) => ({
-      timestamp: r.timestamp,
-      value: Number(r.cpu_usage) || 0,
-    }));
+    const rows = await this.metricsHistoryRepository
+      .createQueryBuilder('h')
+      .select(
+        `to_timestamp(floor(extract(epoch from h.timestamp) / :bucket) * :bucket)`,
+        'bucket',
+      )
+      .addSelect('AVG(h.cpu_usage)', 'cpu')
+      .addSelect('AVG(h.memory_usage_percent)', 'memory')
+      .addSelect('AVG(h.disk_usage_percent)', 'disk')
+      .addSelect('AVG(h.cpu_load_average_1m)', 'load')
+      .addSelect('AVG(h.network_connections_active)', 'connections')
+      .where('h.server_id = :serverId', { serverId })
+      .andWhere('h.timestamp BETWEEN :startTime AND :endTime', { startTime, endTime })
+      .setParameter('bucket', bucketSeconds)
+      .groupBy('bucket')
+      .orderBy('bucket', 'ASC')
+      .getRawMany<{
+        bucket: Date;
+        cpu: string | null;
+        memory: string | null;
+        disk: string | null;
+        load: string | null;
+        connections: string | null;
+      }>();
 
-    const memoryPoints: MetricPointDto[] = rows.map((r) => ({
-      timestamp: r.timestamp,
-      value: Number(r.memory_usage_percent) || 0,
-    }));
-
-    const diskPoints: MetricPointDto[] = rows.map((r) => ({
-      timestamp: r.timestamp,
-      value: Number(r.disk_usage_percent) || 0,
-    }));
+    const series = (key: 'cpu' | 'memory' | 'disk' | 'load' | 'connections'): MetricPointDto[] =>
+      rows.map((r) => ({
+        timestamp: r.bucket,
+        value: Math.round((Number(r[key]) || 0) * 100) / 100,
+      }));
 
     return {
       serverId,
-      cpu: cpuPoints,
-      memory: memoryPoints,
-      disk: diskPoints,
+      cpu: series('cpu'),
+      memory: series('memory'),
+      disk: series('disk'),
+      loadAverage: series('load'),
+      connections: series('connections'),
       startTime,
       endTime,
+    };
+  }
+
+  /**
+   * Agregado de toda la cuenta en una sola consulta. Sin esto, el dashboard
+   * tendría que pedir /latest por servidor, que devuelve el JSON completo con
+   * listas de procesos y servicios solo para sumar cuatro contadores.
+   */
+  async getAccountOverview(userId: string): Promise<AccountOverviewDto> {
+    const row = await this.metricsRepository
+      .createQueryBuilder('m')
+      .innerJoin('tbl_servers', 's', 's.id = m.server_id')
+      .where('s.str_owner_id = :userId', { userId })
+      .select('COUNT(m.server_id)', 'reporting')
+      .addSelect('COALESCE(SUM(m.services_count), 0)', 'services')
+      .addSelect('COALESCE(SUM(m.websites_count), 0)', 'websites')
+      .addSelect('COALESCE(SUM(m.databases_count), 0)', 'databases')
+      .addSelect('COALESCE(SUM(m.processes_total), 0)', 'processes')
+      .addSelect('AVG(m.cpu_usage)', 'avgCpu')
+      .addSelect('AVG(m.memory_usage_percent)', 'avgMemory')
+      .addSelect('MAX(m.timestamp)', 'lastReportAt')
+      .getRawOne<{
+        reporting: string;
+        services: string;
+        websites: string;
+        databases: string;
+        processes: string;
+        avgCpu: string | null;
+        avgMemory: string | null;
+        lastReportAt: Date | null;
+      }>();
+
+    const servers = await this.metricsRepository.manager
+      .getRepository('tbl_servers')
+      .count({ where: { ownerId: userId } as any });
+
+    const round = (v: string | null | undefined) =>
+      v === null || v === undefined ? 0 : Math.round(Number(v) * 10) / 10;
+
+    return {
+      servers,
+      reporting: Number(row?.reporting ?? 0),
+      services: Number(row?.services ?? 0),
+      websites: Number(row?.websites ?? 0),
+      databases: Number(row?.databases ?? 0),
+      processes: Number(row?.processes ?? 0),
+      avgCpu: round(row?.avgCpu),
+      avgMemory: round(row?.avgMemory),
+      lastReportAt: row?.lastReportAt ?? null,
     };
   }
 

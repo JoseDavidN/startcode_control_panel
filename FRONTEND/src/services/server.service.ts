@@ -12,6 +12,16 @@ interface CreateServerDto {
 	description?: string;
 }
 
+/** Campos que admite PATCH /servers/:id (el backend rechaza cualquier otro). */
+export interface UpdateServerDto {
+	name?: string;
+	host?: string;
+	port?: number;
+	username?: string;
+	os?: string;
+	description?: string;
+}
+
 // Interfaz que coincide con ServerResponseDto del backend
 export interface Server {
 	id: string;
@@ -24,6 +34,10 @@ export interface Server {
 	description?: string;
 	metadata?: any;
 	ownerId: string;
+	/** Última vez que el agente reportó; null si nunca lo hizo */
+	lastSeen?: string | null;
+	hostname?: string | null;
+	osVersion?: string | null;
 	createdAt: string;
 	updatedAt: string;
 	lastCheckAt: string;
@@ -68,6 +82,21 @@ class ServerService {
 		const item =
 			payload && (payload as any).data ? (payload as any).data : payload;
 		return item as Server;
+	}
+
+	/** Actualiza los datos editables del servidor (la llave tiene su propio endpoint). */
+	async updateServer(id: string, data: UpdateServerDto): Promise<Server> {
+		const response = await apiService.patch<Server>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`,
+			data
+		);
+		const payload =
+			response && (response as any).data
+				? (response as any).data
+				: response;
+		const updated =
+			payload && (payload as any).data ? (payload as any).data : payload;
+		return updated as Server;
 	}
 
 	async deleteServer(id: string): Promise<{ message: string }> {

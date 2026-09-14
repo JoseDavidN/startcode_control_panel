@@ -24,6 +24,11 @@ export class CorsIoAdapter extends IoAdapter {
     return super.createIOServer(port, {
       ...options,
       cors: { origin, credentials: true },
+      /* Los inventarios del agente son JSON repetitivo de decenas de KB; deflate
+         los deja en una fracción. El umbral evita gastar CPU en los mensajes
+         pequeños, que son la mayoría. */
+      perMessageDeflate: { threshold: 1024 },
+      httpCompression: { threshold: 1024 },
     });
   }
 }

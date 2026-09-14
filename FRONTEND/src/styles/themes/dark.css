@@ -7,8 +7,12 @@
    cambiar valores e importarlo en App.css (ver DESIGN.md).
    ══════════════════════════════════════════════════════════════════════ */
 
+/* `.theme-nocturno` ancla este juego de tokens a un subárbol concreto: el login
+   se ve igual sea cual sea el tema elegido en Aspecto. Funciona porque una
+   variable declarada en el propio elemento gana a la heredada del <html>. */
 :root,
-html[data-theme="dark"] {
+html[data-theme="dark"],
+.theme-nocturno {
   color-scheme: dark;
 
   /* Fondo */

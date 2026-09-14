@@ -25,6 +25,7 @@ import { ServersService } from '@servers/servers.service';
 import { ServiceControlService } from './services/service-control.service';
 import { ServiceActionDto } from './dto/service-action.dto';
 import {
+  AccountOverviewDto,
   HistoricalMetricsDto,
   ServerSummaryDto,
   SystemInfoResponseDto,
@@ -233,6 +234,17 @@ export class AgentDataController {
   /**
    * Obtiene estadísticas de almacenamiento
    */
+  @Get('overview')
+  @ApiOperation({
+    summary: 'Resumen agregado de la cuenta',
+    description:
+      'Totales de servicios, sitios, bases de datos y procesos de todos los servidores del usuario, con las medias de CPU y memoria y la fecha del último reporte.',
+  })
+  @ApiResponse({ status: 200, type: AccountOverviewDto })
+  async getOverview(@Request() req): Promise<AccountOverviewDto> {
+    return this.agentDataService.getAccountOverview(req.user.id);
+  }
+
   @Get('storage-stats')
   @ApiOperation({ summary: 'Obtener estadísticas de almacenamiento de métricas' })
   @ApiResponse({ status: 200, description: 'Estadísticas de almacenamiento' })

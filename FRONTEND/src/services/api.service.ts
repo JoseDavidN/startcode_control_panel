@@ -8,6 +8,20 @@ import { API_CONFIG } from '@utils/constants';
 import { TokenManager } from '@utils/tokenManager';
 import type { ApiError, ApiResponse } from '@typings/api.types';
 
+/** Endpoints cuyo 401 hay que devolver tal cual a quien llamó. */
+const AUTH_ENDPOINTS = [
+	'/auth/login',
+	'/auth/register',
+	'/auth/refresh',
+	'/auth/2fa/verify-login',
+	'/auth/change-expired-password',
+];
+
+function isAuthEndpoint(url?: string): boolean {
+	if (!url) return false;
+	return AUTH_ENDPOINTS.some((path) => url.includes(path));
+}
+
 class ApiService {
 	private api: AxiosInstance;
 	private isRefreshing = false;
@@ -54,8 +68,20 @@ class ApiService {
 						_retry?: boolean;
 					};
 
+				/* Un 401 de los endpoints de autenticación es una respuesta de
+				   negocio —credenciales incorrectas, cuenta bloqueada, código 2FA
+				   inválido—, no una sesión caducada. Al intentar refrescar aquí se
+				   borraban los tokens y el usuario veía "No refresh token
+				   available" en lugar del mensaje real del servidor; ahora cae
+				   directo al reject del final, que conserva ese mensaje. */
+				const isBusinessAuthError = isAuthEndpoint(originalRequest?.url);
+
 				// Si el error es 401 y no es un retry
-				if (error.response?.status === 401 && !originalRequest._retry) {
+				if (
+					error.response?.status === 401 &&
+					!originalRequest._retry &&
+					!isBusinessAuthError
+				) {
 					if (this.isRefreshing) {
 						// Si ya se está refrescando, poner en cola
 						return new Promise((resolve, reject) => {

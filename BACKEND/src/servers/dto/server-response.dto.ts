@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ServerStatus, ServerOs } from '../entities/server.entity';
 import { Exclude, Expose } from 'class-transformer';
 
@@ -45,6 +45,22 @@ export class ServerResponseDto {
   ownerId: string;
 
   @Expose()
+  /* El DTO es @Exclude() por defecto: sin @Expose() estos campos no salen. */
+  @Expose()
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Última vez que el agente reportó; null si nunca lo hizo',
+  })
+  lastSeen: Date | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, example: 'devstar' })
+  hostname: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, example: 'Ubuntu 24.04.3 LTS' })
+  osVersion: string | null;
+
   @ApiProperty()
   createdAt: Date;
 

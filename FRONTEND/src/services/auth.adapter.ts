@@ -73,6 +73,7 @@ export function normalizeUser(user: any): User {
 		roles: user.roles || (role ? [role] : []),
 		isActive,
 		twoFactorEnabled: user.twoFactorEnabled ?? user.bol_two_factor_enabled ?? false,
+		backupCodesRemaining: user.backupCodesRemaining ?? 0,
 		lastLogin: user.lastLogin ?? null,
 		passwordChangedAt: user.passwordChangedAt ?? null,
 		createdAt: user.createdAt,

@@ -12,6 +12,8 @@ export interface User {
 	isActive: boolean;
 	avatar?: string;
 	twoFactorEnabled?: boolean;
+	/** Códigos de respaldo de 2FA sin usar. */
+	backupCodesRemaining?: number;
 	lastLogin?: Date | string | null;
 	passwordChangedAt?: Date | string | null;
 	createdAt?: Date;
@@ -74,18 +76,50 @@ export interface TwoFactorPendingResponse {
 	tempToken: string;
 }
 
+/** La contraseña caducó: no hay sesión hasta cambiarla. */
+export interface PasswordChangeRequiredResponse {
+	requiresPasswordChange: true;
+	tempToken: string;
+}
+
 export interface TwoFactorSetupResponse {
 	secret: string;
 	otpAuthUrl: string;
 	qrCodeDataUrl: string;
 }
 
+/** Al activar el 2FA, los códigos de respaldo se ven una única vez. */
+export interface TwoFactorEnabledResponse {
+	message: string;
+	backupCodes: string[];
+}
+
+/** Sesión abierta del usuario. Solo puede haber una a la vez. */
+export interface UserSession {
+	id: string;
+	userAgent: string | null;
+	ip: string | null;
+	lastUsed: string;
+	createdAt: string;
+	current: boolean;
+}
+
 export interface AuthContextType {
 	user: User | null;
 	isAuthenticated: boolean;
 	isLoading: boolean;
-	login: (credentials: LoginCredentials) => Promise<TwoFactorPendingResponse | void>;
-	complete2FALogin: (tempToken: string, code: string) => Promise<void>;
+	login: (
+		credentials: LoginCredentials,
+	) => Promise<TwoFactorPendingResponse | PasswordChangeRequiredResponse | void>;
+	complete2FALogin: (
+		tempToken: string,
+		payload: { code?: string; backupCode?: string },
+	) => Promise<PasswordChangeRequiredResponse | void>;
+	completeExpiredPasswordChange: (
+		tempToken: string,
+		currentPassword: string,
+		newPassword: string,
+	) => Promise<void>;
 	logout: () => Promise<void>;
 	refreshAuth: () => Promise<void>;
 	hasPermission: (permission: Permission) => boolean;

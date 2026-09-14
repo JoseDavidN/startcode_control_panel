@@ -7,14 +7,21 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
 import { User } from './entities/user.entity';
+import { Session } from './entities/session.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { AuthResponseDto, TwoFactorPendingDto, UserProfileDto } from './dto/auth-response.dto';
+import {
+  AuthResponseDto,
+  PasswordChangeRequiredDto,
+  TwoFactorPendingDto,
+  UserProfileDto,
+} from './dto/auth-response.dto';
 import { TwoFactorSetupResponseDto } from './dto/two-factor.dto';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
@@ -22,15 +29,44 @@ import { mergePreferences } from './types/user-preferences.type';
 import type { UserPreferences } from './types/user-preferences.type';
 import { ConfigService } from '@nestjs/config';
 
+/** Contexto del dispositivo que inicia sesión, para la lista de sesiones. */
+export interface ClientContext {
+  userAgent?: string | null;
+  ip?: string | null;
+}
+
+/** Campos mínimos para operar con el usuario en los flujos de login. */
+const LOGIN_FIELDS = [
+  'id', 'email', 'firstname', 'lastname', 'password', 'role', 'isActive',
+  'twoFactorEnabled', 'twoFactorSecret', 'twoFactorLastStep', 'twoFactorBackupCodes',
+  'failedLoginAttempts', 'lockedUntil', 'lastLogin', 'passwordChangedAt',
+  'preferences', 'createdAt',
+] as const;
+
 @Injectable()
 export class AuthService {
   // Factor de costo para bcrypt (12 es el recomendado por OWASP)
   // Cada incremento duplica el tiempo de cómputo: 10=~100ms, 12=~400ms, 14=~1.6s
   private readonly BCRYPT_SALT_ROUNDS = 12;
 
+  /** TOTP: ±1 step (±30 s) de tolerancia de reloj. Sin esto, un desfase mínimo
+      hace fallar códigos correctos. */
+  private readonly TOTP_WINDOW = 1;
+
+  /** Bloqueo temporal de la cuenta tras fallos consecutivos. */
+  private readonly MAX_FAILED_ATTEMPTS = 5;
+  private readonly LOCK_MINUTES = 15;
+
+  private readonly BACKUP_CODE_COUNT = 10;
+
+  /** jti de tokens temporales ya consumidos: un tempToken vale una sola vez. */
+  private readonly usedTempTokens = new Map<string, number>();
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(Session)
+    private sessionsRepository: Repository<Session>,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
@@ -56,32 +92,25 @@ export class AuthService {
       lastname: lastname,
       email: email,
       password: hashedPassword,
+      /* Ancla de la política de caducidad: sin esto habría que deducirla de
+         createdAt y la cuenta nacería con la cuenta atrás ya corriendo. */
+      passwordChangedAt: new Date(),
     });
 
     await this.usersRepository.save(user);
 
-    return this.buildAuthResponse(user);
+    return this.buildAuthResponse(user, {});
   }
 
-  async login(loginDto: LoginDto): Promise<AuthResponseDto | TwoFactorPendingDto> {
+  async login(
+    loginDto: LoginDto,
+    client: ClientContext = {},
+  ): Promise<AuthResponseDto | TwoFactorPendingDto | PasswordChangeRequiredDto> {
     const { email, password } = loginDto;
 
     const user = await this.usersRepository.findOne({
       where: { email },
-      select: [
-        'id',
-        'email',
-        'firstname',
-        'lastname',
-        'password',
-        'role',
-        'isActive',
-        'twoFactorEnabled',
-        'lastLogin',
-        'passwordChangedAt',
-        'preferences',
-        'createdAt',
-      ],
+      select: [...LOGIN_FIELDS],
     });
 
     if (!user) {
@@ -92,54 +121,90 @@ export class AuthService {
       throw new UnauthorizedException('Usuario inactivo');
     }
 
+    this.assertNotLocked(user);
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
+      await this.registerFailedAttempt(user);
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    await this.usersRepository.update(user.id, { lastLogin: new Date() });
+    await this.clearFailedAttempts(user);
 
+    /* El segundo factor va antes que cualquier otra cosa: ni lastLogin ni la
+       política de contraseña deben resolverse con la identidad a medio probar. */
     if (user.twoFactorEnabled) {
       return {
         requiresTwoFactor: true,
-        tempToken: this.generateTempToken(user),
+        tempToken: this.generateTempToken(user, '2fa-pending'),
       };
     }
 
-    return this.buildAuthResponse(user);
+    if (this.isPasswordExpired(user)) {
+      return {
+        requiresPasswordChange: true,
+        tempToken: this.generateTempToken(user, 'password-expired'),
+      };
+    }
+
+    return this.buildAuthResponse(user, client);
   }
 
-  async verifyLogin2FA(tempToken: string, code: string): Promise<AuthResponseDto> {
-    let payload: { sub: string; type: string };
-
-    try {
-      payload = this.jwtService.verify(tempToken, {
-        secret: this.configService.get('JWT_SECRET'),
-      });
-    } catch {
-      throw new UnauthorizedException('Token temporal inválido o expirado');
-    }
-
-    if (payload.type !== '2fa-pending') {
-      throw new UnauthorizedException('Token temporal inválido');
-    }
+  /** Segundo factor del login: código TOTP o, si no hay app a mano, un código de respaldo. */
+  async verifyLogin2FA(
+    tempToken: string,
+    code: string | undefined,
+    backupCode: string | undefined,
+    client: ClientContext = {},
+  ): Promise<AuthResponseDto | PasswordChangeRequiredDto> {
+    const payload = this.verifyTempToken(tempToken, '2fa-pending') as {
+      sub: string;
+      jti: string;
+      exp: number;
+    };
 
     const user = await this.usersRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'firstname', 'lastname', 'role', 'isActive', 'twoFactorEnabled',
-        'twoFactorSecret', 'lastLogin', 'passwordChangedAt', 'preferences', 'createdAt'],
+      select: [...LOGIN_FIELDS],
     });
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario no autorizado');
     }
 
-    if (!user.twoFactorSecret || !speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: code })) {
-      throw new UnauthorizedException('Código 2FA inválido');
+    this.assertNotLocked(user);
+
+    let usedBackupCode = false;
+
+    if (backupCode) {
+      usedBackupCode = await this.consumeBackupCode(user, backupCode);
+      if (!usedBackupCode) {
+        await this.registerFailedAttempt(user);
+        throw new UnauthorizedException('Código de respaldo inválido');
+      }
+    } else {
+      if (!code) throw new BadRequestException('Falta el código de verificación');
+      const ok = await this.verifyTotp(user, code);
+      if (!ok) {
+        await this.registerFailedAttempt(user);
+        throw new UnauthorizedException('Código 2FA inválido');
+      }
     }
 
-    return this.buildAuthResponse(user);
+    await this.clearFailedAttempts(user);
+
+    this.markTempTokenUsed(payload.jti, payload.exp);
+
+    if (this.isPasswordExpired(user)) {
+      return {
+        requiresPasswordChange: true,
+        tempToken: this.generateTempToken(user, 'password-expired'),
+      };
+    }
+
+    const response = await this.buildAuthResponse(user, client);
+    return usedBackupCode ? { ...response, usedBackupCode: true } : response;
   }
 
   async setup2FA(userId: string): Promise<TwoFactorSetupResponseDto> {
@@ -169,10 +234,13 @@ export class AuthService {
     return { secret, otpAuthUrl, qrCodeDataUrl };
   }
 
-  async enable2FA(userId: string, code: string): Promise<{ message: string }> {
+  async enable2FA(
+    userId: string,
+    code: string,
+  ): Promise<{ message: string; backupCodes: string[] }> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      select: ['id', 'twoFactorEnabled', 'twoFactorSecret'],
+      select: ['id', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorLastStep'],
     });
 
     if (!user) {
@@ -187,19 +255,29 @@ export class AuthService {
       throw new BadRequestException('Primero ejecuta el setup de 2FA');
     }
 
-    if (!speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: code })) {
+    if (!(await this.verifyTotp(user, code))) {
       throw new UnauthorizedException('Código 2FA inválido');
     }
 
-    await this.usersRepository.update(userId, { twoFactorEnabled: true });
+    const { codes, hashes } = await this.generateBackupCodes();
 
-    return { message: '2FA activado correctamente' };
+    await this.usersRepository.update(userId, {
+      twoFactorEnabled: true,
+      twoFactorBackupCodes: hashes,
+      backupCodesGeneratedAt: new Date(),
+    });
+
+    /* Los códigos en claro se devuelven aquí y no vuelven a existir: en BD solo
+       quedan sus hashes. */
+    return { message: '2FA activado correctamente', backupCodes: codes };
   }
 
-  async disable2FA(userId: string, code: string): Promise<{ message: string }> {
+  /** Desactivar exige contraseña Y código: con solo el código, un móvil robado basta. */
+  async disable2FA(userId: string, code: string, password: string): Promise<{ message: string }> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      select: ['id', 'twoFactorEnabled', 'twoFactorSecret'],
+      select: ['id', 'password', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorLastStep',
+        'twoFactorBackupCodes', 'failedLoginAttempts', 'lockedUntil'],
     });
 
     if (!user) {
@@ -210,28 +288,254 @@ export class AuthService {
       throw new BadRequestException('El 2FA no está activado');
     }
 
-    if (!user.twoFactorSecret || !speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: code })) {
+    this.assertNotLocked(user);
+
+    if (!(await bcrypt.compare(password, user.password))) {
+      await this.registerFailedAttempt(user);
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+
+    if (!(await this.verifyTotp(user, code))) {
+      await this.registerFailedAttempt(user);
       throw new UnauthorizedException('Código 2FA inválido');
     }
 
+    await this.clearFailedAttempts(user);
     await this.usersRepository.update(userId, {
       twoFactorEnabled: false,
       twoFactorSecret: null,
+      twoFactorLastStep: null,
+      twoFactorBackupCodes: null,
+      backupCodesGeneratedAt: null,
     });
 
     return { message: '2FA desactivado correctamente' };
   }
 
-  private generateTempToken(user: User): string {
+  /** Reemplaza el juego completo de códigos de respaldo. */
+  async regenerateBackupCodes(
+    userId: string,
+    code: string,
+    password: string,
+  ): Promise<{ backupCodes: string[] }> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'password', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorLastStep',
+        'failedLoginAttempts', 'lockedUntil'],
+    });
+
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user.twoFactorEnabled) throw new BadRequestException('El 2FA no está activado');
+
+    this.assertNotLocked(user);
+
+    if (!(await bcrypt.compare(password, user.password))) {
+      await this.registerFailedAttempt(user);
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+
+    if (!(await this.verifyTotp(user, code))) {
+      await this.registerFailedAttempt(user);
+      throw new UnauthorizedException('Código 2FA inválido');
+    }
+
+    await this.clearFailedAttempts(user);
+    const { codes, hashes } = await this.generateBackupCodes();
+    await this.usersRepository.update(userId, {
+      twoFactorBackupCodes: hashes,
+      backupCodesGeneratedAt: new Date(),
+    });
+
+    return { backupCodes: codes };
+  }
+
+  /* ── Segundo factor ───────────────────────────────────────────────── */
+
+  /** Verifica un TOTP con tolerancia de reloj y sin permitir reutilizar el mismo step. */
+  private async verifyTotp(user: User, token: string): Promise<boolean> {
+    if (!user.twoFactorSecret) return false;
+
+    const delta = speakeasy.totp.verifyDelta({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: this.TOTP_WINDOW,
+    });
+
+    if (!delta) return false;
+
+    const step = Math.floor(Date.now() / 1000 / 30) + delta.delta;
+    const lastStep = user.twoFactorLastStep ? Number(user.twoFactorLastStep) : null;
+
+    /* Anti-replay: un código vale una sola vez aunque su ventana siga abierta. */
+    if (lastStep !== null && step <= lastStep) return false;
+
+    await this.usersRepository.update(user.id, { twoFactorLastStep: String(step) });
+    user.twoFactorLastStep = String(step);
+    return true;
+  }
+
+  /** 10 códigos `XXXX-XXXX` sin caracteres ambiguos; en BD solo viajan los hashes. */
+  private async generateBackupCodes(): Promise<{ codes: string[]; hashes: string[] }> {
+    const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const codes: string[] = [];
+
+    for (let i = 0; i < this.BACKUP_CODE_COUNT; i++) {
+      const raw = Array.from(crypto.randomBytes(8))
+        .map((b) => ALPHABET[b % ALPHABET.length])
+        .join('');
+      codes.push(`${raw.slice(0, 4)}-${raw.slice(4)}`);
+    }
+
+    const hashes = await Promise.all(
+      codes.map((c) => bcrypt.hash(this.normalizeBackupCode(c), this.BCRYPT_SALT_ROUNDS)),
+    );
+
+    return { codes, hashes };
+  }
+
+  private normalizeBackupCode(code: string): string {
+    return code.replace(/[\s-]/g, '').toUpperCase();
+  }
+
+  /** Consume un código de respaldo: si acierta, ese hash desaparece. */
+  private async consumeBackupCode(user: User, code: string): Promise<boolean> {
+    const hashes = user.twoFactorBackupCodes ?? [];
+    if (!hashes.length) return false;
+
+    const candidate = this.normalizeBackupCode(code);
+
+    for (const hash of hashes) {
+      if (await bcrypt.compare(candidate, hash)) {
+        const remaining = hashes.filter((h) => h !== hash);
+        await this.usersRepository.update(user.id, { twoFactorBackupCodes: remaining });
+        user.twoFactorBackupCodes = remaining;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /* ── Bloqueo por intentos ──────────────────────────────────────────── */
+
+  private assertNotLocked(user: User): void {
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(
+        `Cuenta bloqueada temporalmente. Inténtalo de nuevo en ${minutes} min.`,
+      );
+    }
+  }
+
+  private async registerFailedAttempt(user: User): Promise<void> {
+    const attempts = (user.failedLoginAttempts ?? 0) + 1;
+    const lockedUntil =
+      attempts >= this.MAX_FAILED_ATTEMPTS
+        ? new Date(Date.now() + this.LOCK_MINUTES * 60_000)
+        : null;
+
+    await this.usersRepository.update(user.id, {
+      failedLoginAttempts: lockedUntil ? 0 : attempts,
+      lockedUntil,
+    });
+  }
+
+  private async clearFailedAttempts(user: User): Promise<void> {
+    if (!user.failedLoginAttempts && !user.lockedUntil) return;
+    await this.usersRepository.update(user.id, { failedLoginAttempts: 0, lockedUntil: null });
+  }
+
+  /* ── Tokens temporales ─────────────────────────────────────────────── */
+
+  private generateTempToken(user: User, type: '2fa-pending' | 'password-expired'): string {
     return this.jwtService.sign(
-      { sub: user.id, type: '2fa-pending' },
+      { sub: user.id, type, jti: crypto.randomUUID() },
       { expiresIn: '5m' },
     );
   }
 
-  private buildAuthResponse(user: User): AuthResponseDto {
-    const token = this.generateToken(user);
-    const refreshToken = this.generateRefreshToken(user);
+  /**
+   * Verifica un token temporal y su propósito. NO lo marca como usado: un código
+   * mal tecleado no debe obligar a repetir el login entero. El uso se marca al
+   * completar la operación (`markTempTokenUsed`), y los intentos los limitan el
+   * throttler y el bloqueo por fallos.
+   */
+  private verifyTempToken(
+    token: string,
+    expected: '2fa-pending' | 'password-expired',
+  ): { sub: string; jti: string } {
+    let payload: { sub: string; type: string; jti: string; exp: number };
+
+    try {
+      payload = this.jwtService.verify(token, {
+        secret: this.configService.get('JWT_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Token temporal inválido o expirado');
+    }
+
+    if (payload.type !== expected) {
+      throw new UnauthorizedException('Token temporal inválido');
+    }
+
+    this.purgeUsedTempTokens();
+    if (payload.jti && this.usedTempTokens.has(payload.jti)) {
+      throw new UnauthorizedException('Token temporal ya utilizado');
+    }
+
+    return { sub: payload.sub, jti: payload.jti, exp: payload.exp } as {
+      sub: string;
+      jti: string;
+      exp: number;
+    };
+  }
+
+  /** Marca el token temporal como gastado: vale para una sola sesión emitida. */
+  private markTempTokenUsed(jti: string | undefined, exp?: number): void {
+    if (!jti) return;
+    this.usedTempTokens.set(jti, (exp ?? Math.floor(Date.now() / 1000) + 300) * 1000);
+  }
+
+  private purgeUsedTempTokens(): void {
+    const now = Date.now();
+    for (const [jti, exp] of this.usedTempTokens.entries()) {
+      if (exp < now) this.usedTempTokens.delete(jti);
+    }
+  }
+
+  /**
+   * Emite una sesión nueva: fila en tbl_sessions + tokens sellados con su `sid`.
+   *
+   * Sesión única por usuario: entrar desde otro dispositivo revoca la anterior,
+   * así que el equipo desplazado recibe 401 en su siguiente petición y vuelve
+   * al login.
+   */
+  private async buildAuthResponse(user: User, client: ClientContext): Promise<AuthResponseDto> {
+    await this.revokeOtherSessions(user.id);
+
+    const session = await this.sessionsRepository.save(
+      this.sessionsRepository.create({
+        userId: user.id,
+        refreshHash: 'pending',
+        userAgent: client.userAgent ?? null,
+        ip: client.ip ?? null,
+        lastUsed: new Date(),
+        expiresAt: new Date(Date.now() + this.refreshTtlMs()),
+        revoked: false,
+      }),
+    );
+
+    const token = this.generateToken(user, session.id);
+    const refreshToken = this.generateRefreshToken(user, session.id);
+    await this.sessionsRepository.update(session.id, {
+      refreshHash: this.hashToken(refreshToken),
+    });
+
+    const now = new Date();
+    await this.usersRepository.update(user.id, { lastLogin: now });
+    user.lastLogin = now;
+
     const expiresIn = this.configService.get('JWT_EXPIRES_IN', '30m');
 
     return {
@@ -276,6 +580,7 @@ export class AuthService {
       role: user.role,
       isActive: user.isActive,
       twoFactorEnabled: user.twoFactorEnabled,
+      backupCodesRemaining: user.twoFactorBackupCodes?.length ?? 0,
       lastLogin: user.lastLogin,
       passwordChangedAt: user.passwordChangedAt,
       createdAt: user.createdAt,
@@ -341,7 +646,11 @@ export class AuthService {
     };
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+    currentSid?: string,
+  ): Promise<{ message: string }> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
       select: ['id', 'password'],
@@ -354,7 +663,70 @@ export class AuthService {
     const hashed = await bcrypt.hash(dto.newPassword, this.BCRYPT_SALT_ROUNDS);
     await this.usersRepository.update(userId, { password: hashed, passwordChangedAt: new Date() });
 
+    /* Cambiar la contraseña expulsa al resto de dispositivos. */
+    await this.revokeOtherSessions(userId, currentSid);
+
     return { message: 'Contraseña actualizada correctamente' };
+  }
+
+  /**
+   * Cambio de contraseña con el token temporal que emite el login cuando la
+   * contraseña caducó: no hay sesión todavía, así que al terminar se emite.
+   */
+  async changeExpiredPassword(
+    tempToken: string,
+    dto: ChangePasswordDto,
+    client: ClientContext = {},
+  ): Promise<AuthResponseDto> {
+    const payload = this.verifyTempToken(tempToken, 'password-expired') as {
+      sub: string;
+      jti: string;
+      exp: number;
+    };
+
+    const user = await this.usersRepository.findOne({
+      where: { id: payload.sub },
+      select: [...LOGIN_FIELDS],
+    });
+    if (!user || !user.isActive) throw new UnauthorizedException('Usuario no autorizado');
+
+    this.assertNotLocked(user);
+
+    if (!(await bcrypt.compare(dto.currentPassword, user.password))) {
+      await this.registerFailedAttempt(user);
+      throw new UnauthorizedException('Contraseña actual incorrecta');
+    }
+
+    if (await bcrypt.compare(dto.newPassword, user.password)) {
+      throw new BadRequestException('La nueva contraseña debe ser distinta de la anterior');
+    }
+
+    const hashed = await bcrypt.hash(dto.newPassword, this.BCRYPT_SALT_ROUNDS);
+    const now = new Date();
+    await this.usersRepository.update(user.id, { password: hashed, passwordChangedAt: now });
+    await this.revokeOtherSessions(user.id);
+    await this.clearFailedAttempts(user);
+
+    this.markTempTokenUsed(payload.jti, payload.exp);
+    user.passwordChangedAt = now;
+    return this.buildAuthResponse(user, client);
+  }
+
+  /** ¿La contraseña superó los días configurados en las preferencias del usuario? */
+  private isPasswordExpired(user: User): boolean {
+    const days = mergePreferences(user.preferences, {}).security.passwordExpiration;
+    if (!days || days <= 0) return false;
+
+    const changed = user.passwordChangedAt ?? user.createdAt;
+    if (!changed) return false;
+
+    const age = (Date.now() - new Date(changed).getTime()) / 86_400_000;
+    return age >= days;
+  }
+
+  /** Minutos de inactividad permitidos según las preferencias del usuario. */
+  sessionTimeoutMinutes(user: User): number {
+    return mergePreferences(user.preferences, {}).security.sessionTimeout;
   }
 
   async validateUser(userId: string): Promise<User> {
@@ -369,33 +741,136 @@ export class AuthService {
     return user;
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthResponseDto> {
+  /**
+   * Renueva la sesión. Comprueba el tipo del token (sin esto, el tempToken de
+   * 2FA pendiente servía para obtener credenciales completas sin el código),
+   * que la sesión siga viva, y **rota** el refresh token.
+   */
+  async refreshToken(refreshToken: string, client: ClientContext = {}): Promise<AuthResponseDto> {
+    let payload: { sub: string; type?: string; sid?: string };
+
     try {
-      // Verificar el refresh token
-      const payload = this.jwtService.verify(refreshToken, {
+      payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get('JWT_SECRET'),
       });
-
-      // Buscar el usuario
-      const user = await this.usersRepository.findOne({
-        where: { id: payload.sub },
-      });
-
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('Usuario no autorizado');
-      }
-
-      return this.buildAuthResponse(user);
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Token de actualización inválido o expirado');
     }
+
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Token de actualización inválido');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id: payload.sub } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Usuario no autorizado');
+    }
+
+    if (!payload.sid) {
+      throw new UnauthorizedException('Token de actualización inválido');
+    }
+
+    const session = await this.sessionsRepository.findOne({ where: { id: payload.sid } });
+    if (
+      !session ||
+      session.revoked ||
+      session.userId !== user.id ||
+      session.expiresAt.getTime() < Date.now() ||
+      session.refreshHash !== this.hashToken(refreshToken)
+    ) {
+      throw new UnauthorizedException('Sesión no válida o revocada');
+    }
+
+    const rotated = this.generateRefreshToken(user, session.id);
+    await this.sessionsRepository.update(session.id, {
+      refreshHash: this.hashToken(rotated),
+      lastUsed: new Date(),
+      expiresAt: new Date(Date.now() + this.refreshTtlMs()),
+      userAgent: client.userAgent ?? session.userAgent,
+      ip: client.ip ?? session.ip,
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: `${user.firstname} ${user.lastname}`,
+        role: user.role,
+        isActive: user.isActive,
+        twoFactorEnabled: user.twoFactorEnabled,
+        lastLogin: user.lastLogin,
+        passwordChangedAt: user.passwordChangedAt,
+        createdAt: user.createdAt,
+        preferences: user.preferences ?? null,
+      },
+      token: this.generateToken(user, session.id),
+      refreshToken: rotated,
+      expiresIn: this.configService.get('JWT_EXPIRES_IN', '30m'),
+    };
   }
 
-  private generateToken(user: User): string {
+  /* ── Sesiones ──────────────────────────────────────────────────────── */
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private refreshTtlMs(): number {
+    const raw = this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d') as string;
+    const match = /^(\d+)([smhd])$/.exec(raw.trim());
+    if (!match) return 7 * 24 * 60 * 60 * 1000;
+    const value = Number(match[1]);
+    const unit = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!;
+    return value * unit;
+  }
+
+  async listSessions(userId: string, currentSid?: string) {
+    const sessions = await this.sessionsRepository.find({
+      where: { userId, revoked: false },
+      order: { lastUsed: 'DESC' },
+    });
+
+    return sessions
+      .filter((s) => s.expiresAt.getTime() > Date.now())
+      .map((s) => ({
+        id: s.id,
+        userAgent: s.userAgent,
+        ip: s.ip,
+        lastUsed: s.lastUsed,
+        createdAt: s.createdAt,
+        current: s.id === currentSid,
+      }));
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const session = await this.sessionsRepository.findOne({ where: { id: sessionId, userId } });
+    if (!session) throw new NotFoundException('Sesión no encontrada');
+    await this.sessionsRepository.update(session.id, { revoked: true });
+  }
+
+  /** Cierra las demás sesiones del usuario (o todas si no se pasa `keepSid`). */
+  async revokeOtherSessions(userId: string, keepSid?: string): Promise<number> {
+    const res = await this.sessionsRepository.update(
+      keepSid ? { userId, revoked: false, id: Not(keepSid) } : { userId, revoked: false },
+      { revoked: true },
+    );
+    return res.affected ?? 0;
+  }
+
+  /** Limpieza de filas caducadas; la llama el cron de estado de servidores. */
+  async purgeExpiredSessions(): Promise<void> {
+    await this.sessionsRepository.delete({ expiresAt: LessThan(new Date()) });
+  }
+
+  private generateToken(user: User, sid: string): string {
+    /* `type: 'access'` es lo que permite a JwtStrategy rechazar tokens de otro
+       propósito (2FA pendiente, refresh, agente) como credencial de acceso. */
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      type: 'access',
+      sid,
     };
 
     return this.jwtService.sign(payload);
@@ -411,11 +886,16 @@ export class AuthService {
     return this.jwtService.sign(payload, { expiresIn });
   }
 
-  private generateRefreshToken(user: User): string {
+  private generateRefreshToken(user: User, sid: string): string {
+    /* `jti` garantiza que cada rotación produzca un token distinto: sin él, dos
+       firmas dentro del mismo segundo dan la misma cadena y el token anterior
+       seguiría siendo válido. */
     const payload = {
       sub: user.id,
       email: user.email,
       type: 'refresh',
+      sid,
+      jti: crypto.randomUUID(),
     };
 
     const expiresIn = this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d');

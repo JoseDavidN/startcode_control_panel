@@ -59,6 +59,7 @@ export class DefaultUserSeeder implements OnModuleInit {
         password: hashedPassword,
         role: UserRole.ADMIN,
         isActive: true,
+        passwordChangedAt: new Date(),
       });
 
       await this.usersRepository.save(adminUser);

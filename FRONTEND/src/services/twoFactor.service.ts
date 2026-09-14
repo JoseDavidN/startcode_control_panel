@@ -1,6 +1,9 @@
 import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
-import type { TwoFactorSetupResponse } from '@typings/auth.types';
+import type {
+	TwoFactorEnabledResponse,
+	TwoFactorSetupResponse,
+} from '@typings/auth.types';
 
 class TwoFactorService {
 	async setup(): Promise<TwoFactorSetupResponse> {
@@ -10,26 +13,43 @@ class TwoFactorService {
 		return response.data ?? response;
 	}
 
-	async enable(code: string): Promise<{ message: string }> {
-		const response = await apiService.post<{ message: string }>(
+	/** Devuelve los códigos de respaldo en claro: es la única vez que se ven. */
+	async enable(code: string): Promise<TwoFactorEnabledResponse> {
+		const response = await apiService.post<TwoFactorEnabledResponse>(
 			API_CONFIG.ENDPOINTS.TWO_FACTOR_ENABLE,
 			{ code },
 		);
 		return response.data ?? response;
 	}
 
-	async disable(code: string): Promise<{ message: string }> {
+	/** Desactivar exige contraseña además del código. */
+	async disable(code: string, password: string): Promise<{ message: string }> {
 		const response = await apiService.post<{ message: string }>(
 			API_CONFIG.ENDPOINTS.TWO_FACTOR_DISABLE,
-			{ code },
+			{ code, password },
 		);
 		return response.data ?? response;
 	}
 
-	async verifyLogin(tempToken: string, code: string): Promise<any> {
+	async regenerateBackupCodes(
+		code: string,
+		password: string,
+	): Promise<{ backupCodes: string[] }> {
+		const response = await apiService.post<{ backupCodes: string[] }>(
+			API_CONFIG.ENDPOINTS.TWO_FACTOR_BACKUP_CODES,
+			{ code, password },
+		);
+		return response.data ?? response;
+	}
+
+	/** Segundo factor del login: código de la app o código de respaldo. */
+	async verifyLogin(
+		tempToken: string,
+		payload: { code?: string; backupCode?: string },
+	): Promise<any> {
 		const response = await apiService.post<any>(
 			API_CONFIG.ENDPOINTS.TWO_FACTOR_VERIFY_LOGIN,
-			{ tempToken, code },
+			{ tempToken, ...payload },
 		);
 		return response.data ?? response;
 	}

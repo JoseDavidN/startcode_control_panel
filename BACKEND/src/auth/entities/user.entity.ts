@@ -40,6 +40,28 @@ export class User {
   @Exclude()
   twoFactorSecret: string | null;
 
+  /** Último step TOTP consumido: impide reutilizar un código dentro de su ventana. */
+  @Column({ type: 'bigint', nullable: true, name: 'int_two_factor_last_step' })
+  @Exclude()
+  twoFactorLastStep: string | null;
+
+  /** Hashes bcrypt de los códigos de respaldo. El texto plano solo se ve una vez. */
+  @Column({ type: 'jsonb', nullable: true, name: 'json_two_factor_backup_codes' })
+  @Exclude()
+  twoFactorBackupCodes: string[] | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_backup_codes_generated_at' })
+  backupCodesGeneratedAt: Date | null;
+
+  /** Intentos fallidos consecutivos (contraseña o segundo factor). */
+  @Column({ type: 'int', default: 0, name: 'int_failed_login_attempts' })
+  @Exclude()
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_locked_until' })
+  @Exclude()
+  lockedUntil: Date | null;
+
   @Column({ type: 'jsonb', nullable: true, name: 'json_preferences' })
   preferences: UserPreferences | null;
 

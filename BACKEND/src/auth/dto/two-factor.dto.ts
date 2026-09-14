@@ -1,11 +1,21 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, Length, Matches, ValidateIf } from 'class-validator';
+
+const SIX_DIGITS = /^\d{6}$/;
 
 export class TwoFactorCodeDto {
   @ApiProperty({ example: '123456', description: 'Código TOTP de 6 dígitos' })
   @IsString()
-  @Length(6, 6, { message: 'El código debe tener exactamente 6 dígitos' })
+  @Matches(SIX_DIGITS, { message: 'El código debe ser de 6 dígitos' })
   code: string;
+}
+
+/** Desactivar el 2FA o regenerar códigos exige también la contraseña. */
+export class TwoFactorCodeWithPasswordDto extends TwoFactorCodeDto {
+  @ApiProperty({ description: 'Contraseña actual del usuario' })
+  @IsString()
+  @Length(1, 128)
+  password: string;
 }
 
 export class TwoFactorVerifyLoginDto {
@@ -13,10 +23,18 @@ export class TwoFactorVerifyLoginDto {
   @IsString()
   tempToken: string;
 
-  @ApiProperty({ example: '123456', description: 'Código TOTP de 6 dígitos' })
+  @ApiPropertyOptional({ example: '123456', description: 'Código TOTP de 6 dígitos' })
+  @IsOptional()
+  @ValidateIf((o: TwoFactorVerifyLoginDto) => !o.backupCode)
   @IsString()
-  @Length(6, 6, { message: 'El código debe tener exactamente 6 dígitos' })
-  code: string;
+  @Matches(SIX_DIGITS, { message: 'El código debe ser de 6 dígitos' })
+  code?: string;
+
+  @ApiPropertyOptional({ example: 'A3F9-K2LM', description: 'Código de respaldo de un solo uso' })
+  @IsOptional()
+  @IsString()
+  @Length(8, 12)
+  backupCode?: string;
 }
 
 export class TwoFactorSetupResponseDto {
@@ -28,4 +46,16 @@ export class TwoFactorSetupResponseDto {
 
   @ApiProperty({ description: 'QR code como data URL (imagen PNG en base64)' })
   qrCodeDataUrl: string;
+}
+
+export class TwoFactorEnabledResponseDto {
+  @ApiProperty({ example: '2FA activado correctamente' })
+  message: string;
+
+  @ApiProperty({
+    type: [String],
+    description: 'Códigos de respaldo en claro. Solo se muestran esta vez.',
+    example: ['A3F9-K2LM', 'P7QR-4TVW'],
+  })
+  backupCodes: string[];
 }

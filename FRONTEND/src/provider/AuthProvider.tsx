@@ -9,8 +9,10 @@ import { serverService } from '@services/server.service';
 import { twoFactorService } from '@services/twoFactor.service';
 import { normalizeAuthResponse } from '@services/auth.adapter';
 import { TokenManager } from '@utils/tokenManager';
+import { authApi } from '@services/auth.api';
 import type {
   LoginCredentials,
+  PasswordChangeRequiredResponse,
   Permission,
   TwoFactorPendingResponse,
   UserRole,
@@ -28,12 +30,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   // Login con TanStack Query
   const login = useCallback(
-    async (credentials: LoginCredentials): Promise<TwoFactorPendingResponse | void> => {
+    async (
+      credentials: LoginCredentials,
+    ): Promise<TwoFactorPendingResponse | PasswordChangeRequiredResponse | void> => {
       try {
         const result = await loginMutation.mutateAsync(credentials);
 
         if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
           return result as TwoFactorPendingResponse;
+        }
+
+        /* La contraseña caducó: el backend no emite sesión hasta cambiarla. */
+        if ('requiresPasswordChange' in result && result.requiresPasswordChange) {
+          return result as PasswordChangeRequiredResponse;
         }
 
         await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
@@ -51,8 +60,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   );
 
   const complete2FALogin = useCallback(
-    async (tempToken: string, code: string): Promise<void> => {
-      const backendData = await twoFactorService.verifyLogin(tempToken, code);
+    async (
+      tempToken: string,
+      payload: { code?: string; backupCode?: string },
+    ): Promise<PasswordChangeRequiredResponse | void> => {
+      const backendData = await twoFactorService.verifyLogin(tempToken, payload);
+
+      /* Puede encadenar con la contraseña caducada: aún no hay sesión. */
+      if (backendData?.requiresPasswordChange) {
+        return backendData as PasswordChangeRequiredResponse;
+      }
+
       const normalized = normalizeAuthResponse(backendData);
 
       if (normalized.tokens) {
@@ -69,6 +87,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         queryKey: ['servers'],
         queryFn: () => serverService.getServers(),
       });
+    },
+    [refetch]
+  );
+
+  /** Cambio obligatorio por contraseña caducada: al terminar ya hay sesión. */
+  const completeExpiredPasswordChange = useCallback(
+    async (tempToken: string, currentPassword: string, newPassword: string): Promise<void> => {
+      const backendData = await authApi.changeExpiredPassword(
+        tempToken,
+        currentPassword,
+        newPassword,
+      );
+      const normalized = normalizeAuthResponse(backendData);
+
+      if (normalized.tokens) {
+        TokenManager.setTokens(
+          normalized.tokens.accessToken,
+          normalized.tokens.refreshToken || normalized.tokens.accessToken,
+        );
+      }
+      TokenManager.saveUserData(normalized.user);
+
+      await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      await refetch();
     },
     [refetch]
   );
@@ -131,6 +173,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     isLoading: isLoading || loginMutation.isPending || logoutMutation.isPending,
     login,
     complete2FALogin,
+    completeExpiredPasswordChange,
     logout,
     refreshAuth,
     hasPermission,

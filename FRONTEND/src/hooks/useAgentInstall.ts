@@ -79,11 +79,15 @@ export function useAgentInstallProgress(serverId: string | null) {
 	const serverRef = useRef(serverId);
 	serverRef.current = serverId;
 
+	/* Se escucha en cuanto hay socket, sin esperar al `serverId`: al dar de alta
+	   un servidor el id llega justo antes de instalar, y suscribirse entonces
+	   perdía los primeros pasos (de ahí que el modal solo enseñara la conexión).
+	   El filtro va dentro del handler, contra la referencia viva. */
 	useEffect(() => {
-		if (!socket || !serverId) return;
+		if (!socket) return;
 
 		const onProgress = (payload: { serverId: string; step: AgentInstallStep }) => {
-			if (payload.serverId !== serverRef.current) return;
+			if (!serverRef.current || payload.serverId !== serverRef.current) return;
 
 			setProgress(prev => ({ ...prev, [payload.step.id]: payload.step.status }));
 			setSteps(prev => {
@@ -96,12 +100,27 @@ export function useAgentInstallProgress(serverId: string | null) {
 		return () => {
 			socket.off('agent:install:progress', onProgress);
 		};
-	}, [socket, serverId]);
+	}, [socket]);
 
 	const reset = useCallback(() => {
 		setProgress({});
 		setSteps([]);
 	}, []);
 
-	return { progress, steps, reset };
+	/* El resultado HTTP trae los pasos completos: si el socket se perdió alguno
+	   —o estaba caído—, el final se pinta igualmente. */
+	const applyResult = useCallback((finalSteps: AgentInstallStep[]) => {
+		setSteps(prev => {
+			const byId = new Map(prev.map(s => [s.id, s]));
+			finalSteps.forEach(s => byId.set(s.id, s));
+			return [...byId.values()];
+		});
+		setProgress(prev => {
+			const next = { ...prev };
+			finalSteps.forEach(s => { next[s.id] = s.status; });
+			return next;
+		});
+	}, []);
+
+	return { progress, steps, reset, applyResult };
 }

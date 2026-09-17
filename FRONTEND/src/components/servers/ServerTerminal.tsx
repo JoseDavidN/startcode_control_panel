@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { io, type Socket } from 'socket.io-client';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -145,7 +146,10 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
     status === 'connecting' ? 'bg-amber-400 animate-pulse' :
     status === 'error' ? 'bg-rose-400' : 'bg-white/30';
 
-  return (
+  /* Al body, igual que el Modal común: un ancestro con `backdrop-filter` o con
+     `transform` crea bloque contenedor y encerraría este overlay fijo dentro de
+     la tarjeta desde la que se abrió. */
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
 
@@ -181,6 +185,7 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
           <div ref={hostRef} className="w-full h-full" />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

@@ -128,8 +128,16 @@ export class AgentInstallService {
       const failure = this.translate(error, server);
       steps.failCurrent(failure.message);
 
+      /* Si el fallo ocurrió en las comprobaciones previas, la máquina no se
+         tocó: un reintento sin contraseña no debe dejar en «error» un agente
+         que sigue instalado y reportando. */
+      const touched = steps
+        .all()
+        .some((step) => step.id === 'config' || step.id === 'service' || step.id === 'verify');
+      const wasInstalled = server.metadata?.agent?.state === 'installed';
+
       await this.servers.setAgentState(server.id, {
-        state: 'failed',
+        state: !touched && wasInstalled ? 'installed' : 'failed',
         lastError: { ...failure, at: new Date().toISOString() },
         steps: steps.all(),
       });

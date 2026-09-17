@@ -3,7 +3,8 @@ import { Modal } from './Modal';
 import { useCreateServer } from '@hooks/useServers';
 import { useAgentInstallProgress, useInstallAgent } from '@hooks/useAgentInstall';
 import { ConnectionLoading } from './ConectionLoading';
-import type { ConnectionStatus, ConnectionStepDef } from './ConectionLoading';
+import type { ConnectionStatus } from './ConectionLoading';
+import { INSTALL_ACTIVITIES, resolveActivities } from '@lib/agentSteps';
 import type { AgentInstallError } from '@typings/agent.types';
 
 interface AddServerModalProps {
@@ -23,20 +24,6 @@ interface ServerFormData {
   /** Solo se usa durante la instalación; no se guarda en ninguna parte. */
   sudoPassword: string;
 }
-
-/* Los pasos reales de la instalación. Las etiquetas las manda el backend en
-   cada evento; estas son las de arranque, para que la lista no aparezca vacía. */
-const INSTALL_STEPS: ConnectionStepDef[] = [
-  { id: 'ssh',        label: 'Conexión SSH' },
-  { id: 'privileges', label: 'Permisos de administrador' },
-  { id: 'systemd',    label: 'Comprobando systemd' },
-  { id: 'arch',       label: 'Arquitectura del servidor' },
-  { id: 'download',   label: 'Descargando el agente' },
-  { id: 'config',     label: 'Escribiendo la configuración' },
-  { id: 'service',    label: 'Instalando el servicio' },
-  { id: 'verify',     label: 'Comprobando que arrancó' },
-  { id: 'handshake',  label: 'Conectando con el panel' },
-];
 
 const OS_OPTIONS = [
   { value: 'ubuntu',  label: 'Ubuntu' },
@@ -149,6 +136,8 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
         sudoPassword: sudoPassword || undefined,
       });
 
+      install.applyResult(result.steps);
+
       if (result.ok) {
         setConnStatus('success');
       } else {
@@ -203,15 +192,15 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
           <ConnectionLoading
             status={connStatus}
             onComplete={handleConnectionComplete}
-            /* Pasos reales de la instalación, no temporizadores: las etiquetas
-               y los detalles los manda el backend por el socket. */
-            steps={INSTALL_STEPS.map(s => {
-              const live = install.steps.find(x => x.id === s.id);
-              return live ? { ...s, label: live.label, detail: live.detail } : s;
-            })}
-            progress={install.progress}
-            title={connStatus === 'error' ? 'No se pudo instalar el agente' : undefined}
-            subtitle={connStatus === 'error' ? 'El servidor quedó creado, pendiente de agente' : 'Instalando el agente de monitoreo'}
+            /* Actividades reales, agrupadas: el backend informa de nueve pasos
+               finos y aquí se enseña de una en una la que está pasando. */
+            activities={resolveActivities(INSTALL_ACTIVITIES, install.steps, connStatus)}
+            title={connStatus === 'error' ? 'No se pudo instalar el agente' : 'Instalando el agente'}
+            subtitle={connStatus === 'error'
+              ? 'El servidor quedó creado, pendiente de agente'
+              : formData.name}
+            successTitle="Servidor listo"
+            successSubtitle="El agente quedó instalado y reportando"
           />
 
           {installError && (

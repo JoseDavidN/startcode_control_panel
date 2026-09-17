@@ -267,6 +267,7 @@ Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales
 
 ### Modal
 Usar el componente `Modal` en `src/components/common/Modal.tsx`.
+- **Se monta en el `body` con un portal**, no donde se use. Es obligatorio: `.glass` lleva `backdrop-filter` y `.mo-view` anima `transform`, y cualquiera de los dos convierte al ancestro en bloque contenedor, así que un `position: fixed` dentro de una tarjeta deja de medirse contra la ventana y el modal queda encerrado en ella. Cualquier overlay a pantalla completa que no use este componente (la terminal) tiene que portarse igual.
 - Backdrop: `bg-black/60 backdrop-blur-md`
 - Contenedor: `glass rounded-2xl grain` con `max-h-[88vh] flex flex-col`
 - Header: `shrink-0`

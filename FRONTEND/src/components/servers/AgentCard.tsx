@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Modal } from '@components/common/Modal';
 import { ConnectionLoading } from '@components/common/ConectionLoading';
-import type { ConnectionStatus, ConnectionStepDef } from '@components/common/ConectionLoading';
+import type { ConnectionStatus } from '@components/common/ConectionLoading';
+import { INSTALL_ACTIVITIES, UNINSTALL_ACTIVITIES, resolveActivities } from '@lib/agentSteps';
 import {
   useAgentInstallProgress,
   useAgentState,
@@ -15,26 +16,6 @@ interface AgentCardProps {
   serverId: string;
   serverName: string;
 }
-
-const INSTALL_STEPS: ConnectionStepDef[] = [
-  { id: 'ssh',        label: 'Conexión SSH' },
-  { id: 'privileges', label: 'Permisos de administrador' },
-  { id: 'systemd',    label: 'Comprobando systemd' },
-  { id: 'arch',       label: 'Arquitectura del servidor' },
-  { id: 'download',   label: 'Descargando el agente' },
-  { id: 'config',     label: 'Escribiendo la configuración' },
-  { id: 'service',    label: 'Instalando el servicio' },
-  { id: 'verify',     label: 'Comprobando que arrancó' },
-  { id: 'handshake',  label: 'Conectando con el panel' },
-];
-
-const UNINSTALL_STEPS: ConnectionStepDef[] = [
-  { id: 'ssh',        label: 'Conexión SSH' },
-  { id: 'privileges', label: 'Permisos de administrador' },
-  { id: 'service',    label: 'Parando el servicio' },
-  { id: 'files',      label: 'Borrando archivos' },
-  { id: 'verify',     label: 'Comprobando que no queda nada' },
-];
 
 const STATE_BADGE: Record<string, { label: string; className: string }> = {
   installed:    { label: 'Instalado',  className: 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20' },
@@ -57,6 +38,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
   const progress = useAgentInstallProgress(serverId);
 
   const [action, setAction] = useState<'install' | 'uninstall' | null>(null);
+  /* 'form' = pidiendo lo que haga falta antes de empezar; 'process' = trabajando. */
+  const [phase, setPhase] = useState<'form' | 'process'>('form');
   const [status, setStatus] = useState<ConnectionStatus>('running');
   const [error, setError] = useState<AgentInstallError | null>(null);
   const [sudoPassword, setSudoPassword] = useState('');
@@ -65,12 +48,23 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
   const badge = STATE_BADGE[state] ?? STATE_BADGE.not_installed;
   const busy = installMutation.isPending || uninstallMutation.isPending;
 
-  const start = (kind: 'install' | 'uninstall') => {
+  /* Abrir no lanza nada: primero se pregunta la contraseña de sudo, que en la
+     mayoría de servidores hace falta y antes solo aparecía tras fallar. */
+  const open = (kind: 'install' | 'uninstall') => {
     setAction(kind);
+    setPhase('form');
     setStatus('running');
     setError(null);
     progress.reset();
-    void run(kind, sudoPassword);
+  };
+
+  const start = () => {
+    if (!action) return;
+    setPhase('process');
+    setStatus('running');
+    setError(null);
+    progress.reset();
+    void run(action, sudoPassword);
   };
 
   const run = async (kind: 'install' | 'uninstall', password: string) => {
@@ -86,6 +80,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
               id: serverId,
               sudoPassword: password || undefined,
             });
+
+      progress.applyResult(result.steps);
 
       if (result.ok) {
         setStatus('success');
@@ -109,15 +105,17 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
 
   const close = () => {
     setAction(null);
+    setPhase('form');
     setError(null);
     setStatus('running');
     progress.reset();
   };
 
-  const steps = (action === 'uninstall' ? UNINSTALL_STEPS : INSTALL_STEPS).map(s => {
-    const live = progress.steps.find(x => x.id === s.id);
-    return live ? { ...s, label: live.label, detail: live.detail } : s;
-  });
+  const activities = resolveActivities(
+    action === 'uninstall' ? UNINSTALL_ACTIVITIES : INSTALL_ACTIVITIES,
+    progress.steps,
+    status,
+  );
 
   return (
     <>
@@ -148,7 +146,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => start('install')}
+            onClick={() => open('install')}
             disabled={busy}
             className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85
               hover:bg-white/[0.07] text-sm font-medium disabled:opacity-50"
@@ -157,7 +155,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
           </button>
           {state === 'installed' && (
             <button
-              onClick={() => start('uninstall')}
+              onClick={() => open('uninstall')}
               disabled={busy}
               className="mo-tab h-9 px-3.5 rounded-xl glass-soft text-rose-300 hover:bg-white/[0.07]
                 text-sm font-medium disabled:opacity-50"
@@ -188,11 +186,55 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
         title={action === 'uninstall' ? `Desinstalar agente · ${serverName}` : `Instalar agente · ${serverName}`}
         size="md"
       >
+        {phase === 'form' ? (
+          /* Antes de tocar nada se pregunta lo que hace falta. */
+          <div className="space-y-5">
+            <p className="text-sm text-white/70 leading-relaxed">
+              {action === 'uninstall'
+                ? `Se parará el servicio y se borrarán el binario, la unidad de systemd y la configuración de ${serverName}.`
+                : `El panel se conectará por SSH a ${serverName}, descargará el agente y lo dejará corriendo como servicio de systemd.`}
+            </p>
+
+            <div>
+              <div className="text-xs text-white/55 font-medium mb-1.5">
+                Contraseña de sudo <span className="text-white/35">(opcional)</span>
+              </div>
+              <div className="glass-input rounded-xl h-11 flex items-center px-3.5">
+                <input
+                  autoFocus
+                  type="password"
+                  autoComplete="off"
+                  value={sudoPassword}
+                  onChange={e => setSudoPassword(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') start(); }}
+                  placeholder="Solo si el usuario SSH no es root"
+                  className="w-full bg-transparent outline-none text-sm text-white/90 placeholder:text-white/25"
+                />
+              </div>
+              <p className="text-[11px] text-white/40 mt-1.5">
+                Se usa para esta operación y no se guarda. Si el usuario es root o tiene sudo
+                sin contraseña, déjalo vacío.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/[0.06]">
+              <button onClick={close}
+                className="h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white text-sm font-medium transition">
+                Cancelar
+              </button>
+              <button onClick={start}
+                className={`h-10 px-4 rounded-xl text-white text-sm font-semibold transition ${
+                  action === 'uninstall' ? 'bg-rose-500/80 hover:bg-rose-500' : 'grad-brand'
+                }`}>
+                {action === 'uninstall' ? 'Desinstalar agente' : 'Instalar agente'}
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="flex flex-col items-center gap-4 py-2">
           <ConnectionLoading
             status={status}
-            steps={steps}
-            progress={progress.progress}
+            activities={activities}
             title={
               status === 'error'
                 ? 'La operación no se completó'
@@ -201,6 +243,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
                   : 'Instalando el agente'
             }
             subtitle={serverName}
+            successTitle={action === 'uninstall' ? 'Agente desinstalado' : 'Agente instalado'}
+            successSubtitle={serverName}
             onComplete={close}
           />
 
@@ -221,6 +265,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
                   <div className="text-xs text-white/55 font-medium mb-1.5">Contraseña de sudo</div>
                   <div className="glass-input rounded-xl h-11 flex items-center px-3.5">
                     <input
+                      autoFocus
                       type="password"
                       autoComplete="off"
                       value={sudoPassword}
@@ -238,12 +283,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
                   Cerrar
                 </button>
                 <button
-                  onClick={() => {
-                    setStatus('running');
-                    setError(null);
-                    progress.reset();
-                    void run(action ?? 'install', sudoPassword);
-                  }}
+                  onClick={start}
                   disabled={busy}
                   className="h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium transition disabled:opacity-50"
                 >
@@ -253,6 +293,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
             </div>
           )}
         </div>
+        )}
       </Modal>
     </>
   );

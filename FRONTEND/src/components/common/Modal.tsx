@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -25,7 +26,11 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   if (!isOpen) return null;
 
-  return (
+  /* Se monta en el body con un portal, no donde se use.
+     `.glass` lleva `backdrop-filter`, y un ancestro con filtro crea bloque
+     contenedor: dentro de una tarjeta glass, un `position: fixed` deja de
+     medirse contra la ventana y el modal queda encerrado en la tarjeta. */
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
       {/* Backdrop */}
       <div
@@ -57,6 +62,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

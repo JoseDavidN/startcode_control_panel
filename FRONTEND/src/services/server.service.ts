@@ -3,6 +3,7 @@ import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
 import type {
 	AgentInstallResult,
+	AgentInstallState,
 	AgentState,
 	AgentUninstallResult,
 } from '@typings/agent.types';
@@ -44,10 +45,22 @@ export interface Server {
 	host: string;
 	port: number;
 	username: string;
-	status: 'online' | 'offline' | 'error' | 'maintenance' | 'checking';
+	/* Los siete valores del enum del backend: faltaban `warning` y `pending`,
+	   y un servidor recién creado nace en `pending`. */
+	status: 'online' | 'offline' | 'error' | 'maintenance' | 'checking' | 'warning' | 'pending';
 	os: string;
 	description?: string;
-	metadata?: any;
+	metadata?: {
+		osVersion?: string;
+		activeServices?: number;
+		agent?: {
+			state: AgentInstallState;
+			version?: string;
+			arch?: 'amd64' | 'arm64';
+			installedAt?: string;
+			lastError?: { code: string; message: string; detail?: string; at: string };
+		};
+	};
 	ownerId: string;
 	/** Última vez que el agente reportó; null si nunca lo hizo */
 	lastSeen?: string | null;

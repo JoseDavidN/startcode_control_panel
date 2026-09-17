@@ -40,15 +40,14 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
       {/* Modal — max 88vh, flex-col so header stays fixed and body scrolls */}
       <div
-        className={`relative w-full ${sizeMap[size]} max-h-[88vh] flex flex-col glass grain rounded-2xl animate-slideUp`}
-        style={{ boxShadow: 'var(--shadow-modal)' }}
+        className={`relative w-full ${sizeMap[size]} max-h-[88vh] flex flex-col glass elev-modal grain rounded-2xl animate-slideUp`}
       >
         {/* Header — never scrolls */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0">
           <h2 className="text-lg font-semibold tracking-tight text-grad-brand">{title}</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg glass-soft text-white/50 hover:text-white/90 hover:bg-white/[0.08] flex items-center justify-center transition"
+            className="w-8 h-8 rounded-lg glass-soft text-white/50 hover:text-white/90 row-hit flex items-center justify-center transition"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">

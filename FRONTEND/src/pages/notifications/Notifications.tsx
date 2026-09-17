@@ -13,13 +13,11 @@ import type {
   NotificationType,
 } from '@typings/notification.types';
 import { fullDateTime, timeAgo } from '@utils/time';
+import { Card } from '@components/common/Card';
 
 const PAGE_SIZE = 50;
 
 /* ── Primitivos locales (mismo patrón que Servers/Dashboard) ───────── */
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={`glass rounded-2xl relative grain ${className}`}>{children}</div>
-);
 
 const svg = (className: string) => ({
   viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75,
@@ -83,9 +81,9 @@ const Row = ({
   return (
     <div
       className={`mo-tab glass-soft rounded-xl p-4 flex items-start gap-4 border
-        ${item.read ? 'border-white/[0.05]' : 'border-white/[0.10] bg-white/[0.03]'}`}
+        ${item.read ? 'border-line' : 'border-hairline-strong bg-tint-sunken'}`}
     >
-      <div className={`w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0 ${tone.text}`}>
+      <div className={`w-10 h-10 rounded-xl bg-tint-sunken border border-hairline-soft flex items-center justify-center shrink-0 ${tone.text}`}>
         <Icon name={TYPE_ICON[item.type]} className="w-[18px] h-[18px]" />
       </div>
 
@@ -126,7 +124,7 @@ const Row = ({
           <button
             onClick={() => onRead(item.id)}
             title="Marcar como leída"
-            className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/60 hover:text-white hover:bg-white/[0.07] flex items-center justify-center"
+            className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/60 hover:text-white row-hit flex items-center justify-center"
           >
             <Icon name="check" />
           </button>
@@ -175,7 +173,7 @@ export const Notifications: React.FC = () => {
     <div className="mo-view h-full min-h-0 flex flex-col gap-5">
       {/* Cabecera */}
       <Card className="px-6 py-5 flex items-center gap-4 shrink-0">
-        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center elev-brand">
           <Icon name="bell" className="w-7 h-7" />
         </div>
         <div className="flex-1 min-w-0">
@@ -188,7 +186,7 @@ export const Notifications: React.FC = () => {
         <button
           onClick={() => markAllRead.mutate(undefined)}
           disabled={unread === 0 || markAllRead.isPending}
-          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium disabled:opacity-40 shrink-0"
+          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium disabled:opacity-40 shrink-0"
         >
           <Icon name={markAllRead.isPending ? 'loader' : 'checkAll'} />
           Marcar todas
@@ -211,8 +209,8 @@ export const Notifications: React.FC = () => {
             onClick={() => applyFilter(id)}
             className={`mo-tab h-9 px-3.5 rounded-xl text-sm font-medium
               ${type === id
-                ? 'mo-tab-on grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]'
-                : 'text-white/60 hover:text-white hover:bg-white/[0.05]'}`}
+                ? 'mo-tab-on grad-brand text-white elev-brand-sm'
+                : 'text-white/60 hover:text-white hover:bg-tint-hover'}`}
           >
             {label}
           </button>
@@ -225,8 +223,8 @@ export const Notifications: React.FC = () => {
             onClick={() => { setOnlyUnread(v => !v); setLimit(PAGE_SIZE); }}
             className={`mo-tab h-9 px-3.5 rounded-xl text-sm font-medium border
               ${onlyUnread
-                ? 'mo-tab-on grad-brand-soft text-white border-white/10'
-                : 'glass-soft text-white/60 hover:text-white border-transparent'}`}
+                ? 'mo-tab-on grad-brand-soft text-white border-hairline'
+                : 'glass-soft text-white/60 hover:text-white hover:border-hairline-hover'}`}
           >
             Solo no leídas
           </button>
@@ -249,8 +247,7 @@ export const Notifications: React.FC = () => {
 
         {!isLoading && !isError && items.length === 0 && (
           <div
-            className="glass rounded-2xl grain relative flex flex-col items-center justify-center text-center gap-3 py-16 px-6"
-            style={{ border: '1.5px dashed var(--hairline-strong)' }}
+            className="glass edge-dashed elev-flat rounded-2xl grain relative flex flex-col items-center justify-center text-center gap-3 py-16 px-6"
           >
             <span className="text-white/20"><Icon name="bell" className="w-10 h-10" /></span>
             <div className="text-sm font-medium text-white/60">
@@ -279,7 +276,7 @@ export const Notifications: React.FC = () => {
             {items.length < total && (
               <button
                 onClick={() => setLimit(l => l + PAGE_SIZE)}
-                className="mo-tab w-full h-11 rounded-xl glass-soft text-white/70 hover:text-white hover:bg-white/[0.07] text-sm font-medium"
+                className="mo-tab w-full h-11 rounded-xl glass-soft text-white/70 hover:text-white row-hit text-sm font-medium"
               >
                 Cargar más ({total - items.length} restantes)
               </button>

@@ -22,12 +22,35 @@ html[data-theme="solar"] {
   --sheen-soft-1: rgba(255,255,255,0.45);
   --sheen-input-1: rgba(255,255,255,0.6);
   --sheen-input-2: rgba(255,255,255,0.3);
-  --hairline: rgba(124,45,18,0.14);
-  --hairline-soft: rgba(124,45,18,0.10);
-  --hairline-strong: rgba(124,45,18,0.20);
+  --hairline: rgba(124,45,18,0.18);
+  --hairline-soft: rgba(124,45,18,0.17);
+  --hairline-strong: rgba(124,45,18,0.28);
+  --hairline-hover: rgba(124,45,18,0.26);
+  --line: rgba(124,45,18,0.10);
+  --edge-dashed: rgba(124,45,18,0.22);
+  --edge-dashed-hover: rgba(124,45,18,0.40);
   --inset-hi: rgba(255,255,255,0.8);
-  --shadow-panel: 0 18px 40px -22px rgba(124,45,18,0.35), 0 1px 2px rgba(124,45,18,0.10);
-  --shadow-modal: 0 28px 70px -20px rgba(124,45,18,0.35), 0 0 0 1px rgba(124,45,18,0.08) inset;
+  --inset-field: rgba(124,45,18,0.10);
+  --tint-hover: rgba(124,45,18,0.05);
+  --tint-active: rgba(124,45,18,0.09);
+  --tint-sunken: rgba(124,45,18,0.04);
+
+  /* Escala de elevación: aquí la definición la pone el contacto, no el borde
+     (una sombra oscura sobre fondo claro sí rinde, y el trazo ya está al tope). */
+  --shadow-flat: inset 0 1px 0 0 rgba(255,255,255,0.6), 0 1px 1px rgba(124,45,18,0.10);
+  --shadow-raised: inset 0 1px 0 0 rgba(255,255,255,0.7), 0 1px 2px rgba(124,45,18,0.14), 0 2px 6px -2px rgba(124,45,18,0.18);
+  --shadow-panel: inset 0 1px 0 0 rgba(255,255,255,0.8), 0 1px 2px rgba(124,45,18,0.16), 0 4px 12px -4px rgba(124,45,18,0.22), 0 18px 40px -22px rgba(124,45,18,0.35);
+  --shadow-float: inset 0 1px 0 0 rgba(255,255,255,0.85), 0 2px 4px rgba(124,45,18,0.18), 0 8px 20px -6px rgba(124,45,18,0.26), 0 24px 56px -20px rgba(124,45,18,0.38);
+  --shadow-modal: inset 0 0 0 1px rgba(124,45,18,0.08), 0 2px 6px rgba(124,45,18,0.18), 0 12px 28px -8px rgba(124,45,18,0.28), 0 28px 70px -20px rgba(124,45,18,0.35);
+
+  /* Sombras de marca y brillos semánticos. En claro, un halo difuso alrededor
+     de un punto oscuro se lee como suciedad: los brillos pasan a anillo nítido. */
+  --shadow-brand-sm: 0 4px 14px -4px rgb(var(--brand-1-rgb) / 0.55);
+  --shadow-brand: 0 8px 24px -8px rgb(var(--brand-1-rgb) / 0.55);
+  --shadow-brand-hi: 0 12px 30px -8px rgb(var(--brand-2-rgb) / 0.55);
+  --glow-ok: 0 0 0 3px rgba(5,150,105,0.22);
+  --glow-warn: 0 0 0 3px rgba(217,119,6,0.22);
+  --glow-danger: 0 0 0 3px rgba(225,29,72,0.22);
 
   /* Tinta y controles */
   --ink: #2a1a0c;
@@ -46,7 +69,7 @@ html[data-theme="solar"] {
   --brand-2-rgb: 251 146 60;
   --brand-light-1: #ea580c;
   --brand-light-2: #f59e0b;
-  --on-brand: #ffffff;
+  --on-brand: #2a1a0c;
 
   /* Auroras del fondo */
   --aurora-1: #fb923c;
@@ -58,6 +81,7 @@ html[data-theme="solar"] {
 
   /* Varios */
   --select-bg: #fff4e8;
+  --focus-ring: #c2410c;
   --focus-halo: rgba(255,250,246,0.95);
 
   /* ── Remapeo de la paleta de Tailwind ───────────────────────────

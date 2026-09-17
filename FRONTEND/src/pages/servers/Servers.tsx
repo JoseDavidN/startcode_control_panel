@@ -9,11 +9,9 @@ import { emptyRuntime, type ServerRuntime } from '@lib/serverRuntime';
 import { timeAgo } from '@utils/time';
 import { useAppearance } from '@contexts/AppearanceContext';
 import type { ServersView } from '@contexts/AppearanceContext';
+import { Card } from '@components/common/Card';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={`glass rounded-2xl relative grain ${className}`}>{children}</div>
-);
 
 /* ── Tile ─────────────────────────────────────────────────────────── */
 const Tile = ({ icon, label, value, tone = 'violet' }: {
@@ -75,7 +73,7 @@ const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
     <button
       onClick={e => { e.stopPropagation(); onEdit(); }}
       title="Editar servidor" aria-label="Editar servidor"
-      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/55 hover:text-white hover:bg-white/[0.08] flex items-center justify-center"
+      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/55 hover:text-white row-hit flex items-center justify-center"
     >
       {icons.edit}
     </button>
@@ -124,7 +122,7 @@ const StatusBadge = ({ status }: { status: ServerRuntime['state'] }) => {
   if (status === 'warning') return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/20">Atención</span>;
   /* Un servidor que nunca ha reportado no está caído: es que aún no dice nada.
      Chip neutro por el canal de tinta, que funciona en los tres temas. */
-  if (status === 'unknown') return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/[0.06] text-white/55 ring-1 ring-white/10">Sin datos</span>;
+  if (status === 'unknown') return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-tint-active text-white/55 ring-1 ring-hairline">Sin datos</span>;
   return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/20">Offline</span>;
 };
 
@@ -146,10 +144,10 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
       className="text-left group w-full cursor-pointer"
     >
-      <Card className="p-5 hover:bg-white/[0.05] transition relative">
+      <Card className="p-5 row-hit relative">
         {/* Header */}
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-violet-200">
+          <div className="w-12 h-12 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-violet-200">
             {icons.monitor}
           </div>
           <div className="flex-1 min-w-0">
@@ -157,7 +155,7 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
               <div className="font-semibold text-lg">{server.name}</div>
               <StatusBadge status={rt.state} />
               {rt.live && rt.state === 'online' && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse" />
               )}
             </div>
             <div className="text-sm text-white/55 mt-0.5 font-mono">
@@ -188,7 +186,7 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/[0.06] mt-5 pt-4 flex items-center justify-between text-sm">
+        <div className="border-t border-line mt-5 pt-4 flex items-center justify-between text-sm">
           <span className="text-white/55">
             {rt.hasMetrics
               ? <>Servicios activos: <span className="text-white/75 font-mono">{count(rt.services)}</span></>
@@ -216,7 +214,7 @@ const MiniMetric = ({ label, value, gradient }: { label: string; value: number |
         {value === null ? dash : `${value.toFixed(0)}%`}
       </span>
     </div>
-    <div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+    <div className="bg-track h-1.5 rounded-full overflow-hidden">
       {/* Sin dato, la pista se queda vacía: una barra a cero diría que se midió cero. */}
       {value !== null && (
         <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
@@ -240,9 +238,9 @@ const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
       tabIndex={0}
       onClick={() => onClick(server)}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
-      className="w-full text-left group flex items-center gap-4 px-5 py-4 hover:bg-white/[0.04] transition cursor-pointer"
+      className="w-full text-left group flex items-center gap-4 px-5 py-4 hover:bg-tint-hover transition cursor-pointer"
     >
-      <div className="w-10 h-10 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-violet-200 shrink-0">
+      <div className="w-10 h-10 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-violet-200 shrink-0">
         {icons.monitor}
       </div>
 
@@ -251,7 +249,7 @@ const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
           <span className="font-semibold truncate">{server.name}</span>
           <StatusBadge status={rt.state} />
           {rt.live && rt.state === 'online' && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] animate-pulse shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse shrink-0" />
           )}
         </div>
         <div className="text-xs text-white/55 mt-0.5 font-mono truncate">
@@ -305,8 +303,8 @@ const ViewToggle = ({ value, onChange }: { value: ServersView; onChange: (v: Ser
             onClick={() => onChange(mode)}
             className={`mo-tab w-9 h-8 rounded-lg flex items-center justify-center
               ${active
-                ? 'mo-tab-on grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]'
-                : 'text-white/50 hover:text-white hover:bg-white/[0.06]'}`}
+                ? 'mo-tab-on grad-brand text-white elev-brand-sm'
+                : 'text-white/50 hover:text-white hover:bg-tint-hover'}`}
           >
             {icon}
           </button>
@@ -369,7 +367,7 @@ export const Servers: React.FC = () => {
     <div className="mo-view h-full min-h-0 flex flex-col gap-5">
       {/* Page header */}
       <Card className="px-6 py-5 flex items-center gap-4 shrink-0">
-        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center elev-brand">
           <span className="text-white">{icons.server}</span>
         </div>
         <div className="flex-1 min-w-0">
@@ -396,13 +394,13 @@ export const Servers: React.FC = () => {
 
         <ViewToggle value={serversView} onChange={setServersView} />
 
-        <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium transition shrink-0">
+        <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium transition shrink-0">
           {icons.filter} Filtros
         </button>
         <button
           onClick={() => refreshMutation.mutate()}
           disabled={refreshMutation.isPending}
-          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] text-sm font-medium transition disabled:opacity-60 shrink-0"
+          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white elev-brand hover:elev-brand-hi text-sm font-medium transition disabled:opacity-60 shrink-0"
         >
           {icons.refresh} Actualizar
         </button>
@@ -438,13 +436,10 @@ export const Servers: React.FC = () => {
             {/* Add new server tile */}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="glass rounded-2xl transition group flex items-center justify-center min-h-[280px] grain relative cursor-pointer"
-              style={{ border: '1.5px dashed var(--hairline-strong)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgb(var(--brand-1-rgb) / 0.45)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--hairline-strong)')}
+              className="glass edge-dashed elev-flat rounded-2xl transition group flex items-center justify-center min-h-[280px] grain relative cursor-pointer"
             >
               <div className="flex flex-col items-center gap-3 text-white/40 group-hover:text-white/70 transition">
-                <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-white/10 flex items-center justify-center">
+                <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-hairline flex items-center justify-center">
                   {icons.plus}
                 </div>
                 <div className="text-sm font-medium">Agregar nuevo servidor</div>
@@ -459,7 +454,7 @@ export const Servers: React.FC = () => {
         {!isLoading && !isError && serversView === 'list' && (
           <div className="mo-panel space-y-3">
             {filteredServers.length > 0 && (
-              <Card className="overflow-hidden divide-y divide-white/[0.06]">
+              <Card className="overflow-hidden divide-y divide-line">
                 {filteredServers.map(server => (
                   <ServerRow
                     key={server.id}
@@ -476,12 +471,9 @@ export const Servers: React.FC = () => {
             {/* Add new server row */}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="w-full glass rounded-2xl grain relative group flex items-center gap-4 px-5 py-4 transition cursor-pointer"
-              style={{ border: '1.5px dashed var(--hairline-strong)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgb(var(--brand-1-rgb) / 0.45)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--hairline-strong)')}
+              className="w-full glass edge-dashed elev-flat rounded-2xl grain relative group flex items-center gap-4 px-5 py-4 transition cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl grad-brand-soft border border-white/10 flex items-center justify-center text-white/50 group-hover:text-white/80 transition shrink-0">
+              <div className="w-10 h-10 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-white/50 group-hover:text-white/80 transition shrink-0">
                 {icons.plusSm}
               </div>
               <div className="text-left text-white/40 group-hover:text-white/70 transition">

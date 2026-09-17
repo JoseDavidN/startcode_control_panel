@@ -155,11 +155,11 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
 
         <div className="flex items-center justify-end gap-3 pt-1">
           <button type="button" onClick={onClose}
-            className="mo-tab h-11 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+            className="mo-tab h-11 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
             Cancelar
           </button>
           <button type="submit" disabled={update.isPending}
-            className="mo-tab h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] disabled:opacity-50">
+            className="mo-tab h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold elev-brand disabled:opacity-50">
             {update.isPending ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>

@@ -47,9 +47,9 @@ export const SftpFileList: React.FC<SftpFileListProps> = ({
 	};
 
 	return (
-		<div className="glass-soft rounded-xl border border-white/[0.06] overflow-hidden">
+		<div className="glass-soft rounded-xl overflow-hidden">
 			{/* Cabecera de columnas */}
-			<div className="flex items-center gap-3 px-3 h-9 border-b border-white/[0.06]
+			<div className="flex items-center gap-3 px-3 h-9 border-b border-line
 				text-[10px] font-semibold uppercase tracking-wider text-white/40">
 				<span className="flex-1">Nombre</span>
 				<span className="w-20 text-right">Tamaño</span>
@@ -61,7 +61,7 @@ export const SftpFileList: React.FC<SftpFileListProps> = ({
 					className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition ${
 						showHidden
 							? 'grad-brand-soft text-white'
-							: 'text-white/45 hover:text-white hover:bg-white/[0.06]'
+							: 'text-white/45 hover:text-white hover:bg-tint-hover'
 					}`}
 					title={hiddenCount > 0 ? `${hiddenCount} elementos ocultos` : 'Mostrar ocultos'}
 				>
@@ -71,7 +71,7 @@ export const SftpFileList: React.FC<SftpFileListProps> = ({
 
 			<div className="max-h-[34vh] overflow-y-auto scroll-thin">
 				{creatingFolder && (
-					<div className="flex items-center gap-3 px-3 h-11 border-b border-white/[0.05] bg-white/[0.03]">
+					<div className="flex items-center gap-3 px-3 h-11 border-b border-line bg-tint-sunken">
 						<FolderIcon className="w-4 h-4 text-violet-300 shrink-0" />
 						<input
 							autoFocus
@@ -123,8 +123,8 @@ export const SftpFileList: React.FC<SftpFileListProps> = ({
 						<div
 							key={entry.path}
 							onDoubleClick={() => isNavigable(entry) && onNavigate(entry.path)}
-							className={`flex items-center gap-3 px-3 h-10 border-b border-white/[0.04] last:border-0
-								transition ${isNavigable(entry) ? 'cursor-pointer hover:bg-white/[0.05]' : ''}`}
+							className={`flex items-center gap-3 px-3 h-10 border-b border-line last:border-0
+								transition ${isNavigable(entry) ? 'cursor-pointer hover:bg-tint-hover' : ''}`}
 						>
 							<span className="shrink-0">{entryIcon(entry)}</span>
 							<button

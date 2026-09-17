@@ -27,6 +27,7 @@ import { queryClient } from '@lib/queryClient';
 import { notify } from '@services/notification.service';
 import { apiService } from '@services/api.service';
 import { timeAgo } from '@utils/time';
+import { Card } from '@components/common/Card';
 
 type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'monitoring' | 'system';
 
@@ -78,9 +79,6 @@ const Icon = ({ name, className = 'w-4 h-4' }: { name: string; className?: strin
 };
 
 /* ── Glass primitives ─────────────────────────────────────────────── */
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={`glass rounded-2xl relative grain ${className}`}>{children}</div>
-);
 
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   <h2 className="text-base font-semibold text-white/90 tracking-tight">{children}</h2>
@@ -109,8 +107,8 @@ const Field = ({ label, hint, children }: { label: string; hint?: string; childr
 
 const Toggle = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
   <button role="switch" aria-checked={on} onClick={() => onChange(!on)}
-    className={`toggle-track w-12 h-7 rounded-full relative shrink-0 border border-white/10
-      ${on ? 'grad-brand shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]' : 'bg-white/10'}`}>
+    className={`toggle-track w-12 h-7 rounded-full relative shrink-0 border
+      ${on ? 'grad-brand border-transparent elev-brand-sm' : 'bg-track border-hairline'}`}>
     <span className={`toggle-dot absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-[var(--knob)] shadow-md ${on ? 'translate-x-5' : ''}`} />
   </button>
 );
@@ -120,7 +118,7 @@ const NotifRow = ({ title, desc, on, onChange, icon }: {
 }) => (
   <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
     {icon && (
-      <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/5 flex items-center justify-center shrink-0">
+      <div className="w-9 h-9 rounded-lg bg-tint-sunken border border-hairline-soft flex items-center justify-center shrink-0">
         {icon}
       </div>
     )}
@@ -202,7 +200,7 @@ const passwordStrength = (pw: string): { score: number; pct: number; label: stri
 const ReqItem = ({ ok, children }: { ok: boolean; children: React.ReactNode }) => (
   <div className="flex items-center gap-2.5">
     <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition
-      ${ok ? 'bg-emerald-500/15 border-emerald-400/25 text-emerald-300' : 'border-white/15 text-transparent'}`}>
+      ${ok ? 'bg-emerald-500/15 border-emerald-400/25 text-emerald-300' : 'border-hairline-strong text-transparent'}`}>
       <Icon name="check" className="w-3 h-3" />
     </span>
     <span className={`text-xs transition ${ok ? 'text-white/80' : 'text-white/40'}`}>{children}</span>
@@ -261,7 +259,7 @@ const SaveBar = ({ label = 'Guardar cambios' }: { label?: string }) => {
       <button
         onClick={onSave}
         disabled={busy}
-        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] transition disabled:opacity-50"
+        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi transition disabled:opacity-50"
       >
         <Icon name={busy ? 'loader' : saved ? 'check' : 'save'} className="w-4 h-4" />
         {busy ? 'Guardando…' : saved ? 'Guardado' : label}
@@ -341,8 +339,8 @@ const ProfilePane = () => {
   return (
     <div className="space-y-6">
       {/* ── Avatar + info ── */}
-      <div className="flex items-center gap-4 pb-6 border-b border-white/[0.06]">
-        <div className="w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white text-2xl font-bold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] shrink-0">
+      <div className="flex items-center gap-4 pb-6 border-b border-line">
+        <div className="w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white text-2xl font-bold elev-brand shrink-0">
           {initials}
         </div>
         <div>
@@ -385,7 +383,7 @@ const ProfilePane = () => {
           <button
             onClick={handleSaveProfile}
             disabled={updateProfile.isPending}
-            className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] transition disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi transition disabled:opacity-50"
           >
             <Icon name={updateProfile.isPending ? 'loader' : 'save'} className="w-4 h-4" />
             {updateProfile.isPending ? 'Guardando…' : 'Guardar Perfil'}
@@ -393,7 +391,7 @@ const ProfilePane = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Sección: Cambiar Contraseña ── */}
       <div className="space-y-5">
@@ -448,7 +446,7 @@ const ProfilePane = () => {
             <button
               onClick={handleChangePassword}
               disabled={changePassword.isPending || !currentPw || !reqsOk}
-              className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl glass-soft border border-white/10 text-white/85 hover:bg-white/[0.07] text-sm font-semibold transition disabled:opacity-40"
+              className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl glass-soft text-white/85 row-hit text-sm font-semibold transition disabled:opacity-40"
             >
               <Icon name={changePassword.isPending ? 'loader' : 'shield'} className="w-4 h-4" />
               {changePassword.isPending ? 'Actualizando…' : 'Cambiar Contraseña'}
@@ -467,7 +465,7 @@ const ProfilePane = () => {
               <ReqItem ok={reqs.match}>Las contraseñas coinciden</ReqItem>
             </div>
 
-            <div className="border-t border-white/[0.06]" />
+            <div className="border-t border-line" />
             <StrengthBar pw={newPw} />
           </div>
         </div>
@@ -498,7 +496,7 @@ const NotifRowFull = ({
   on: boolean; onChange: (v: boolean) => void;
   channel: 'inapp' | 'native'; onTest?: () => void;
 }) => (
-  <div className="flex items-start gap-4 py-3 border-b border-white/[0.05] last:border-0">
+  <div className="flex items-start gap-4 py-3 border-b border-line last:border-0">
     {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
     <div className="flex-1 min-w-0 space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
@@ -511,7 +509,7 @@ const NotifRowFull = ({
       {on && onTest && (
         <button
           onClick={onTest}
-          className="h-7 px-3 rounded-lg glass-soft text-xs text-white/65 hover:text-white hover:bg-white/[0.08] transition"
+          className="h-7 px-3 rounded-lg glass-soft text-xs text-white/65 hover:text-white row-hit transition"
         >
           Probar
         </button>
@@ -529,7 +527,7 @@ const NotifPane = () => {
   return (
     <div className="space-y-8">
       {/* Leyenda */}
-      <div className="glass-soft rounded-xl p-4 flex items-start gap-3 border border-white/[0.06]">
+      <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-violet-300 mt-0.5 shrink-0"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16v.01"/></svg>
         <p className="text-xs text-white/60 leading-relaxed">
           Las notificaciones <ChannelBadge type="inapp" /> aparecen como toasts dentro de la app.
@@ -777,7 +775,7 @@ const SecurityPane = () => {
               <div className="text-xs text-white/55 mt-0.5">Usa Google Authenticator, Authy o cualquier app TOTP</div>
             </div>
             <button onClick={handleSetup} disabled={setupMutation.isPending}
-              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] transition disabled:opacity-50">
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium elev-brand transition disabled:opacity-50">
               <Icon name={setupMutation.isPending ? 'loader' : 'shield'} className="w-4 h-4" />
               Activar 2FA
             </button>
@@ -788,9 +786,9 @@ const SecurityPane = () => {
           <div className="glass-soft rounded-xl p-5 mt-4 space-y-4">
             <p className="text-sm text-white/70"><strong className="text-white">Paso 1:</strong> Escanea el QR con tu app autenticadora.</p>
             <div className="flex justify-center">
-              <img src={setupData.qrCodeDataUrl} alt="QR 2FA" className="w-44 h-44 rounded-xl border border-white/10" />
+              <img src={setupData.qrCodeDataUrl} alt="QR 2FA" className="w-44 h-44 rounded-xl border border-hairline" />
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-black/30 border border-white/10">
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-black/30 border border-hairline">
               <code className="text-xs text-violet-300 font-mono flex-1 break-all">{setupData.secret}</code>
               <button onClick={() => navigator.clipboard.writeText(setupData.secret)}
                 className="text-white/45 hover:text-white shrink-0"><Icon name="copy" className="w-4 h-4" /></button>
@@ -832,7 +830,7 @@ const SecurityPane = () => {
             </div>
 
             {/* Códigos de respaldo */}
-            <div className="border-t border-white/[0.06] pt-4 flex items-center gap-3 flex-wrap">
+            <div className="border-t border-line pt-4 flex items-center gap-3 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium">Códigos de respaldo</div>
                 <div className="text-xs text-white/55 mt-0.5">
@@ -842,7 +840,7 @@ const SecurityPane = () => {
                 </div>
               </div>
               <button onClick={() => { setShowRegen(v => !v); setRegenCode(''); setRegenPwd(''); setTfErr(''); }}
-                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-xs font-medium">
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-xs font-medium">
                 <Icon name="refresh" className="w-4 h-4" />Regenerar
               </button>
             </div>
@@ -857,7 +855,7 @@ const SecurityPane = () => {
             )}
 
             {showRegen && (
-              <div className="border-t border-white/[0.06] pt-4 space-y-3">
+              <div className="border-t border-line pt-4 space-y-3">
                 <p className="text-sm text-white/70">
                   Los códigos actuales dejarán de servir. Confirma con tu contraseña y el código de la app:
                 </p>
@@ -883,7 +881,7 @@ const SecurityPane = () => {
             )}
 
             {showDis && (
-              <div className="border-t border-white/[0.06] pt-4 space-y-3">
+              <div className="border-t border-line pt-4 space-y-3">
                 <p className="text-sm text-white/70">
                   Desactivar exige contraseña y código: con el móvil robado, el código solo no basta.
                 </p>
@@ -926,7 +924,7 @@ const SecurityPane = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {backupCodes.map(c => (
-                <code key={c} className="text-center text-sm font-mono tracking-wider py-2 rounded-lg bg-black/30 border border-white/10 text-violet-200">
+                <code key={c} className="text-center text-sm font-mono tracking-wider py-2 rounded-lg bg-black/30 border border-hairline text-violet-200">
                   {c}
                 </code>
               ))}
@@ -934,11 +932,11 @@ const SecurityPane = () => {
 
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => copyCodes(backupCodes)}
-                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
                 <Icon name="copy" className="w-4 h-4" />Copiar
               </button>
               <button onClick={() => downloadCodes(backupCodes)}
-                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
                 <Icon name="download" className="w-4 h-4" />Descargar
               </button>
               <button onClick={() => setBackupCodes(null)}
@@ -1004,14 +1002,14 @@ const SecurityPane = () => {
         <button
           onClick={() => setSec(saved)}
           disabled={!secDirty || savingSec}
-          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium disabled:opacity-40"
+          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium disabled:opacity-40"
         >
           Descartar
         </button>
         <button
           onClick={() => void handleSaveSecurity()}
           disabled={!secDirty || savingSec}
-          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] disabled:opacity-50"
+          className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi disabled:opacity-50"
         >
           <Icon name={savingSec ? 'loader' : savedSec ? 'check' : 'save'} className="w-4 h-4" />
           {savingSec ? 'Guardando…' : savedSec ? 'Guardado' : 'Guardar cambios'}
@@ -1043,7 +1041,7 @@ const SecurityPane = () => {
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center border
                   ${session.current
                     ? 'bg-emerald-500/10 border-emerald-400/15 text-emerald-300'
-                    : 'bg-white/[0.04] border-white/5 text-white/50'}`}>
+                    : 'bg-tint-sunken border-hairline-soft text-white/50'}`}>
                   <Icon name="monitor" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1148,7 +1146,7 @@ const MonitoringPane = () => {
         <div className="flex items-center justify-between mb-4">
           <SectionTitle>Estado en Tiempo Real</SectionTitle>
           <div className={`flex items-center gap-1.5 text-xs ${wsConnected ? 'text-emerald-300' : 'text-white/35'}`}>
-            <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.4)]' : 'bg-white/20'}`} />
+            <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-400 glow-ok' : 'bg-white/20'}`} />
             {wsConnected ? 'WebSocket activo' : 'Sin conexión'}
           </div>
         </div>
@@ -1159,7 +1157,7 @@ const MonitoringPane = () => {
               <div className="text-2xl font-bold text-white">{registeredCount}</div>
               <div className="text-xs text-white/45 mt-1">Servidores registrados</div>
             </div>
-            <div className="text-center py-2 border-x border-white/[0.06]">
+            <div className="text-center py-2 border-x border-line">
               <div className={`text-2xl font-bold ${onlineCount > 0 ? 'text-emerald-300' : 'text-white/35'}`}>{onlineCount}</div>
               <div className="text-xs text-white/45 mt-1">Agentes activos</div>
             </div>
@@ -1169,14 +1167,14 @@ const MonitoringPane = () => {
             </div>
           </div>
           {registeredCount === 0 && (
-            <p className="text-xs text-white/35 text-center mt-3 pt-3 border-t border-white/[0.05]">
+            <p className="text-xs text-white/35 text-center mt-3 pt-3 border-t border-line">
               Sin servidores registrados — agrega uno desde la sección Servidores
             </p>
           )}
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Intervalo de actualización ── */}
       <div>
@@ -1202,7 +1200,7 @@ const MonitoringPane = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Umbrales de alerta ── */}
       <div>
@@ -1244,7 +1242,7 @@ const MonitoringPane = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Retención de datos ── */}
       <div>
@@ -1269,7 +1267,7 @@ const MonitoringPane = () => {
           </div>
 
           {/* Stats reales */}
-          <div className="glass-soft rounded-xl divide-y divide-white/[0.04]">
+          <div className="glass-soft rounded-xl divide-y divide-line">
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm text-white/55">Registros en historial</span>
               <span className="text-sm font-mono text-white/90">
@@ -1408,7 +1406,7 @@ const SystemPane = () => {
               <Icon name="refresh" className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
-          <div className="glass-soft rounded-xl divide-y divide-white/[0.04]">
+          <div className="glass-soft rounded-xl divide-y divide-line">
             <InfoRow label="Versión app"><Mono>{appVersion !== '—' ? `v${appVersion}` : '—'}</Mono></InfoRow>
             <InfoRow label="Versión backend"><Mono>{isLoading ? '…' : health?.version ? `v${health.version}` : '—'}</Mono></InfoRow>
             <InfoRow label="Entorno">
@@ -1426,7 +1424,7 @@ const SystemPane = () => {
 
         <div>
           <SectionTitle>Base de Datos</SectionTitle>
-          <div className="glass-soft rounded-xl mt-4 divide-y divide-white/[0.04]">
+          <div className="glass-soft rounded-xl mt-4 divide-y divide-line">
             <InfoRow label="Motor">
               <Mono>{isLoading ? '…' : health?.database?.engine ?? 'PostgreSQL'}</Mono>
             </InfoRow>
@@ -1451,7 +1449,7 @@ const SystemPane = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Actualización ── */}
       <div>
@@ -1488,13 +1486,13 @@ const SystemPane = () => {
                   <div className="flex justify-between text-xs text-white/55">
                     <span>Descargando…</span><span>{updater.progress}%</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-track overflow-hidden">
                     <div className="h-full grad-brand rounded-full transition-all duration-300" style={{ width: `${updater.progress}%` }} />
                   </div>
                 </div>
               ) : (
                 <button onClick={updater.installUpdate}
-                  className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold shadow-[0_6px_18px_-6px_rgba(168,85,247,0.55)] transition">
+                  className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold elev-brand-sm transition">
                   <Icon name="download" className="w-3.5 h-3.5" />Instalar actualización
                 </button>
               )}
@@ -1521,7 +1519,7 @@ const SystemPane = () => {
           />
 
           <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-white/50 shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-tint-sunken border border-hairline-soft flex items-center justify-center text-white/50 shrink-0">
               <Icon name={updater.checking ? 'loader' : 'refresh'} className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
@@ -1531,7 +1529,7 @@ const SystemPane = () => {
               </div>
             </div>
             <button onClick={updater.checkForUpdates} disabled={updater.checking}
-              className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold shadow-[0_6px_18px_-6px_rgba(168,85,247,0.55)] transition disabled:opacity-60 shrink-0">
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold elev-brand-sm transition disabled:opacity-60 shrink-0">
               {updater.checking
                 ? <><Icon name="loader" className="w-3.5 h-3.5" />Comprobando…</>
                 : <><Icon name="refresh" className="w-3.5 h-3.5" />Comprobar</>}
@@ -1540,31 +1538,31 @@ const SystemPane = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06]" />
+      <div className="border-t border-line" />
 
       {/* ── Acciones del sistema ── */}
       <div>
         <SectionTitle>Acciones del Sistema</SectionTitle>
         <div className="flex flex-wrap gap-3 mt-4">
           <button onClick={handleClearCache}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium transition">
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium transition">
             <Icon name="refresh" className="w-4 h-4" /> Limpiar caché
           </button>
           <button onClick={handleExportConfig}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium transition">
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium transition">
             <Icon name="database" className="w-4 h-4" /> Exportar configuración
           </button>
           <button onClick={() => setShowLogs(v => !v)}
             className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-medium transition
-              ${showLogs ? 'bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/20' : 'glass-soft text-white/85 hover:bg-white/[0.07]'}`}>
+              ${showLogs ? 'bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/20' : 'glass-soft text-white/85 row-hit'}`}>
             <Icon name="terminal" className="w-4 h-4" /> {showLogs ? 'Ocultar estado' : 'Ver estado'}
           </button>
         </div>
 
         {showLogs && health && (
-          <div className="mt-4 bg-black/40 rounded-xl border border-white/[0.06] overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05] bg-white/[0.02]">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.4)]" />
+          <div className="mt-4 bg-black/40 rounded-xl border border-hairline overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-line bg-tint-sunken">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 glow-ok" />
               <span className="text-xs text-white/55 font-mono">sistema — estado en tiempo real</span>
               <span className="ml-auto text-xs text-white/30 font-mono">{lastChecked}</span>
             </div>
@@ -1618,7 +1616,7 @@ const FONT_OPTIONS: { id: FontFamily; name: string; weight: string; desc: string
 ];
 
 const FontPreview = ({ stack }: { stack: string }) => (
-  <div className="h-[104px] rounded-xl glass-soft border border-white/[0.06] px-3.5 py-3 flex flex-col justify-center gap-1.5 overflow-hidden"
+  <div className="h-[104px] rounded-xl glass-soft px-3.5 py-3 flex flex-col justify-center gap-1.5 overflow-hidden"
     style={{ fontFamily: stack }}>
     <div className="text-xl font-semibold leading-none">Aa Bb Cc</div>
     <div className="text-sm text-white/70 leading-none">cpu 47% · ram 2.1 GB</div>
@@ -1673,9 +1671,9 @@ const ThemePreview = ({ sw }: { sw: ThemeSwatch }) => (
 );
 
 const SidebarPreview = ({ mode }: { mode: SidebarMode }) => (
-  <div className="sb-preview h-[104px] rounded-xl bg-black/25 border border-white/[0.06] p-2.5 flex gap-2">
+  <div className="sb-preview h-[104px] rounded-xl bg-black/25 border border-hairline p-2.5 flex gap-2">
     <div
-      className="rounded-lg bg-white/[0.06] border border-white/[0.06] p-1.5 flex flex-col gap-1.5 shrink-0 overflow-hidden"
+      className="rounded-lg bg-tint-active border border-hairline-soft p-1.5 flex flex-col gap-1.5 shrink-0 overflow-hidden"
       style={{ width: mode === 'collapsed' ? 24 : 58, transition: 'width 220ms cubic-bezier(0.32,0.72,0,1)' }}
     >
       <div className="h-3 flex items-center gap-1">
@@ -1691,7 +1689,7 @@ const SidebarPreview = ({ mode }: { mode: SidebarMode }) => (
         </div>
       ))}
     </div>
-    <div className="flex-1 rounded-lg bg-white/[0.04] border border-white/[0.05]" />
+    <div className="flex-1 rounded-lg bg-tint-sunken border border-hairline-soft" />
   </div>
 );
 
@@ -1717,12 +1715,12 @@ const AppearancePane = () => {
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setTheme(id)}
                 className={`glass-soft rounded-xl p-3 text-left transition
-                  ${selected ? 'ring-2 ring-violet-400/60 bg-white/[0.06]' : 'hover:bg-white/[0.05]'}`}
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-tint-active' : 'row-hit'}`}
               >
                 <ThemePreview sw={sw} />
                 <div className="mt-3 flex items-center gap-2">
                   <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
-                    ${selected ? 'grad-brand border-transparent' : 'border-white/20'}`}>
+                    ${selected ? 'grad-brand border-transparent' : 'border-hairline-strong'}`}>
                     {selected && <Icon name="check" className="w-2.5 h-2.5" />}
                   </span>
                   <span className="text-sm font-medium">{name}</span>
@@ -1749,12 +1747,12 @@ const AppearancePane = () => {
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setFont(id)}
                 className={`mo-tab glass-soft rounded-xl p-3 text-left
-                  ${selected ? 'ring-2 ring-violet-400/60 bg-white/[0.06]' : 'hover:bg-white/[0.05]'}`}
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-tint-active' : 'row-hit'}`}
               >
                 <FontPreview stack={stack} />
                 <div className="mt-3 flex items-center gap-2">
                   <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
-                    ${selected ? 'grad-brand border-transparent' : 'border-white/20'}`}>
+                    ${selected ? 'grad-brand border-transparent' : 'border-hairline-strong'}`}>
                     {selected && <Icon name="check" className="w-2.5 h-2.5" />}
                   </span>
                   <span className="text-sm font-medium">{name}</span>
@@ -1789,12 +1787,12 @@ const AppearancePane = () => {
                   }
                 }}
                 className={`glass-soft rounded-xl p-3 text-left transition
-                  ${selected ? 'ring-2 ring-violet-400/60 bg-white/[0.06]' : 'hover:bg-white/[0.05]'}`}
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-tint-active' : 'row-hit'}`}
               >
                 <SidebarPreview mode={value} />
                 <div className="mt-3 flex items-center gap-2">
                   <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
-                    ${selected ? 'grad-brand border-transparent' : 'border-white/20'}`}>
+                    ${selected ? 'grad-brand border-transparent' : 'border-hairline-strong'}`}>
                     {selected && <Icon name="check" className="w-2.5 h-2.5 text-white" />}
                   </span>
                   <span className="text-sm font-medium">{title}</span>
@@ -1843,11 +1841,11 @@ export const Settings: React.FC = () => {
       <Card className="px-6 py-5 flex items-center gap-4 shrink-0">
         <button
           onClick={() => navigate(ROUTES.DASHBOARD)}
-          className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition shrink-0"
+          className="w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white row-hit flex items-center justify-center transition shrink-0"
         >
           <Icon name="arrowLeft" />
         </button>
-        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] shrink-0">
+        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center elev-brand shrink-0">
           <Icon name="gear" className="w-7 h-7 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -1868,7 +1866,7 @@ export const Settings: React.FC = () => {
                 className={`mo-tab w-full h-11 px-3.5 rounded-xl flex items-center gap-3 text-sm font-medium
                   ${activeTab === id
                     ? 'nav-active text-white'
-                    : 'text-white/65 hover:text-white hover:bg-white/[0.05]'}`}
+                    : 'text-white/65 hover:text-white hover:bg-tint-hover'}`}
               >
                 <Icon name={icon} className="w-4 h-4 shrink-0" />
                 {label}

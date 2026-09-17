@@ -20,11 +20,9 @@ import { MetricBar } from '@components/common/MetricBar';
 import { barGradient } from '@utils/metrics';
 import { ROUTES } from '@utils/constants';
 import { timeAgo } from '@utils/time';
+import { Card } from '@components/common/Card';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={`glass rounded-2xl relative grain ${className}`}>{children}</div>
-);
 
 /* ── KPI card ─────────────────────────────────────────────────────── */
 const Kpi = ({ label, value, sub, icon, tone = 'violet', accent }: {
@@ -39,7 +37,7 @@ const Kpi = ({ label, value, sub, icon, tone = 'violet', accent }: {
   };
   const t = tones[tone];
   return (
-    <Card className="p-5 flex items-center justify-between gap-4 hover:bg-white/[0.05] transition">
+    <Card className="p-5 row-hit flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="text-xs uppercase tracking-wider text-white/50 font-medium">{label}</div>
         <div className={`text-4xl font-extrabold tracking-tight mt-1 tabular-nums ${accent ?? ''}`}>{value}</div>
@@ -74,8 +72,7 @@ const icons = {
 /* ── Estado vacío honesto ─────────────────────────────────────────── */
 const Empty = ({ title, hint }: { title: string; hint: string }) => (
   <div
-    className="rounded-xl flex flex-col items-center justify-center text-center gap-2 py-10 px-6"
-    style={{ border: '1.5px dashed var(--hairline-strong)' }}
+    className="edge-dashed rounded-xl flex flex-col items-center justify-center text-center gap-2 py-10 px-6"
   >
     <span className="text-white/20">{icons.server}</span>
     <div className="text-sm font-medium text-white/60">{title}</div>
@@ -242,7 +239,7 @@ export const Dashboard: React.FC = () => {
     <div className="h-full min-h-0 flex flex-col gap-5">
       {/* ── Cabecera ── */}
       <Card className="px-6 py-5 flex items-center gap-4 shrink-0">
-        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] shrink-0">
+        <div className="w-14 h-14 rounded-2xl grad-brand flex items-center justify-center elev-brand shrink-0">
           {icons.server}
         </div>
         <div className="flex-1 min-w-0">
@@ -263,7 +260,7 @@ export const Dashboard: React.FC = () => {
             onClick={() => navigate(ROUTES.NOTIFICATIONS)}
             aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
             title={unreadCount > 0 ? `${unreadCount} sin leer` : 'Notificaciones'}
-            className="mo-tab w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.06] flex items-center justify-center relative"
+            className="mo-tab w-11 h-11 rounded-xl glass-soft text-white/75 hover:text-white row-hit flex items-center justify-center relative"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10 21a2 2 0 004 0" />
@@ -362,7 +359,7 @@ export const Dashboard: React.FC = () => {
               <button
                 key={h.id}
                 onClick={() => navigate(ROUTES.SERVERS)}
-                className="mo-tab w-full glass-soft rounded-xl p-4 text-left hover:bg-white/[0.06]"
+                className="mo-tab w-full glass-soft rounded-xl p-4 text-left row-hit"
               >
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${h.status === 'online' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
@@ -413,7 +410,7 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
                   <div className="w-28 shrink-0 hidden sm:block">
-                    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-track overflow-hidden">
                       <div className={`h-full rounded-full bg-gradient-to-r ${barGradient(h.disk)}`}
                         style={{ width: `${Math.min(100, h.disk)}%` }} />
                     </div>

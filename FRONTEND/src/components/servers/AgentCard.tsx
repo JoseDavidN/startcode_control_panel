@@ -22,7 +22,7 @@ const STATE_BADGE: Record<string, { label: string; className: string }> = {
   installing:   { label: 'Instalando', className: 'bg-amber-500/15 text-amber-300 ring-amber-400/20' },
   uninstalling: { label: 'Quitando',   className: 'bg-amber-500/15 text-amber-300 ring-amber-400/20' },
   failed:       { label: 'Error',      className: 'bg-rose-500/15 text-rose-300 ring-rose-400/20' },
-  not_installed:{ label: 'Sin instalar', className: 'bg-white/[0.06] text-white/55 ring-white/10' },
+  not_installed:{ label: 'Sin instalar', className: 'bg-tint-active text-white/55 ring-hairline' },
 };
 
 /**
@@ -149,7 +149,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
             onClick={() => open('install')}
             disabled={busy}
             className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85
-              hover:bg-white/[0.07] text-sm font-medium disabled:opacity-50"
+              row-hit text-sm font-medium disabled:opacity-50"
           >
             {state === 'installed' ? 'Reinstalar' : 'Instalar agente'}
           </button>
@@ -157,7 +157,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
             <button
               onClick={() => open('uninstall')}
               disabled={busy}
-              className="mo-tab h-9 px-3.5 rounded-xl glass-soft text-rose-300 hover:bg-white/[0.07]
+              className="mo-tab h-9 px-3.5 rounded-xl glass-soft text-rose-300 row-hit
                 text-sm font-medium disabled:opacity-50"
             >
               Desinstalar
@@ -217,7 +217,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/[0.06]">
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
               <button onClick={close}
                 className="h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white text-sm font-medium transition">
                 Cancelar

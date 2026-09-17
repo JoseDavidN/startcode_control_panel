@@ -7,6 +7,17 @@ import {
 } from 'typeorm';
 import { Server } from '@servers/entities/server.entity';
 
+/** Forma de cada interfaz dentro de `network_interfaces` (jsonb). */
+export interface NetworkInterfaceSnapshot {
+  iface: string;
+  ip4: string;
+  ip6: string;
+  mac: string;
+  operstate: string;
+  rx_bytes: number;
+  tx_bytes: number;
+}
+
 /**
  * Entidad para almacenar métricas actuales del agente
  *
@@ -22,10 +33,23 @@ export class AgentMetrics {
   @JoinColumn({ name: 'server_id' })
   server: Server;
 
-  @Column('timestamp', { default: () => 'CURRENT_TIMESTAMP' })
+  @Column('timestamptz', { default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 
   // ==================== CPU ====================
+  @Column('varchar', { length: 100, nullable: true })
+  cpu_manufacturer: string | null;
+
+  @Column('varchar', { length: 255, nullable: true })
+  cpu_brand: string | null;
+
+  /** Núcleos lógicos según el agente; NULL con agentes que no los reportan */
+  @Column('int', { nullable: true })
+  cpu_cores: number | null;
+
+  @Column('int', { nullable: true })
+  cpu_physical_cores: number | null;
+
   @Column('decimal', { precision: 5, scale: 2, nullable: true })
   cpu_usage: number;
 
@@ -63,6 +87,9 @@ export class AgentMetrics {
   @Column('bigint', { nullable: true })
   swap_used: number;
 
+  @Column('bigint', { nullable: true })
+  swap_free: number;
+
   @Column('decimal', { precision: 5, scale: 2, nullable: true })
   swap_usage_percent: number;
 
@@ -83,6 +110,10 @@ export class AgentMetrics {
   @Column('int', { nullable: true })
   network_connections_listening: number;
 
+  /** Interfaces tal y como las reporta el agente; NULL con agentes antiguos */
+  @Column('jsonb', { nullable: true })
+  network_interfaces: NetworkInterfaceSnapshot[];
+
   // ==================== SISTEMA ====================
   @Column('varchar', { length: 255, nullable: true })
   system_hostname: string;
@@ -96,10 +127,13 @@ export class AgentMetrics {
   @Column('varchar', { length: 100, nullable: true })
   system_kernel: string;
 
+  @Column('varchar', { length: 20, nullable: true })
+  system_arch: string | null;
+
   @Column('decimal', { precision: 15, scale: 2, nullable: true })
   system_uptime: number;
 
-  @Column('timestamp', { nullable: true })
+  @Column('timestamptz', { nullable: true })
   system_boot_time: Date;
 
   // ==================== PROCESOS ====================
@@ -124,6 +158,12 @@ export class AgentMetrics {
   // ==================== SERVICIOS ====================
   @Column('int', { nullable: true, default: 0 })
   services_count: number;
+
+  @Column('int', { nullable: true, default: 0 })
+  services_active: number;
+
+  @Column('int', { nullable: true, default: 0 })
+  services_failed: number;
 
   @Column('jsonb', { nullable: true })
   services_list: any;

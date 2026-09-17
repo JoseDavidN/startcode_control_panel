@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { useCreateServer } from '@hooks/useServers';
+import { useAgentInstallProgress, useInstallAgent } from '@hooks/useAgentInstall';
 import { ConnectionLoading } from './ConectionLoading';
+import type { ConnectionStatus, ConnectionStepDef } from './ConectionLoading';
+import type { AgentInstallError } from '@typings/agent.types';
 
 interface AddServerModalProps {
   isOpen: boolean;
@@ -17,7 +20,23 @@ interface ServerFormData {
   privateKey: string;
   os: string;
   description: string;
+  /** Solo se usa durante la instalación; no se guarda en ninguna parte. */
+  sudoPassword: string;
 }
+
+/* Los pasos reales de la instalación. Las etiquetas las manda el backend en
+   cada evento; estas son las de arranque, para que la lista no aparezca vacía. */
+const INSTALL_STEPS: ConnectionStepDef[] = [
+  { id: 'ssh',        label: 'Conexión SSH' },
+  { id: 'privileges', label: 'Permisos de administrador' },
+  { id: 'systemd',    label: 'Comprobando systemd' },
+  { id: 'arch',       label: 'Arquitectura del servidor' },
+  { id: 'download',   label: 'Descargando el agente' },
+  { id: 'config',     label: 'Escribiendo la configuración' },
+  { id: 'service',    label: 'Instalando el servicio' },
+  { id: 'verify',     label: 'Comprobando que arrancó' },
+  { id: 'handshake',  label: 'Conectando con el panel' },
+];
 
 const OS_OPTIONS = [
   { value: 'ubuntu',  label: 'Ubuntu' },
@@ -44,11 +63,22 @@ const wrapCls  = 'glass-input rounded-xl h-11 flex items-center px-3.5 transitio
 export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState<ServerFormData>({
     name: '', host: '', port: 22, username: 'root',
-    privateKey: '', os: 'ubuntu', description: '',
+    privateKey: '', os: 'ubuntu', description: '', sudoPassword: '',
   });
-  const [error, setError]           = useState<string | null>(null);
+  const [error, setError]             = useState<string | null>(null);
   const [isConnecting, setConnecting] = useState(false);
-  const createMutation              = useCreateServer();
+  const [connStatus, setConnStatus]   = useState<ConnectionStatus>('running');
+  const [createdId, setCreatedId]     = useState<string | null>(null);
+  const [installError, setInstallError] = useState<AgentInstallError | null>(null);
+  const errorRef                      = useRef<HTMLDivElement>(null);
+  const createMutation                = useCreateServer();
+  const installMutation               = useInstallAgent();
+  const install                       = useAgentInstallProgress(createdId);
+
+  /* El error vive arriba del formulario: se trae a la vista al aparecer */
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [error]);
 
   /* ── Private key validation ── */
   const validateKey = (key: string): { valid: boolean; error?: string } => {
@@ -82,39 +112,160 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     const kv = validateKey(formData.privateKey);
     if (!kv.valid) { setError(kv.error || 'Clave privada inválida'); return; }
 
+    setConnStatus('running');
+    setInstallError(null);
+    install.reset();
+    setConnecting(true);
+
+    const { sudoPassword, ...serverData } = formData;
+
+    let serverId = createdId;
+    if (!serverId) {
+      try {
+        const created = await createMutation.mutateAsync(serverData);
+        serverId = created.id;
+        setCreatedId(created.id);
+      } catch (err: any) {
+        setConnecting(false);
+        setConnStatus('running');
+        const msg = err.response?.data?.message || err.message || 'Error al agregar el servidor';
+        if (msg.includes('authentication methods failed') || msg.includes('clave SSH'))
+          setError('Error de autenticación SSH. Verifica que la clave privada sea correcta.');
+        else if (msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT'))
+          setError('No se puede conectar al servidor. Verifica el host y puerto.');
+        else setError(msg);
+        return;
+      }
+    }
+
+    await runInstall(serverId, sudoPassword);
+  };
+
+  /** Instala el agente y traduce el resultado a lo que ve el usuario. */
+  const runInstall = async (serverId: string, sudoPassword: string) => {
     try {
-      await createMutation.mutateAsync(formData);
-      setConnecting(true);
-      await new Promise(r => setTimeout(r, 3000));
-      setFormData({ name: '', host: '', port: 22, username: 'root', privateKey: '', os: 'ubuntu', description: '' });
-      setConnecting(false);
-      onSuccess?.();
-      onClose();
+      const result = await installMutation.mutateAsync({
+        id: serverId,
+        sudoPassword: sudoPassword || undefined,
+      });
+
+      if (result.ok) {
+        setConnStatus('success');
+      } else {
+        setConnStatus('error');
+        setInstallError(result.error ?? { code: 'UNKNOWN', message: 'No se pudo instalar el agente' });
+      }
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Error al agregar el servidor';
-      if (msg.includes('authentication methods failed') || msg.includes('clave SSH'))
-        setError('Error de autenticación SSH. Verifica que la clave privada sea correcta.');
-      else if (msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT'))
-        setError('No se puede conectar al servidor. Verifica el host y puerto.');
-      else setError(msg);
+      setConnStatus('error');
+      setInstallError({
+        code: 'UNKNOWN',
+        message: err.response?.data?.message || err.message || 'No se pudo instalar el agente',
+      });
     }
   };
+
+  /* El servidor ya está creado: reintentar no lo duplica. */
+  const handleRetryInstall = () => {
+    if (!createdId) return;
+    setConnStatus('running');
+    setInstallError(null);
+    install.reset();
+    void runInstall(createdId, formData.sudoPassword);
+  };
+
+  /** Cerrar tras un fallo NO borra el servidor: queda en pendiente. */
+  const closeAfterInstall = () => {
+    setFormData({ name: '', host: '', port: 22, username: 'root', privateKey: '', os: 'ubuntu', description: '', sudoPassword: '' });
+    setConnecting(false);
+    setConnStatus('running');
+    setCreatedId(null);
+    setInstallError(null);
+    install.reset();
+    onSuccess?.();
+    onClose();
+  };
+
+  /* Se llama cuando los pasos terminaron de mostrarse */
+  const handleConnectionComplete = () => closeAfterInstall();
 
   const keyState = formData.privateKey ? validateKey(formData.privateKey) : null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Agregar Nuevo Servidor" size="lg">
-      <form onSubmit={handleSubmit} className="relative space-y-5">
-        {/* Connecting overlay */}
-        {isConnecting && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center glass rounded-xl">
-            <ConnectionLoading />
-          </div>
-        )}
+    <Modal
+      isOpen={isOpen}
+      onClose={isConnecting ? () => {} : onClose}
+      title="Agregar Nuevo Servidor"
+      size="lg"
+    >
+      {isConnecting ? (
+        /* Pantalla de proceso: reemplaza al formulario para verse completa */
+        <div className="flex flex-col items-center gap-4 py-6">
+          <ConnectionLoading
+            status={connStatus}
+            onComplete={handleConnectionComplete}
+            /* Pasos reales de la instalación, no temporizadores: las etiquetas
+               y los detalles los manda el backend por el socket. */
+            steps={INSTALL_STEPS.map(s => {
+              const live = install.steps.find(x => x.id === s.id);
+              return live ? { ...s, label: live.label, detail: live.detail } : s;
+            })}
+            progress={install.progress}
+            title={connStatus === 'error' ? 'No se pudo instalar el agente' : undefined}
+            subtitle={connStatus === 'error' ? 'El servidor quedó creado, pendiente de agente' : 'Instalando el agente de monitoreo'}
+          />
 
+          {installError && (
+            <div className="w-full max-w-sm glass-soft rounded-xl p-4 border border-rose-400/20 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-rose-300 mb-1">{installError.message}</p>
+                {installError.detail && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-white/50 cursor-pointer hover:text-white/75">Ver detalle</summary>
+                    <pre className="mt-2 text-[11px] font-mono text-white/60 whitespace-pre-wrap max-h-40 overflow-y-auto scroll-thin">
+                      {installError.detail}
+                    </pre>
+                  </details>
+                )}
+              </div>
+
+              {/* Campo de contraseña solo cuando hace falta: el usuario remoto
+                  no es root ni tiene sudo sin contraseña. */}
+              {(installError.code === 'NO_SUDO' || installError.code === 'SUDO_PASSWORD') && (
+                <div>
+                  <Label>Contraseña de sudo</Label>
+                  <div className={wrapCls}>
+                    <input
+                      name="sudoPassword"
+                      type="password"
+                      autoComplete="off"
+                      value={formData.sudoPassword}
+                      onChange={handleChange}
+                      placeholder="No se guarda en ninguna parte"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <button type="button" onClick={closeAfterInstall}
+                  className="h-9 px-3.5 rounded-xl glass-soft text-white/75 hover:text-white text-sm font-medium transition">
+                  Cerrar
+                </button>
+                <button type="button" onClick={handleRetryInstall}
+                  disabled={installMutation.isPending}
+                  className="h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium transition disabled:opacity-50">
+                  Reintentar instalación
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+      <form onSubmit={handleSubmit} className="space-y-5">
         {/* Error */}
-        {error && !isConnecting && (
-          <div className="glass-soft rounded-xl p-4 border border-rose-400/20 flex items-start gap-3">
+        {error && (
+          <div ref={errorRef} className="glass-soft rounded-xl p-4 border border-rose-400/20 flex items-start gap-3">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
               strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-rose-300 shrink-0 mt-0.5">
               <circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16v.01"/>
@@ -173,6 +324,20 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Contraseña de sudo (opcional) */}
+        <div>
+          <Label>Contraseña de sudo (opcional)</Label>
+          <div className={wrapCls}>
+            <input name="sudoPassword" type="password" autoComplete="off"
+              value={formData.sudoPassword} onChange={handleChange}
+              placeholder="Solo si el usuario no es root" className={inputCls} />
+          </div>
+          <p className="text-[11px] text-white/40 mt-1.5">
+            Se usa para instalar el agente y no se guarda. Si el usuario es root o tiene
+            sudo sin contraseña, déjalo vacío.
+          </p>
         </div>
 
         {/* Clave Privada */}
@@ -297,7 +462,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
             {createMutation.isPending || isConnecting ? (
               <>
                 <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                {isConnecting ? 'Conectando…' : 'Agregando…'}
+                {isConnecting ? 'Instalando…' : 'Agregando…'}
               </>
             ) : (
               <>
@@ -307,12 +472,13 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
                   <rect x="3" y="13" width="18" height="7" rx="1.5"/>
                   <path d="M7 7.5h.01M7 16.5h.01"/>
                 </svg>
-                Agregar Servidor
+                Agregar e instalar agente
               </>
             )}
           </button>
         </div>
       </form>
+      )}
     </Modal>
   );
 };

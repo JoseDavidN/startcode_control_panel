@@ -1086,6 +1086,14 @@ const SecurityPane = () => {
 };
 
 /* ── Pane: Monitoreo ──────────────────────────────────────────────── */
+interface StorageStats {
+  snapshotCount: number;
+  historyCount: number;
+  oldestHistoryEntry: string | null;
+  newestHistoryEntry: string | null;
+  serversWithHistory: number;
+}
+
 const MonitoringPane = () => {
   const { settings, update } = useMonitoringSettings();
   const { setThresholds } = useNotifications();
@@ -1093,13 +1101,11 @@ const MonitoringPane = () => {
   const { data: servers } = useServers();
 
   /* Storage stats */
-  const { data: storageStats, refetch: refetchStats, isLoading: statsLoading } = useQuery<{
-    snapshotCount: number; historyCount: number;
-    oldestHistoryEntry: string | null; newestHistoryEntry: string | null;
-    serversWithHistory: number;
-  }>({
+  const { data: storageStats, refetch: refetchStats, isLoading: statsLoading } = useQuery<StorageStats>({
     queryKey: ['storage-stats'],
-    queryFn: () => apiService.get(API_CONFIG.ENDPOINTS.STORAGE_STATS),
+    /* Igual que en useSystemInfo: llega el payload plano, no el sobre de ApiService. */
+    queryFn: () =>
+      apiService.get(API_CONFIG.ENDPOINTS.STORAGE_STATS) as unknown as Promise<StorageStats>,
     staleTime: 30_000,
   });
 
@@ -1373,8 +1379,8 @@ const SystemPane = () => {
     </div>
   );
 
-  const Mono = ({ children }: { children: React.ReactNode }) => (
-    <span className="text-sm text-white/90 font-mono">{children}</span>
+  const Mono = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
+    <span className={`text-sm text-white/90 font-mono ${className}`}>{children}</span>
   );
 
   const SBadge = ({ color, children }: { color: 'amber' | 'emerald' | 'rose' | 'violet'; children: React.ReactNode }) => {

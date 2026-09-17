@@ -150,7 +150,7 @@ export function sanitizeSection<K extends PreferenceSection>(
 	section: K,
 	value: Partial<UserPreferences[K]>
 ): Partial<UserPreferences[K]> {
-	const defaults = DEFAULT_PREFERENCES[section] as Record<string, unknown>;
+	const defaults = DEFAULT_PREFERENCES[section] as unknown as Record<string, unknown>;
 	const out: Record<string, unknown> = {};
 
 	for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {

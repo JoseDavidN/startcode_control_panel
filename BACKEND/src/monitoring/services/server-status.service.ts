@@ -6,6 +6,13 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Server, ServerStatus } from '@servers/entities/server.entity';
 import { NotificationsService } from '@/notifications/notifications.service';
 
+/** Emite un evento a la room del dueño del servidor. */
+export type ServerStatusBroadcaster = (
+  ownerId: string,
+  event: string,
+  payload?: unknown,
+) => void;
+
 /**
  * Servicio para verificar y actualizar el estado de los servidores
  * basado en la última vez que enviaron métricas
@@ -14,8 +21,20 @@ import { NotificationsService } from '@/notifications/notifications.service';
 export class ServerStatusService {
   private readonly logger = new Logger(ServerStatusService.name);
 
-  // Tiempo en minutos sin actividad para considerar un servidor como offline
+  /* Tiempo en minutos sin actividad para considerar un servidor como offline.
+     El frontend usa el mismo umbral para marcar unas métricas como viejas
+     (STALE_METRICS_MS en lib/serverRuntime.ts): si cambia uno, cambia el otro. */
   private readonly OFFLINE_THRESHOLD_MINUTES = 5;
+
+  /* Lo registra AgentGateway al arrancar. Así este servicio avisa al panel sin
+     depender del gateway, que es quien depende de él (igual que hace
+     NotificationsService). Sin esto, un servidor que muere por inactividad se
+     queda "online" en la lista hasta que alguien recarga la página. */
+  private broadcast: ServerStatusBroadcaster | null = null;
+
+  setBroadcaster(fn: ServerStatusBroadcaster): void {
+    this.broadcast = fn;
+  }
 
   constructor(
     @InjectRepository(Server)
@@ -64,6 +83,13 @@ export class ServerStatusService {
           this.logger.log(
             `🔴 Servidor marcado como OFFLINE por inactividad: ${server.name} (última actividad: ${server.lastSeen})`,
           );
+
+          /* Se reutiliza el evento que el panel ya escucha, en vez de inventar
+             uno nuevo: cero cambios en el cliente. */
+          this.broadcast?.(server.ownerId, 'agent:disconnected', {
+            serverId: server.id,
+            reason: 'inactivity',
+          });
 
           await this.notificationsService
             .serverWentOffline(
@@ -117,6 +143,18 @@ export class ServerStatusService {
     this.logger.log(
       `🔴 Servidor marcado manualmente como OFFLINE: ${serverId}${reason ? ` (Razón: ${reason})` : ''}`,
     );
+
+    /* Hace falta el dueño para avisar solo a quien corresponde. */
+    const server = await this.serversRepository.findOne({
+      where: { id: serverId },
+      select: ['id', 'ownerId'],
+    });
+    if (server) {
+      this.broadcast?.(server.ownerId, 'agent:disconnected', {
+        serverId: server.id,
+        reason: reason ?? 'manual',
+      });
+    }
   }
 
   /**

@@ -10,8 +10,13 @@ export function useServers() {
 	return useQuery({
 		queryKey: ['servers'],
 		queryFn: () => serverService.getServers(),
-		staleTime: 1000 * 30, // 30 segundos
-		// refetchInterval: 1000 * 60, // Refrescar cada minuto
+		staleTime: 1000 * 30,
+		/* Por query, no en el cliente global: activarlo allí arrastraría
+		   sesiones, perfil y ajustes. */
+		refetchOnWindowFocus: true,
+		/* Red de seguridad: los datos vivos llegan por WebSocket y por
+		   ['servers-summary']; esto solo recoge cambios estructurales. */
+		refetchInterval: 1000 * 60 * 5,
 	});
 }
 
@@ -65,27 +70,36 @@ export function useDeleteServer() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: (id: string) => serverService.deleteServer(id),
+		mutationFn: (vars: string | { id: string; force?: boolean; sudoPassword?: string }) =>
+			typeof vars === 'string'
+				? serverService.deleteServer(vars)
+				: serverService.deleteServer(vars.id, {
+						force: vars.force,
+						sudoPassword: vars.sudoPassword,
+					}),
 		onSuccess: () => {
-			// Invalidar la query de servidores para que se recargue
 			queryClient.invalidateQueries({ queryKey: ['servers'] });
+			queryClient.invalidateQueries({ queryKey: ['servers-summary'] });
 		},
 	});
 }
 
 /**
- * Hook para actualizar quickstats de todos los servidores
- * Ejecuta quickstats y luego refresca la lista de servidores
+ * Refresca la lista de verdad: la estructura (`/servers`) y las métricas
+ * (`/agent-data/servers-summary`).
+ *
+ * Antes llamaba a `refreshAllServersStats()`, que era un `getServers()` con
+ * otro nombre: el botón hacía una petición y no recalculaba nada.
  */
 export function useRefreshAllServers() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: () => serverService.refreshAllServersStats(),
-		onSuccess: () => {
-			// Invalidar y refrescar la query de servidores para obtener datos actualizados
-			queryClient.invalidateQueries({ queryKey: ['servers'] });
-			queryClient.refetchQueries({ queryKey: ['servers'] });
+		mutationFn: async () => {
+			await Promise.all([
+				queryClient.refetchQueries({ queryKey: ['servers'] }),
+				queryClient.refetchQueries({ queryKey: ['servers-summary'] }),
+			]);
 		},
 	});
 }

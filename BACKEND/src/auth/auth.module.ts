@@ -11,6 +11,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 import { RolesGuard } from './roles/roles.guard';
 import { DefaultUserSeeder } from './seeders/default-user.seeder';
+import { WsAuthService } from './ws-auth.service';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { DefaultUserSeeder } from './seeders/default-user.seeder';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, DefaultUserSeeder],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, DefaultUserSeeder, WsAuthService],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule, WsAuthService],
 })
 export class AuthModule {}

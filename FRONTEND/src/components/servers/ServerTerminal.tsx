@@ -21,6 +21,11 @@ const THEME = {
   brightCyan: '#67e8f9', brightWhite: '#ffffff',
 };
 
+const FONT_SIZE = 13;
+/* Un glifo de cada archivo Nerd Font (powerline y Material Design): basta
+   para que el navegador descargue ambos subconjuntos por su unicode-range. */
+const NERD_SAMPLE = '\ue0b0\u{f0001}';
+
 type Status = 'connecting' | 'ready' | 'closed' | 'error';
 
 interface Props {
@@ -39,11 +44,19 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
 
   useEffect(() => {
     if (!hostRef.current) return;
+    const host = hostRef.current;
+
+    /* La pila tipográfica vive en fonts.css (--font-terminal): JetBrains Mono
+       con los símbolos Nerd Font de respaldo, para que un prompt con iconos
+       se vea igual que en la terminal del escritorio. */
+    const fontFamily =
+      getComputedStyle(host).getPropertyValue('--font-terminal').trim() ||
+      'ui-monospace, SFMono-Regular, Menlo, monospace';
 
     const term = new Terminal({
       theme: THEME,
-      fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-      fontSize: 13,
+      fontFamily,
+      fontSize: FONT_SIZE,
       lineHeight: 1.25,
       cursorBlink: true,
       scrollback: 5000,
@@ -51,9 +64,18 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.open(hostRef.current);
+    term.open(host);
     fit.fit();
     termRef.current = term;
+
+    /* Los glifos Nerd Font se descargan por unicode-range, después del primer
+       pintado: el atlas ya cacheó cajas vacías, así que se rehace al llegar. */
+    const onFontsLoaded = () => {
+      term.clearTextureAtlas();
+      term.refresh(0, term.rows - 1);
+    };
+    document.fonts.addEventListener('loadingdone', onFontsLoaded);
+    void document.fonts.load(`${FONT_SIZE}px ${fontFamily}`, NERD_SAMPLE);
 
     const base = String(API_CONFIG.BASE_URL).replace('/api/v1', '');
     const socket = io(`${base}/terminal`, {
@@ -102,11 +124,12 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
       } catch { /* el contenedor aún no tiene tamaño */ }
     };
     const observer = new ResizeObserver(resize);
-    observer.observe(hostRef.current);
+    observer.observe(host);
     window.addEventListener('resize', resize);
 
     return () => {
       observer.disconnect();
+      document.fonts.removeEventListener('loadingdone', onFontsLoaded);
       window.removeEventListener('resize', resize);
       onData.dispose();
       socket.removeAllListeners();

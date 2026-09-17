@@ -9,6 +9,7 @@ export const API_CONFIG = {
 		ME: '/auth/me',
 		SERVERS: '/servers',
 		AGENT_DATA: '/agent-data',
+		SFTP: '/sftp',
 		TWO_FACTOR_SETUP: '/auth/2fa/setup',
 		TWO_FACTOR_ENABLE: '/auth/2fa/enable',
 		TWO_FACTOR_DISABLE: '/auth/2fa/disable',

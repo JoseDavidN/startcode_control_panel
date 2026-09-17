@@ -26,6 +26,7 @@ import { ServiceControlService } from './services/service-control.service';
 import { ServiceActionDto } from './dto/service-action.dto';
 import {
   AccountOverviewDto,
+  ServersSummaryDto,
   HistoricalMetricsDto,
   ServerSummaryDto,
   SystemInfoResponseDto,
@@ -72,6 +73,10 @@ export class AgentDataController {
       cpu: {
         usage: Number(metrics.cpu_usage) || 0,
         usagePerCore: metrics.cpu_usage_per_core || [],
+        manufacturer: metrics.cpu_manufacturer || '',
+        brand: metrics.cpu_brand || '',
+        cores: metrics.cpu_cores ?? (metrics.cpu_usage_per_core?.length || 0),
+        physicalCores: metrics.cpu_physical_cores ?? 0,
         loadAverage: {
           current: Number(metrics.cpu_load_average_1m) || 0,
           avg5: Number(metrics.cpu_load_average_5m) || 0,
@@ -87,6 +92,7 @@ export class AgentDataController {
         swap: {
           total: Number(metrics.swap_total) || 0,
           used: Number(metrics.swap_used) || 0,
+          free: Number(metrics.swap_free) || 0,
           usagePercent: Number(metrics.swap_usage_percent) || 0,
         },
       },
@@ -100,12 +106,14 @@ export class AgentDataController {
           active: metrics.network_connections_active || 0,
           listening: metrics.network_connections_listening || 0,
         },
+        interfaces: metrics.network_interfaces || [],
       },
       system: {
         hostname: metrics.system_hostname || '',
         platform: metrics.system_platform || '',
         distro: metrics.system_distro || '',
         kernel: metrics.system_kernel || '',
+        arch: metrics.system_arch || '',
         uptime: Number(metrics.system_uptime) || 0,
         bootTime: metrics.system_boot_time || new Date(),
       },
@@ -119,6 +127,8 @@ export class AgentDataController {
       },
       services: {
         count: metrics.services_count || 0,
+        active: metrics.services_active ?? 0,
+        failed: metrics.services_failed ?? 0,
         list: metrics.services_list || [],
       },
       websites: {
@@ -243,6 +253,19 @@ export class AgentDataController {
   @ApiResponse({ status: 200, type: AccountOverviewDto })
   async getOverview(@Request() req): Promise<AccountOverviewDto> {
     return this.agentDataService.getAccountOverview(req.user.id);
+  }
+
+  @Get('servers-summary')
+  @ApiOperation({
+    summary: 'Estado en vivo de todos los servidores del usuario',
+    description:
+      'CPU, memoria, disco, uptime y contadores de cada servidor en una sola consulta. Un campo en null significa "todavía sin dato", no cero.',
+  })
+  @ApiResponse({ status: 200, type: ServersSummaryDto })
+  async getServersSummary(@Request() req): Promise<ServersSummaryDto> {
+    /* Sin `verifyServerAccess`: no hay `:id`, el filtro por dueño dentro de la
+       consulta es la frontera de autorización, igual que en `overview`. */
+    return this.agentDataService.getServersSummary(req.user.id);
   }
 
   @Get('storage-stats')

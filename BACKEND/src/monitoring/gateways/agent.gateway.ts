@@ -13,16 +13,29 @@ import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Server as ServerEntity, ServerStatus } from '@servers/entities/server.entity';
 import { AgentMetrics } from '../entities/agent-metrics.entity';
 import { AgentMetricsHistory } from '../entities/agent-metrics-history.entity';
+import { AgentMessageDto, AgentMessageType } from '../dto/agent-message.dto';
 import {
-  AgentMessageDto,
-  AgentMessageType,
-  MetricsDataDto,
-} from '../dto/agent-message.dto';
+  DatabasePayload,
+  MetricsPayload,
+  ParseResult,
+  ProcessesPayload,
+  ServicesPayload,
+  SystemInfoPayload,
+  WebsitePayload,
+  parseDatabasesInventory,
+  parseMetrics,
+  parseProcessesInventory,
+  parseServicesInventory,
+  parseSystemInfo,
+  parseWebsitesInventory,
+} from '../dto/agent-payload';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { AgentDataService } from '../services/agent-data.service';
+import { ServerStatusService } from '../services/server-status.service';
 
 /**
  * WebSocket Gateway para comunicación con agentes de monitoreo
@@ -52,6 +65,9 @@ export class AgentGateway
   private lastSeenWrites = new Map<string, number>();
   private readonly LAST_SEEN_THROTTLE_MS = 60_000;
 
+  /** Payloads rechazados por tipo de mensaje, para `getStats()`. */
+  private rejected = new Map<string, number>();
+
   /** Refresca `lastSeen` como mucho una vez por minuto y servidor. */
   private async touchLastSeen(serverId: string): Promise<void> {
     const now = Date.now();
@@ -72,6 +88,7 @@ export class AgentGateway
     private jwtService: JwtService,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
+    private serverStatusService: ServerStatusService,
   ) {}
 
   /**
@@ -85,6 +102,12 @@ export class AgentGateway
        recarga su lista con su propio JWT. */
     this.notificationsService.setBroadcaster((userId) =>
       this.emitToOwner(userId, 'notifications:changed'),
+    );
+
+    /* El cron de inactividad también necesita avisar al panel. Se lo damos por
+       aquí para que no dependa del gateway y no haya ciclo de módulos. */
+    this.serverStatusService.setBroadcaster((ownerId, event, payload) =>
+      this.emitToOwner(ownerId, event, payload),
     );
     this.logger.log(
       `📡 Escuchando en: ws://localhost:${process.env.PORT || 3001}/agent`,
@@ -141,7 +164,7 @@ export class AgentGateway
    * Emite un evento solo al dueño del servidor.
    * `ownerId` viaja en la entidad, así que no hace falta consulta extra.
    */
-  private emitToOwner(ownerId: string, event: string, payload?: unknown): void {
+  public emitToOwner(ownerId: string, event: string, payload?: unknown): void {
     this.server.to(this.userRoom(ownerId)).emit(event, payload);
   }
 
@@ -238,7 +261,8 @@ export class AgentGateway
       }
 
       // Procesar según tipo de mensaje
-      await this.processMessage(message, server);
+      const processed = await this.processMessage(message, server, client);
+      if (!processed) return;
 
       // Confirmar recepción al agente
       client.emit('ack', { messageId: message.messageId });
@@ -300,50 +324,119 @@ export class AgentGateway
   private async processMessage(
     message: AgentMessageDto,
     server: ServerEntity,
-  ): Promise<void> {
+    client: Socket,
+  ): Promise<boolean> {
     this.logger.debug(`🔀 Procesando mensaje tipo: ${message.type} de servidor: ${server.name}`);
 
+    /* El `data` se valida antes de tocar la base de datos. Un payload
+       incompleto se rechaza con la ruta del campo que falla, en vez de
+       reventar más adentro y salir como un "Error procesando mensaje" que no
+       dice nada. */
     switch (message.type) {
       case AgentMessageType.HEARTBEAT:
-        await this.handleHeartbeat(message, server);
-        break;
+        await this.handleHeartbeat(server);
+        return true;
 
-      case AgentMessageType.SYSTEM_INFO:
-        await this.handleSystemInfo(message, server);
-        break;
+      case AgentMessageType.SYSTEM_INFO: {
+        const parsed = parseSystemInfo(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleSystemInfo(parsed.value, server);
+        return true;
+      }
 
-      case AgentMessageType.METRICS:
-        await this.handleMetrics(message, server);
-        break;
+      case AgentMessageType.METRICS: {
+        const parsed = parseMetrics(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleMetrics(parsed.value, message, server);
+        return true;
+      }
 
-      case AgentMessageType.SERVICES_INVENTORY:
-        await this.handleServicesInventory(message, server);
-        break;
+      case AgentMessageType.SERVICES_INVENTORY: {
+        const parsed = parseServicesInventory(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleServicesInventory(parsed.value, server);
+        return true;
+      }
 
-      case AgentMessageType.PROCESSES_INVENTORY:
-        await this.handleProcessesInventory(message, server);
-        break;
+      case AgentMessageType.PROCESSES_INVENTORY: {
+        const parsed = parseProcessesInventory(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleProcessesInventory(parsed.value, server);
+        return true;
+      }
 
-      case AgentMessageType.WEBSITES_INVENTORY:
-        await this.handleWebsitesInventory(message, server);
-        break;
+      case AgentMessageType.WEBSITES_INVENTORY: {
+        const parsed = parseWebsitesInventory(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleWebsitesInventory(parsed.value, server);
+        return true;
+      }
 
-      case AgentMessageType.DATABASES_INVENTORY:
-        await this.handleDatabasesInventory(message, server);
-        break;
+      case AgentMessageType.DATABASES_INVENTORY: {
+        const parsed = parseDatabasesInventory(message.data);
+        if (!this.accepted(parsed, message, server, client)) return false;
+        await this.handleDatabasesInventory(parsed.value, server);
+        return true;
+      }
 
       default:
         this.logger.warn(`Tipo de mensaje desconocido: ${message.type}`);
+        return false;
     }
+  }
+
+  /**
+   * Comprueba el resultado de una guarda. Si falla, lo deja registrado, se lo
+   * dice al agente (que ya escucha `error`) y lo cuenta en las estadísticas.
+   *
+   * No lanza ni desconecta a propósito: un mensaje mal formado no invalida la
+   * autenticación, y lanzar acabaría en el catch genérico de `handleMessage`,
+   * que es justo el síntoma que había que quitar de en medio.
+   */
+  private accepted<T>(
+    parsed: ParseResult<T>,
+    message: AgentMessageDto,
+    server: ServerEntity,
+    client: Socket,
+  ): parsed is { ok: true; value: T } {
+    if (parsed.ok) return true;
+
+    this.rejected.set(message.type, (this.rejected.get(message.type) ?? 0) + 1);
+    this.logger.warn(
+      `📵 Payload rechazado (${message.type}) de ${server.name} · agente ${message.agentVersion}: ` +
+        parsed.issues.slice(0, 3).join(' · ') +
+        (parsed.issues.length > 3 ? ` · (+${parsed.issues.length - 3} más)` : ''),
+    );
+    client.emit('error', {
+      messageId: message.messageId,
+      type: message.type,
+      issues: parsed.issues,
+    });
+    return false;
+  }
+
+  /**
+   * Guarda un inventario sin depender de que la fila de métricas exista.
+   *
+   * Antes era un UPDATE con `where server_id`: en un servidor recién dado de
+   * alta aún no hay fila, el UPDATE afectaba a 0 filas y el inventario se
+   * perdía en silencio. Y el agente manda `processes_inventory` antes que las
+   * primeras métricas, así que pasaba siempre.
+   */
+  private async saveInventory(
+    serverId: string,
+    patch: QueryDeepPartialEntity<AgentMetrics>,
+  ): Promise<void> {
+    await this.metricsRepository.upsert(
+      { server_id: serverId, timestamp: new Date(), ...patch },
+      { conflictPaths: ['server_id'] },
+    );
   }
 
   /**
    * Handler: Heartbeat
    */
-  private async handleHeartbeat(
-    message: AgentMessageDto,
-    server: ServerEntity,
-  ): Promise<void> {
+  private async handleHeartbeat(server: ServerEntity): Promise<void> {
     this.logger.debug(`💓 Heartbeat recibido: ${server.name}`);
 
     await this.touchLastSeen(server.id);
@@ -353,12 +446,10 @@ export class AgentGateway
    * Handler: System Info
    */
   private async handleSystemInfo(
-    message: AgentMessageDto,
+    systemInfo: SystemInfoPayload,
     server: ServerEntity,
   ): Promise<void> {
     this.logger.log(`ℹ️  System info recibido: ${server.name}`);
-
-    const systemInfo = message.data;
 
     // Actualizar información del servidor en la BD
     await this.serversRepository.update(server.id, {
@@ -379,11 +470,10 @@ export class AgentGateway
    * Handler: Métricas en tiempo real
    */
   private async handleMetrics(
+    metricsData: MetricsPayload,
     message: AgentMessageDto,
     server: ServerEntity,
   ): Promise<void> {
-    const metricsData = message.data as MetricsDataDto;
-
     this.logger.debug(
       `📊 Métricas recibidas: ${server.name} - CPU: ${metricsData.cpu.usage}%`,
     );
@@ -406,6 +496,11 @@ export class AgentGateway
     metrics.cpu_load_average_1m = metricsData.cpu.loadAverage.current;
     metrics.cpu_load_average_5m = metricsData.cpu.loadAverage.avg5;
     metrics.cpu_load_average_15m = metricsData.cpu.loadAverage.avg15;
+    metrics.cpu_manufacturer = metricsData.cpu.manufacturer || null;
+    metrics.cpu_brand = metricsData.cpu.brand || null;
+    metrics.cpu_cores =
+      metricsData.cpu.cores || metricsData.cpu.usagePerCore.length || null;
+    metrics.cpu_physical_cores = metricsData.cpu.physicalCores || null;
 
     // Memoria
     metrics.memory_total = metricsData.memory.total;
@@ -415,6 +510,7 @@ export class AgentGateway
     metrics.memory_usage_percent = metricsData.memory.usagePercent;
     metrics.swap_total = metricsData.memory.swapTotal;
     metrics.swap_used = metricsData.memory.swapUsed;
+    metrics.swap_free = metricsData.memory.swapFree;
     metrics.swap_usage_percent = metricsData.memory.swapUsagePercent;
 
     // Disco
@@ -427,17 +523,30 @@ export class AgentGateway
     metrics.network_private_ips = metricsData.network.privateIPs;
     metrics.network_connections_active = metricsData.network.connections.active;
     metrics.network_connections_listening = metricsData.network.connections.listening;
+    metrics.network_interfaces = metricsData.network.interfaces;
 
     // Sistema
     metrics.system_hostname = metricsData.system.hostname;
     metrics.system_platform = metricsData.system.platform;
     metrics.system_distro = metricsData.system.distro;
     metrics.system_kernel = metricsData.system.kernel;
+    metrics.system_arch = metricsData.system.arch || null;
     metrics.system_uptime = metricsData.system.uptime;
     metrics.system_boot_time = new Date(metricsData.system.bootTime);
 
     // Procesos top (viene en cpu.topProcesses)
     metrics.processes_top_list = metricsData.cpu.topProcesses || [];
+
+    /* El resumen de procesos viaja también con las métricas, cada 30 s en vez
+       de cada 5 min. Solo se aplica si llega: un agente que no lo mande no
+       debe poner a cero unos contadores que su inventario sí rellena. */
+    if (metricsData.processes) {
+      metrics.processes_total = metricsData.processes.total;
+      metrics.processes_running = metricsData.processes.running;
+      metrics.processes_sleeping = metricsData.processes.sleeping;
+      metrics.processes_stopped = metricsData.processes.stopped;
+      metrics.processes_zombie = metricsData.processes.zombie;
+    }
 
     // Metadata
     metrics.agent_version = message.agentVersion;
@@ -448,9 +557,7 @@ export class AgentGateway
     await this.metricsRepository.save(metrics);
 
     // Insertar punto en la serie temporal (fire-and-forget, no bloquea la respuesta)
-    const rootFs = (metricsData.disk.filesystems as any[])?.find(
-      (fs: any) => fs.mount === '/' || fs.mountPoint === '/',
-    );
+    const rootFs = metricsData.disk.filesystems.find((fs) => fs.mount === '/');
     this.metricsHistoryRepository
       .insert({
         server_id: server.id,
@@ -458,7 +565,7 @@ export class AgentGateway
         cpu_load_average_1m: metricsData.cpu.loadAverage.current,
         memory_usage_percent: metricsData.memory.usagePercent,
         swap_usage_percent: metricsData.memory.swapUsagePercent,
-        disk_usage_percent: rootFs?.usagePercent ?? null,
+        disk_usage_percent: rootFs?.usagePercent,
         network_connections_active: metricsData.network.connections.active,
         system_uptime: metricsData.system.uptime,
       })
@@ -496,33 +603,26 @@ export class AgentGateway
    * Handler: Inventario de servicios
    */
   private async handleServicesInventory(
-    message: AgentMessageDto,
+    inventory: ServicesPayload,
     server: ServerEntity,
   ): Promise<void> {
     this.logger.log(`🔧 Inventario de servicios recibido: ${server.name}`);
 
-    // El agente envía { services: [...] }, no un array directo
-    const services = Array.isArray(message.data)
-      ? message.data
-      : (message.data?.services || []);
-
+    const services = inventory.services;
     this.logger.debug(`📊 Guardando ${services.length} servicios en BD`);
 
-    // Usar UPDATE directo para asegurar que los cambios se persistan
-    await this.metricsRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        timestamp: new Date(),
-        services_count: services.length,
-        services_list: services,
-      })
-      .where('server_id = :serverId', { serverId: server.id })
-      .execute();
+    await this.saveInventory(server.id, {
+      services_count: services.length,
+      services_active: inventory.totalActive,
+      services_failed: inventory.totalFailed,
+      services_list: services,
+    });
 
-    // Actualizar también el campo metadata.activeServices en la entidad Server
+    /* `activeServices` son los activos, no el total de unidades cargadas:
+       antes se guardaba `services.length` y la tarjeta del listado de
+       servidores enseñaba ~160 "servicios activos" en cualquier máquina. */
     const metadata = server.metadata || {};
-    metadata.activeServices = services.length;
+    metadata.activeServices = inventory.totalActive;
     await this.serversRepository.update(server.id, {
       metadata: metadata,
       lastSeen: new Date(),
@@ -541,27 +641,18 @@ export class AgentGateway
    * Handler: Inventario de procesos
    */
   private async handleProcessesInventory(
-    message: AgentMessageDto,
+    processesData: ProcessesPayload,
     server: ServerEntity,
   ): Promise<void> {
     this.logger.log(`⚙️  Inventario de procesos recibido: ${server.name}`);
 
-    const processesData = message.data || {};
-
-    // Usar UPDATE directo
-    await this.metricsRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        timestamp: new Date(),
-        processes_total: processesData.total || 0,
-        processes_running: processesData.running || 0,
-        processes_sleeping: processesData.sleeping || 0,
-        processes_stopped: processesData.stopped || 0,
-        processes_zombie: processesData.zombie || 0,
-      })
-      .where('server_id = :serverId', { serverId: server.id })
-      .execute();
+    await this.saveInventory(server.id, {
+      processes_total: processesData.total,
+      processes_running: processesData.running,
+      processes_sleeping: processesData.sleeping,
+      processes_stopped: processesData.stopped,
+      processes_zombie: processesData.zombie,
+    });
 
     // Emitir al frontend
     this.emitToOwner(server.ownerId, 'server:processes:updated', {
@@ -574,24 +665,15 @@ export class AgentGateway
    * Handler: Inventario de sitios web
    */
   private async handleWebsitesInventory(
-    message: AgentMessageDto,
+    websites: WebsitePayload[],
     server: ServerEntity,
   ): Promise<void> {
     this.logger.log(`🌐 Inventario de sitios web recibido: ${server.name}`);
 
-    const websites = Array.isArray(message.data) ? message.data : [];
-
-    // Usar UPDATE directo
-    await this.metricsRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        timestamp: new Date(),
-        websites_count: websites.length,
-        websites_list: websites,
-      })
-      .where('server_id = :serverId', { serverId: server.id })
-      .execute();
+    await this.saveInventory(server.id, {
+      websites_count: websites.length,
+      websites_list: websites,
+    });
 
     // Emitir al frontend
     this.emitToOwner(server.ownerId, 'server:websites:updated', {
@@ -604,26 +686,17 @@ export class AgentGateway
    * Handler: Inventario de bases de datos
    */
   private async handleDatabasesInventory(
-    message: AgentMessageDto,
+    databases: DatabasePayload[],
     server: ServerEntity,
   ): Promise<void> {
     this.logger.log(
       `💾 Inventario de bases de datos recibido: ${server.name}`,
     );
 
-    const databases = Array.isArray(message.data) ? message.data : [];
-
-    // Usar UPDATE directo
-    await this.metricsRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        timestamp: new Date(),
-        databases_count: databases.length,
-        databases_list: databases,
-      })
-      .where('server_id = :serverId', { serverId: server.id })
-      .execute();
+    await this.saveInventory(server.id, {
+      databases_count: databases.length,
+      databases_list: databases,
+    });
 
     // Emitir al frontend
     this.emitToOwner(server.ownerId, 'server:databases:updated', {
@@ -649,6 +722,7 @@ export class AgentGateway
     return {
       totalConnections: this.connections.size,
       connectedServers: Array.from(this.connections.keys()),
+      rejectedPayloads: Object.fromEntries(this.rejected),
     };
   }
 }

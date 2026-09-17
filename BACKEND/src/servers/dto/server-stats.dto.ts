@@ -18,4 +18,10 @@ export class ServerStatsDto {
 
   @ApiProperty({ description: 'Servidores verificando estado', example: 0 })
   checking: number;
+
+  @ApiProperty({ description: 'Servidores en atención', example: 0 })
+  warning: number;
+
+  @ApiProperty({ description: 'Servidores creados a la espera del agente', example: 1 })
+  pending: number;
 }

@@ -6,9 +6,12 @@ import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
  * Interfaz para las métricas de CPU detalladas
  */
 export interface CpuMetrics {
-  usage: number;        // Uso de CPU en porcentaje
-  cores: number;        // Número de núcleos
-  loadAverage: string;  // Promedio de carga del sistema
+  usage: number;          // Uso de CPU en porcentaje
+  cores: number;          // Núcleos lógicos
+  physicalCores: number;  // Núcleos físicos (0 si el agente no lo reporta)
+  brand: string;          // Modelo: "AMD Ryzen 7 5800X"
+  manufacturer: string;   // "AuthenticAMD"
+  loadAverage: string;    // Promedio de carga del sistema
 }
 
 /**
@@ -35,10 +38,23 @@ export interface DiskMetrics {
 /**
  * Interfaz para información de red
  */
+/** Interfaz de red tal y como la reporta el agente. */
+export interface NetworkInterfaceInfo {
+  iface: string;
+  ip4: string;
+  ip6: string;
+  mac: string;
+  operstate: string;    // "up" | "down" | lo que diga el kernel
+  rxBytes: number;
+  txBytes: number;
+}
+
 export interface NetworkMetrics {
   privateIp: string;    // IP privada del servidor
   publicIp: string;     // IP pública del servidor
-  interface: string;    // Interfaz de red (ej: "eth0")
+  /** Interfaz principal; null si el agente no reporta interfaces */
+  primary: NetworkInterfaceInfo | null;
+  interfaces: NetworkInterfaceInfo[];
 }
 
 /**
@@ -48,6 +64,7 @@ export interface SystemInfo {
   os: string;           // Sistema operativo (ej: "Ubuntu 22.04.3 LTS")
   kernel: string;       // Versión del kernel
   hostname: string;     // Nombre del host
+  arch: string;         // Arquitectura (ej: "x86_64")
   uptime: string;       // Tiempo de actividad en formato legible
   uptimeSeconds: number; // Tiempo de actividad en segundos
 }
@@ -75,13 +92,14 @@ export interface SystemdServiceInfo {
   subState: string;
   enabled: boolean;
   pid: number | null;
-  /** Bytes; systemd no reporta CPU por unidad, llega siempre en 0 */
+  /** Bytes. systemd no reporta CPU por unidad, así que ese dato no existe */
   memory: number;
-  cpuPercent: number;
 }
 
 export interface ServicesInfo {
   count: number;
+  active: number;
+  failed: number;
   list: SystemdServiceInfo[];
 }
 
@@ -98,7 +116,9 @@ export interface DatabaseInfo {
   type: string;
   version?: string;
   running?: boolean;
-  size?: string | number;
+  /** Bytes del directorio de datos. Ausente = no se pudo medir (cero sería mentira) */
+  sizeBytes?: number;
+  /** Ausente = el agente no tuvo acceso; `[]` = acceso y ninguna base */
   databases?: string[];
 }
 
@@ -196,10 +216,32 @@ export function useServerDetail(
         /* Los inventarios sí tienen forma conocida: se acotan una vez aquí en
            lugar de hacer accesos sueltos sobre el `any` del payload. */
         const inventory = rawData as {
-          services?: { count?: number; list?: SystemdServiceInfo[] };
+          services?: { count?: number; active?: number; failed?: number; list?: SystemdServiceInfo[] };
           websites?: { count?: number; list?: WebsiteInfo[] };
           databases?: { count?: number; list?: DatabaseInfo[] };
         };
+
+        /* Interfaces de red: el agente las manda en snake_case, que es el único
+           punto donde el contrato cruza la frontera de estilo del frontend. */
+        const interfaces: NetworkInterfaceInfo[] = Array.isArray(rawData.network?.interfaces)
+          ? rawData.network.interfaces.map((i: any) => ({
+              iface: i?.iface ?? '',
+              ip4: i?.ip4 ?? '',
+              ip6: i?.ip6 ?? '',
+              mac: i?.mac ?? '',
+              operstate: i?.operstate ?? '',
+              rxBytes: Number(i?.rx_bytes) || 0,
+              txBytes: Number(i?.tx_bytes) || 0,
+            }))
+          : [];
+
+        /* La principal es la primera activa con IPv4; si ninguna lo está, la
+           primera con IPv4; y si tampoco, la primera que haya. */
+        const primaryInterface =
+          interfaces.find(i => i.operstate === 'up' && i.ip4) ??
+          interfaces.find(i => i.ip4) ??
+          interfaces[0] ??
+          null;
 
         // Transformar la estructura del agente a la estructura esperada
         const transformedData: ServerDetailMetrics = {
@@ -210,7 +252,10 @@ export function useServerDetail(
 
           cpu: {
             usage: Number(rawData.cpu?.usage) || 0,
-            cores: rawData.cpu?.usagePerCore?.length || 1,
+            cores: Number(rawData.cpu?.cores) || rawData.cpu?.usagePerCore?.length || 1,
+            physicalCores: Number(rawData.cpu?.physicalCores) || 0,
+            brand: rawData.cpu?.brand || '',
+            manufacturer: rawData.cpu?.manufacturer || '',
             loadAverage: rawData.cpu?.loadAverage
               ? `${rawData.cpu.loadAverage.current.toFixed(2)} / ${rawData.cpu.loadAverage.avg5.toFixed(2)} / ${rawData.cpu.loadAverage.avg15.toFixed(2)}`
               : '0.00 / 0.00 / 0.00',
@@ -253,16 +298,22 @@ export function useServerDetail(
 
           network: {
             publicIp: rawData.network?.publicIP || 'N/A',
-            privateIp: Array.isArray(rawData.network?.privateIPs) && rawData.network.privateIPs.length > 0
-              ? rawData.network.privateIPs[0]
-              : 'N/A',
-            interface: 'eth0',
+            /* La IP privada sale de la interfaz principal cuando la hay: es la
+               misma que muestra la fila de interfaz, y así no se contradicen. */
+            privateIp:
+              primaryInterface?.ip4 ||
+              (Array.isArray(rawData.network?.privateIPs) && rawData.network.privateIPs.length > 0
+                ? rawData.network.privateIPs[0]
+                : 'N/A'),
+            primary: primaryInterface,
+            interfaces,
           },
 
           system: {
             os: rawData.system?.distro || rawData.system?.platform || 'Linux',
             kernel: rawData.system?.kernel || 'N/A',
             hostname: rawData.system?.hostname || 'N/A',
+            arch: rawData.system?.arch || '',
             uptime: formatUptime(Number(rawData.system?.uptime) || 0),
             uptimeSeconds: Number(rawData.system?.uptime) || 0,
           },
@@ -277,6 +328,8 @@ export function useServerDetail(
 
           services: {
             count: Number(inventory.services?.count) || 0,
+            active: Number(inventory.services?.active) || 0,
+            failed: Number(inventory.services?.failed) || 0,
             list: Array.isArray(inventory.services?.list) ? inventory.services.list : [],
           },
 

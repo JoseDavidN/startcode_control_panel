@@ -11,6 +11,7 @@ import { normalizeAuthResponse } from '@services/auth.adapter';
 import { TokenManager } from '@utils/tokenManager';
 import { authApi } from '@services/auth.api';
 import type {
+  AuthResponse,
   LoginCredentials,
   PasswordChangeRequiredResponse,
   Permission,
@@ -44,6 +45,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         if ('requiresPasswordChange' in result && result.requiresPasswordChange) {
           return result as PasswordChangeRequiredResponse;
         }
+
+        /* La respuesta del login ya trae el usuario: sembrarlo deja la sesión
+           activa de inmediato, sin que `isAuthenticated` dependa del roundtrip
+           a /auth/me. El refetch de abajo queda como confirmación. */
+        queryClient.setQueryData(['currentUser'], (result as AuthResponse).user);
 
         await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
         await refetch();
@@ -80,6 +86,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         );
       }
       TokenManager.saveUserData(normalized.user);
+      queryClient.setQueryData(['currentUser'], normalized.user);
 
       await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       await refetch();
@@ -108,6 +115,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         );
       }
       TokenManager.saveUserData(normalized.user);
+      queryClient.setQueryData(['currentUser'], normalized.user);
 
       await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       await refetch();

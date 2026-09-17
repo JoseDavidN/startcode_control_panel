@@ -55,7 +55,7 @@ export const SftpDropZone: React.FC<SftpDropZoneProps> = ({ destDir, disabled, o
 			}}
 			onDrop={handleDrop}
 			className={`rounded-xl border border-dashed p-5 text-center transition ${
-				dragging ? 'grad-brand-soft border-violet-400/40' : 'border-white/[0.12]'
+				dragging ? 'grad-brand-soft border-violet-400/40' : 'border-edge hover:border-edge-hover'
 			} ${disabled ? 'opacity-50' : ''}`}
 		>
 			<UploadIcon className="w-6 h-6 mx-auto text-white/35 mb-2" />
@@ -70,7 +70,7 @@ export const SftpDropZone: React.FC<SftpDropZoneProps> = ({ destDir, disabled, o
 					disabled={disabled || picking}
 					onClick={() => void pick('files')}
 					className="glass-soft text-white/85 text-sm font-medium px-4 h-10 rounded-xl
-						hover:bg-white/[0.07] transition disabled:opacity-50"
+						row-hit transition disabled:opacity-50"
 				>
 					Elegir archivos
 				</button>
@@ -79,7 +79,7 @@ export const SftpDropZone: React.FC<SftpDropZoneProps> = ({ destDir, disabled, o
 					disabled={disabled || picking}
 					onClick={() => void pick('directory')}
 					className="glass-soft text-white/85 text-sm font-medium px-4 h-10 rounded-xl
-						hover:bg-white/[0.07] transition disabled:opacity-50"
+						row-hit transition disabled:opacity-50"
 				>
 					Elegir carpeta
 				</button>

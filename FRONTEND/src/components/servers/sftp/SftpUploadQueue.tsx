@@ -44,7 +44,7 @@ export const SftpUploadQueue: React.FC<SftpUploadQueueProps> = ({
 	).length;
 
 	return (
-		<div className="glass-soft rounded-xl border border-white/[0.06] p-4 space-y-3">
+		<div className="glass-soft rounded-xl p-4 space-y-3">
 			<div className="flex items-center justify-between gap-3 flex-wrap">
 				<div>
 					<p className="text-sm font-semibold text-white">
@@ -61,7 +61,7 @@ export const SftpUploadQueue: React.FC<SftpUploadQueueProps> = ({
 							type="button"
 							onClick={onRetryAllConflicts}
 							className="h-9 px-3.5 rounded-xl glass-soft text-amber-300 text-xs font-medium
-								hover:bg-white/[0.07] transition"
+								row-hit transition"
 						>
 							Sobrescribir todos ({totals.conflicts})
 						</button>
@@ -71,7 +71,7 @@ export const SftpUploadQueue: React.FC<SftpUploadQueueProps> = ({
 							type="button"
 							onClick={onClearFinished}
 							className="h-9 px-3.5 rounded-xl glass-soft text-white/65 text-xs font-medium
-								hover:text-white hover:bg-white/[0.07] transition"
+								hover:text-white row-hit transition"
 						>
 							Limpiar terminados
 						</button>
@@ -79,7 +79,7 @@ export const SftpUploadQueue: React.FC<SftpUploadQueueProps> = ({
 				</div>
 			</div>
 
-			<div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+			<div className="bg-track h-1.5 rounded-full overflow-hidden">
 				<div
 					className="h-full rounded-full transition-all duration-500"
 					style={{
@@ -147,7 +147,7 @@ export const SftpUploadQueue: React.FC<SftpUploadQueueProps> = ({
 							</div>
 
 							{item.status === 'uploading' && (
-								<div className="bg-white/[0.06] h-1 rounded-full overflow-hidden mt-1.5">
+								<div className="bg-track h-1 rounded-full overflow-hidden mt-1.5">
 									<div
 										className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all"
 										style={{ width: `${pct}%` }}

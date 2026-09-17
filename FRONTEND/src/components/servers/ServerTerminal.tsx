@@ -154,10 +154,9 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
 
       <div
-        className="relative w-full max-w-5xl h-[80vh] flex flex-col glass grain rounded-2xl animate-slideUp overflow-hidden"
-        style={{ boxShadow: 'var(--shadow-modal)' }}
+        className="relative w-full max-w-5xl h-[80vh] flex flex-col glass elev-modal grain rounded-2xl animate-slideUp overflow-hidden"
       >
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.07] shrink-0">
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-line shrink-0">
           <span className={`w-2 h-2 rounded-full shrink-0 ${tone}`} />
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">Terminal · {serverName}</div>
@@ -166,13 +165,13 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
 
           <button
             onClick={() => termRef.current?.clear()}
-            className="mo-tab ml-auto h-9 px-3 rounded-xl glass-soft text-white/70 hover:text-white hover:bg-white/[0.07] text-xs font-medium"
+            className="mo-tab ml-auto h-9 px-3 rounded-xl glass-soft text-white/70 hover:text-white row-hit text-xs font-medium"
           >
             Limpiar
           </button>
           <button
             onClick={onClose}
-            className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/70 hover:text-white hover:bg-white/[0.07] flex items-center justify-center"
+            className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/70 hover:text-white row-hit flex items-center justify-center"
             aria-label="Cerrar terminal"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" className="w-4 h-4">

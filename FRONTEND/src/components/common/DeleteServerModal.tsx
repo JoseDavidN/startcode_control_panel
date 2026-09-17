@@ -135,7 +135,7 @@ export const DeleteServerModal: React.FC<Props> = ({ server, onClose }) => {
           </>
         ) : (
           <>
-            <div className="glass-soft rounded-xl p-4 border border-white/[0.06]">
+            <div className="glass-soft rounded-xl p-4">
               <div className="text-sm font-semibold text-white mb-1">
                 Desinstalar el agente de {server.host}
               </div>
@@ -212,7 +212,7 @@ export const DeleteServerModal: React.FC<Props> = ({ server, onClose }) => {
           <button
             onClick={phase === 'sudo' && !remove.isPending ? () => setPhase('confirm') : onClose}
             disabled={remove.isPending}
-            className="mo-tab h-11 px-4 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07]
+            className="mo-tab h-11 px-4 rounded-xl glass-soft text-white/85 row-hit
               text-sm font-medium disabled:opacity-40"
           >
             {phase === 'sudo' ? 'Atrás' : 'Cancelar'}

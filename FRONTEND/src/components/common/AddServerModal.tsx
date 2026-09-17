@@ -439,15 +439,15 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
         </div>
 
         {/* Acciones */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.06]">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
           <button type="button" onClick={onClose}
             disabled={createMutation.isPending}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white hover:bg-white/[0.07] text-sm font-medium transition disabled:opacity-50">
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white row-hit text-sm font-medium transition disabled:opacity-50">
             Cancelar
           </button>
           <button type="submit"
             disabled={createMutation.isPending || isConnecting}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] transition disabled:opacity-50">
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium elev-brand hover:elev-brand-hi transition disabled:opacity-50">
             {createMutation.isPending || isConnecting ? (
               <>
                 <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />

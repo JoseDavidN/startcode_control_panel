@@ -78,8 +78,16 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 | `--aurora-1..3`, `--aurora-opacity`, `--aurora-2-opacity`, `--aurora-3-opacity` | Blobs animados del fondo |
 | `--surface-rgb` + `--glass-alpha` / `--glass-soft-alpha` / `--glass-input-alpha` | Base de `.glass`, `.glass-soft`, `.glass-input` |
 | `--sheen-*` | Gradiente de brillo superior de los paneles |
-| `--hairline`, `--hairline-soft`, `--hairline-strong`, `--inset-hi` | Bordes y línea interior |
-| `--shadow-panel`, `--shadow-modal` | Sombras de paneles y modales |
+| `--hairline`, `--hairline-soft`, `--hairline-strong`, `--hairline-hover` | Bordes de superficie: normal, anidada, acentuada y al pasar por encima |
+| `--line` | Separadores dentro de un panel (`border-b`, `divide-y`). Deliberadamente más suave que `--hairline`: es el token que se repite N veces en una lista |
+| `--edge-dashed`, `--edge-dashed-hover` | Borde discontinuo de zonas de soltar y de estados vacíos |
+| `--inset-hi` | Labio de luz superior (va dentro de cada token de sombra, no en la clase) |
+| `--inset-field` | Sombra interior de los campos: hundidos, al revés que los paneles |
+| `--tint-hover`, `--tint-active`, `--tint-sunken` | Tintes de realce, selección y fondo rehundido |
+| `--shadow-flat`, `--shadow-raised`, `--shadow-panel`, `--shadow-float`, `--shadow-modal` | Escala de elevación, de menos a más |
+| `--shadow-brand-sm`, `--shadow-brand`, `--shadow-brand-hi` | Sombras de marca (violeta en Nocturno, cian en Aurora, naranja en Solar) |
+| `--glow-ok`, `--glow-warn`, `--glow-danger` | Brillos semánticos. En Solar cambian de mecánica: anillo nítido en vez de halo |
+| `--focus-ring` | Color del anillo de foco, propio por tema (la marca de Solar no llega a 3:1) |
 | `--ink` | Texto base del documento |
 | `--brand-1/2`, `--brand-1-rgb`/`--brand-2-rgb`, `--brand-light-1/2` | Gradiente de marca y variante clara (sliders, texto con gradiente) |
 | `--on-brand` | Tinta sobre superficies `.grad-brand` |
@@ -89,7 +97,7 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 
 Tailwind v4 compila cada utilidad de color a `var(--color-*)`, así que cada tema redefine esas variables y retiñe la app sin tocar las clases de los componentes:
 
-- **`--color-white` es el canal de tinta/overlay sobre la superficie**, no "blanco". En Solar vale `#2a1a0c`, de modo que `text-white/55`, `bg-white/[0.06]` y `border-white/[0.06]` se convierten en tinta, tinte y hairline oscuros. Para blanco real sobre la marca está `--on-brand`; para el dot de un toggle, `--knob`.
+- **`--color-white` es el canal de tinta, no "blanco"**. En Solar vale `#2a1a0c`, de modo que `text-white/55` es tinta oscura. Se usa **solo para texto e iconos**: bordes, separadores y tintes de fondo salen de sus propios tokens (`border-hairline`, `border-line`, `bg-tint-hover`…), porque convivían dos tintas distintas de borde y en Solar se veía el empalme. Para blanco real sobre la marca está `--on-brand`; para el dot de un toggle, `--knob`.
 - `violet-*`, `purple-*`, `fuchsia-*`, `pink-*` e `indigo-500` son la **familia de marca**: se remapean a cian/azul en Aurora y a naranja/ámbar en Solar. Usarlas para acentos es correcto; para colores semánticos, no.
 - `emerald` (ok), `amber` (atención), `rose` (error) y `sky` (info) conservan su significado y solo se oscurecen en Solar para contrastar sobre fondo claro.
 
@@ -108,21 +116,49 @@ Tailwind v4 compila cada utilidad de color a `var(--color-*)`, así que cada tem
 
 ---
 
-## Clases CSS de Glass (`App.css`)
+## Superficies (`App.css`)
+
+### La capa importa
+
+Las recetas de superficie viven en **`@layer components`**. No es cosmético: una regla fuera de capa gana a cualquier utilidad de Tailwind por muy específica que sea, y mientras `.glass` estuvo fuera dejaba muertos los `border-b-0` de la junta del panel, los `border-rose-400/20` de los avisos de error y los `hover:bg-*` escritos sobre tarjetas. En capa, la utilidad del componente corrige la receta propiedad a propiedad.
+
+Siguen **fuera de capa a propósito**, y llevan su comentario: los `:root` de los temas (tienen que ganar a `@layer theme`) y `.grad-brand *` (tiene que ganar a `text-white`).
+
+El puente con Tailwind son tres mecanismos:
+
+| Mecanismo | Para qué | Ejemplo de uso |
+|---|---|---|
+| `@theme inline` | Colores de borde y tinte | `border-hairline`, `border-line`, `divide-line`, `bg-tint-hover`, `bg-track`, `border-edge` |
+| `@utility` | Sombras | `elev-raised`, `elev-panel`, `elev-float`, `elev-modal`, `elev-brand`, `glow-ok` |
+| `@layer components` | Recetas completas | `.glass`, `.glass-soft`, `.glass-input`, `.row-hit`, `.edge-dashed`, `.focus-ring`, `.nav-active`, `.panel-head` |
+
+Las sombras no pueden ir por `@theme`: el namespace `--shadow-*` de Tailwind choca con los tokens del proyecto y `--shadow-panel: var(--shadow-panel)` sería circular.
+
+### Escala de elevación
+
+Un nivel es **una sola propiedad `box-shadow`**, con el labio de luz dentro del token, para que al anidar no se sumen sombras. Cada nivel lleva término de contacto además del ambiente: sin él un panel flota sin asentarse.
+
+| Nivel | Uso |
+|---|---|
+| `--shadow-flat` | Tercer nivel de anidamiento: solo labio y contacto de 1 px |
+| `--shadow-raised` | Tarjetas y bloques dentro de un panel |
+| `--shadow-panel` | Paneles de primer nivel: sidebar y área de contenido |
+| `--shadow-float` | Desplegables, popovers, avisos flotantes |
+| `--shadow-modal` | Modales y la terminal |
+
+**La profundidad se resuelve sola**: `.glass` y `.glass-soft` bajan de nivel automáticamente según cuántas superficies tengan encima, así que una tarjeta dentro de un panel no necesita decir nada. Para romper la regla se escribe la utilidad (`elev-panel`), que siempre gana.
+
+**Solar invierte el reparto**: menos borde y más contacto. Empatar el trazo con Nocturno exigiría alfa 0,23, y a esa altura deja de leerse como borde y se lee como color marrón; la definición que falta la ponen las sombras, que sobre fondo claro sí rinden.
 
 ### `.glass` — paneles principales
 Sidebar, área de contenido principal, modales.
 ```css
 .glass {
-  background-color: rgba(8, 3, 20, 0.62);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  background-color: rgb(var(--surface-rgb) / var(--glass-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-1) 0%, var(--sheen-2) 100%);
   backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid rgba(255,255,255,0.09);
-  box-shadow:
-    0 1px 0 0 rgba(255,255,255,0.07) inset,
-    0 24px 60px -24px rgba(0,0,0,0.7),
-    0 1px 2px rgba(0,0,0,0.5);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-panel);
 }
 ```
 
@@ -130,28 +166,37 @@ Sidebar, área de contenido principal, modales.
 Tarjetas dentro de paneles glass, chips de usuario, secciones de settings.
 ```css
 .glass-soft {
-  background-color: rgba(8, 3, 20, 0.40);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  background-color: rgb(var(--surface-rgb) / var(--glass-soft-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-soft-1) 0%, var(--sheen-2) 100%);
   backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid var(--hairline-soft);
+  box-shadow: var(--shadow-raised);
 }
 ```
 
 ### `.glass-input` — inputs y selects
+Van al revés que los paneles: hundidos.
 ```css
 .glass-input {
-  background-color: rgba(8, 3, 20, 0.30);
-  background-image: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.04) 100%);
-  border: 1px solid rgba(255,255,255,0.09);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background-color: rgb(var(--surface-rgb) / var(--glass-input-alpha));
+  background-image: linear-gradient(180deg, var(--sheen-input-1) 0%, var(--sheen-input-2) 100%);
+  border: 1px solid var(--hairline);
+  box-shadow: inset 0 1px 2px var(--inset-field);
 }
 .glass-input:focus-within {
-  border-color: rgba(168,85,247,0.5);
-  box-shadow: 0 0 0 4px rgba(168,85,247,0.12);
+  border-color: rgb(var(--brand-1-rgb) / 0.5);
+  box-shadow: inset 0 1px 2px var(--inset-field), 0 0 0 4px rgb(var(--brand-1-rgb) / 0.12);
 }
 ```
+
+### `.row-hit` — realce al pasar por encima
+**Sobre una superficie glass no se usa `hover:bg-*`**: esa utilidad sustituye el color del cristal en vez de sumarse, y la tarjeta se queda translúcida. `.row-hit` apila el tinte como capa de imagen, por encima del brillo y del color, y de paso sube el borde a `--hairline-hover`. En elementos que no son glass, `hover:bg-tint-hover` es correcto.
+
+### `.edge-dashed` — borde discontinuo
+Zonas de soltar y estados vacíos. Lleva su propio `:hover` en CSS: **no se muta `style.borderColor` desde JS**.
+
+### `.focus-ring` / `.focus-ring-inset` — foco visible
+`.focus-ring` usa `outline` y sigue el radio del elemento; dentro de un `overflow: hidden` el outline se recorta y toca `.focus-ring-inset`, que lo dibuja con `box-shadow`.
 
 ### `.grain` — textura de grano
 Aplicar a todo elemento `glass` o `glass-soft` que necesite profundidad visual. Usa `::after` pseudoelemento — el contenedor debe tener `position: relative` y `overflow: hidden`.
@@ -174,10 +219,14 @@ background: linear-gradient(135deg, #c084fc 0%, #f472b6 100%);
 
 ### `.nav-active` — ítem de nav activo
 ```css
-background: linear-gradient(135deg, rgba(168,85,247,0.28), rgba(236,72,153,0.28));
-border: 1px solid rgba(255,255,255,0.14);
-box-shadow: 0 8px 24px -8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+.nav-active {
+  background: linear-gradient(135deg, rgb(var(--brand-1-rgb) / 0.28), rgb(var(--brand-2-rgb) / 0.28));
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-brand), inset 0 1px 0 var(--inset-hi);
+}
+.sb-row.nav-active { border-color: var(--hairline-strong); }
 ```
+El selector compuesto es necesario: `.sb-row` declara `border: 1px solid transparent` para reservar el hueco y, a igual especificidad, ganaba por orden de declaración.
 
 ---
 
@@ -185,24 +234,22 @@ box-shadow: 0 8px 24px -8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,25
 
 ### Botón primario (`.grad-brand`)
 ```tsx
-<button className="grad-brand text-white text-sm font-semibold px-4 h-10 rounded-xl
-  shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]
-  hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] transition">
+<button className="grad-brand text-sm font-semibold px-4 h-10 rounded-xl
+  elev-brand hover:elev-brand-hi transition">
   Guardar
 </button>
 ```
 
 ### Botón secundario (glass)
 ```tsx
-<button className="glass-soft text-white/85 text-sm font-medium px-4 h-10 rounded-xl
-  hover:bg-white/[0.07] transition">
+<button className="glass-soft row-hit text-white/85 text-sm font-medium px-4 h-10 rounded-xl">
   Cancelar
 </button>
 ```
 
 ### Botón fantasma
 ```tsx
-<button className="text-white/70 hover:text-white hover:bg-white/[0.06] text-sm px-4 h-10 rounded-xl transition">
+<button className="text-white/70 hover:text-white hover:bg-tint-hover text-sm px-4 h-10 rounded-xl transition">
   Acción
 </button>
 ```
@@ -216,8 +263,8 @@ box-shadow: 0 8px 24px -8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,25
 
 ### Toggle (switch)
 Usar el componente `Toggle` existente en `Settings.tsx`. Clases clave:
-- Track on: `.grad-brand` + `shadow-[0_4px_14px_-4px_rgba(168,85,247,0.7)]`
-- Track off: `bg-white/10 border border-white/10`
+- Track on: `.grad-brand border-transparent elev-brand-sm`
+- Track off: `bg-track border-hairline`
 - Dot: `bg-white rounded-full` con `translate-x-5` cuando está on
 
 ### Slider (rango)
@@ -225,26 +272,25 @@ Usar el componente `Toggle` existente en `Settings.tsx`. Clases clave:
 
 Thumb: `linear-gradient(135deg, #c084fc 0%, #f472b6 100%)` con `box-shadow: 0 0 0 4px rgba(168,85,247,0.22)`.
 Track filled: `linear-gradient(135deg, #a855f7 0%, #ec4899 100%)`.
-Track empty: `rgba(255,255,255,0.08)`.
+Track empty: `var(--track)`.
 
 ### Progress bar
+**Siempre usar el componente `MetricBar`** de `components/common/MetricBar.tsx` (variante `compact` para filas densas). Su pista es `bg-track`, nunca un `bg-white/NN`: sobre el fondo claro de Solar un marrón al 6 % es invisible. El gradiente lo decide `barGradient` (`utils/metrics.ts`) según el valor: `emerald→teal`, `sky→cyan`, `amber→orange`, `rose→orange`.
+
 ```tsx
-<div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
-  <div className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full
-    relative overflow-hidden transition-all duration-700" style={{ width: `${value}%` }}>
-    {/* shimmer con @keyframes shine */}
-  </div>
+<div className="bg-track h-1.5 rounded-full overflow-hidden">
+  <div className={`h-full rounded-full bg-gradient-to-r ${barGradient(value)} transition-all duration-700`}
+    style={{ width: `${value}%` }} />
 </div>
 ```
-Gradientes según métrica: CPU `emerald→teal` (normal) / `rose→orange` (alto), RAM `sky→blue`, Disco `violet→fuchsia`.
 
 ### Card (panel de contenido)
+**Usar el componente `Card`** de `components/common/Card.tsx`:
+
 ```tsx
-<div className="glass rounded-2xl relative grain p-5">
-  {/* contenido */}
-</div>
+<Card className="p-5">{/* contenido */}</Card>
 ```
-Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales.
+Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales. No se le escribe sombra: la elevación sale de la profundidad a la que quede la tarjeta.
 
 ### Badge de estado
 ```tsx
@@ -259,8 +305,8 @@ Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales
 
 ### Ícono de acción (botón cuadrado)
 ```tsx
-<button className="w-11 h-11 rounded-xl glass-soft text-white/75
-  hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition">
+<button className="w-11 h-11 rounded-xl glass-soft row-hit text-white/75
+  hover:text-white flex items-center justify-center transition">
   <Icon />
 </button>
 ```
@@ -269,7 +315,7 @@ Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales
 Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 - **Se monta en el `body` con un portal**, no donde se use. Es obligatorio: `.glass` lleva `backdrop-filter` y `.mo-view` anima `transform`, y cualquiera de los dos convierte al ancestro en bloque contenedor, así que un `position: fixed` dentro de una tarjeta deja de medirse contra la ventana y el modal queda encerrado en ella. Cualquier overlay a pantalla completa que no use este componente (la terminal) tiene que portarse igual.
 - Backdrop: `bg-black/60 backdrop-blur-md`
-- Contenedor: `glass rounded-2xl grain` con `max-h-[88vh] flex flex-col`
+- Contenedor: `glass elev-modal rounded-2xl grain` con `max-h-[88vh] flex flex-col`
 - Header: `shrink-0`
 - Body: `overflow-y-auto modal-scroll flex-1 min-h-0`
 - Tamaños: `sm=max-w-md`, `md=max-w-2xl`, `lg=max-w-3xl`, `xl=max-w-5xl`
@@ -277,15 +323,17 @@ Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 ### Zona de arrastrar y soltar
 ```tsx
 <div className={`rounded-xl border border-dashed p-5 text-center transition ${
-  dragging ? 'grad-brand-soft border-violet-400/40' : 'border-white/[0.12]'
+  dragging ? 'grad-brand-soft border-violet-400/40' : 'border-edge hover:border-edge-hover'
 }`}>
 ```
+Para un estado vacío completo basta la clase `.edge-dashed`, que ya trae el grosor y el hover.
 El resaltado al arrastrar se hace con `grad-brand-soft`, no con un color literal. El contenedor lleva un contador de `dragenter`/`dragleave`: sin él, los hijos hacen parpadear el estado. La usa el modal SFTP (`components/servers/sftp/SftpDropZone.tsx`).
 
 ### Separador de sección
 ```tsx
-<div className="border-t border-white/[0.06]" />
+<div className="border-t border-line" />
 ```
+En listas, `divide-y divide-line`.
 
 ### Título de sección
 ```tsx
@@ -303,7 +351,7 @@ fixed background (z:-1)
     └── div.h-full.flex.p-5.gap-5
         ├── aside.w-[240px].glass.rounded-2xl.grain  ← sidebar
         └── main.flex-1
-            ├── div.glass.rounded-2xl.rounded-b-none  ← chrome bar (traffic lights + URL)
+            ├── div.glass.panel-head.rounded-2xl.rounded-b-none  ← chrome bar (traffic lights + URL)
             └── div.glass.rounded-2xl.rounded-t-none.overflow-hidden.grain  ← contenido
                 └── div.h-full.overflow-y-auto.scroll-area.p-6
                     └── <Outlet />
@@ -401,7 +449,6 @@ Toda la animación compartida vive en **`FRONTEND/src/styles/motion.css`**, impo
 | Nombre | Uso |
 |---|---|
 | `float1/float2/float3` | Auroras de fondo |
-| `shine` | Shimmer en barras de progreso |
 | `pulseRing`, `fadeUp`, `blink`, `spin`, `spinR` | Decoración del login |
 | `animate-pulse` | Indicadores de estado online |
 | `animate-spin` | Spinners de carga |
@@ -428,13 +475,15 @@ diff <(grep -oE '^  --[a-z0-9-]+' dark.css) <(grep -oE '^  --[a-z0-9-]+' <id>.cs
 
 ## Reglas de implementación
 
-1. **No escribir color literal.** Ni en CSS ni en `style={{…}}`: siempre `var(--token)` o clases Tailwind de las familias ya remapeadas (violet, purple, fuchsia, pink para la marca; emerald, sky, rose, amber para lo semántico). Un `#hex` nuevo en un componente es un bug de tema.
-2. **No usar fondos opacos** en paneles de interfaz. Todo panel de UI lleva `.glass` o `.glass-soft`.
-3. **No usar `border-radius` menor a `rounded-xl`** en paneles y tarjetas. Elementos inline (badges, pills) pueden usar `rounded-full` o `rounded-md`.
-4. **No crear sliders nativos.** Siempre usar el componente `RangeSlider`.
-5. **No crear modales custom.** Siempre usar el componente `Modal` existente.
-6. **No aplicar fondos opacos propios.** El fondo claro es cosa del tema Solar, que llega por `--surface-rgb` y los tokens: un componente nunca decide por su cuenta que su fondo es claro u oscuro.
-7. **Todo componente debe funcionar en los tres temas.** El tema es una preferencia del usuario (Configuración → Aspecto, persistida en la cuenta). Antes de dar por terminado un componente, revisarlo en Nocturno, Aurora y Solar: contraste del texto, badges de estado y tinta sobre botones de marca.
-8. **El fondo fixed con auroras** solo se instancia una vez en `AppLayout`. No duplicar en sub-páginas.
-9. **Toda nueva página** que use `AppLayout` hereda el fondo automáticamente. No aplicar backgrounds adicionales en `<Outlet />` pages.
-10. **Íconos**: usar SVG inline con `stroke="currentColor"`, `strokeWidth={1.75}`, `strokeLinecap="round"`, `strokeLinejoin="round"`. No usar librerías de íconos externas.
+1. **No escribir sombras ni bordes a mano.** Nada de `shadow-[...]`, `border-white/NN` ni `style={{ border: … }}`: la elevación sale de `elev-*` o del anidamiento, y el borde de `border-hairline` / `border-line` / `border-edge`. `text-white/NN` sí es correcto — es el canal de tinta.
+2. **Sobre una superficie glass, el realce es `.row-hit`**, no `hover:bg-*`: la utilidad sustituye el color del cristal y deja la tarjeta translúcida.
+3. **No escribir color literal.** Ni en CSS ni en `style={{…}}`: siempre `var(--token)` o clases Tailwind de las familias ya remapeadas (violet, purple, fuchsia, pink para la marca; emerald, sky, rose, amber para lo semántico). Un `#hex` nuevo en un componente es un bug de tema.
+4. **No usar fondos opacos** en paneles de interfaz. Todo panel de UI lleva `.glass` o `.glass-soft`.
+5. **No usar `border-radius` menor a `rounded-xl`** en paneles y tarjetas. Elementos inline (badges, pills) pueden usar `rounded-full` o `rounded-md`.
+6. **No crear sliders nativos.** Siempre usar el componente `RangeSlider`.
+7. **No crear modales custom.** Siempre usar el componente `Modal` existente.
+8. **No aplicar fondos opacos propios.** El fondo claro es cosa del tema Solar, que llega por `--surface-rgb` y los tokens: un componente nunca decide por su cuenta que su fondo es claro u oscuro.
+9. **Todo componente debe funcionar en los tres temas.** El tema es una preferencia del usuario (Configuración → Aspecto, persistida en la cuenta). Antes de dar por terminado un componente, revisarlo en Nocturno, Aurora y Solar: contraste del texto, badges de estado y tinta sobre botones de marca.
+10. **El fondo fixed con auroras** solo se instancia una vez en `AppLayout`. No duplicar en sub-páginas.
+11. **Toda nueva página** que use `AppLayout` hereda el fondo automáticamente. No aplicar backgrounds adicionales en `<Outlet />` pages.
+12. **Íconos**: usar SVG inline con `stroke="currentColor"`, `strokeWidth={1.75}`, `strokeLinecap="round"`, `strokeLinejoin="round"`. No usar librerías de íconos externas.

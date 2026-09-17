@@ -8,6 +8,8 @@ import { useServerDetail } from '@hooks/useServerDetail';
 import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
 import { useServiceAction } from '@hooks/useServiceAction';
 import { daysUntil, timeUntil } from '@utils/time';
+import { MetricBar } from '@components/common/MetricBar';
+import { barGradient } from '@utils/metrics';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -48,27 +50,6 @@ const certTone = (expiry: string): 'default' | 'warn' | 'danger' => {
   return days < 15 ? 'warn' : 'default';
 };
 
-const barGradient = (pct: number) => {
-  if (pct >= 90) return 'from-rose-500 to-orange-500';
-  if (pct >= 70) return 'from-amber-400 to-orange-500';
-  if (pct >= 50) return 'from-sky-500 to-cyan-400';
-  return 'from-emerald-500 to-teal-400';
-};
-
-/* ── Progress bar ─────────────────────────────────────────────────── */
-const MetricBar = ({ label, value, suffix = '%' }: { label: string; value: number; suffix?: string }) => (
-  <div>
-    <div className="flex items-center justify-between mb-1.5">
-      <span className="text-sm text-white/55">{label}</span>
-      <span className="text-sm font-mono font-semibold text-white">{value}{suffix}</span>
-    </div>
-    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-      <div className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${barGradient(value)}`}
-        style={{ width: `${Math.min(100, value)}%` }} />
-    </div>
-  </div>
-);
-
 /* ── Info row ─────────────────────────────────────────────────────── */
 const toneClass = { default: 'text-white', warn: 'text-amber-300', danger: 'text-rose-300' } as const;
 
@@ -81,7 +62,7 @@ const InfoRow = ({
   value: string;
   tone?: keyof typeof toneClass;
 }) => (
-  <div className="flex items-center justify-between gap-3 py-2.5 border-b border-white/[0.05] last:border-0">
+  <div className="flex items-center justify-between gap-3 py-2.5 border-b border-line last:border-0">
     <span className="text-sm text-white/50 shrink-0">{label}</span>
     {/* Un modelo de CPU o un kernel largo desbordaban la fila */}
     <span className={`text-sm font-medium font-mono truncate ${toneClass[tone]}`} title={value}>
@@ -103,7 +84,7 @@ const ServiceStateBadge = ({ state }: { state: string }) => {
   const tone =
     state === 'active'  ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20' :
     state === 'failed'  ? 'bg-rose-500/15 text-rose-300 ring-rose-400/20' :
-                          'bg-white/[0.06] text-white/50 ring-white/10';
+                          'bg-tint-active text-white/50 ring-hairline';
   const label =
     state === 'active' ? 'Activo' : state === 'failed' ? 'Fallido' :
     state === 'inactive' ? 'Inactivo' : 'Desconocido';
@@ -215,11 +196,11 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         <div className="flex items-center justify-between gap-4 mb-5">
           <div className="flex items-center gap-3">
             <button onClick={onBack}
-              className="w-9 h-9 rounded-xl glass-soft flex items-center justify-center text-white/65 hover:text-white hover:bg-white/[0.07] transition">
+              className="w-9 h-9 rounded-xl glass-soft flex items-center justify-center text-white/65 hover:text-white row-hit transition">
               <ChevronLeft />
             </button>
             <div className="w-12 h-12 rounded-xl grad-brand flex items-center justify-center shrink-0
-              shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)]">
+              elev-brand">
               <ServerIcon className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -232,17 +213,17 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           <div className="flex items-center gap-2">
             <button onClick={() => setTerminalOpen(true)}
               title="Abrir una shell SSH en este servidor"
-              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
               <TerminalIcon className="w-4 h-4" /> Abrir Terminal
             </button>
             <button onClick={() => setSftpOpen(true)}
               title="Subir archivos y carpetas por SFTP"
-              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
               <SftpIcon className="w-4 h-4" /> SFTP
             </button>
             <button onClick={() => setInstallOpen(true)}
               className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-                shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)]">
+                elev-brand-sm hover:elev-brand">
               <PlusIcon /> Instalar Servicio
             </button>
           </div>
@@ -265,7 +246,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                 <span className="text-xs text-white/55">{label}</span>
                 <span className="text-xs font-mono font-semibold text-white tabular-nums">{value.toFixed(1)}%</span>
               </div>
-              <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-1 rounded-full bg-track overflow-hidden">
                 <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
                   style={{ width: `${Math.min(100, value)}%` }} />
               </div>
@@ -284,8 +265,8 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           <button key={id} onClick={() => setActiveTab(id)}
             className={`mo-tab flex items-center gap-2 h-9 px-4 rounded-xl text-sm font-medium ${
               activeTab === id
-                ? 'mo-tab-on grad-brand text-white shadow-[0_4px_14px_-4px_rgba(168,85,247,0.6)]'
-                : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+                ? 'mo-tab-on grad-brand text-white elev-brand-sm'
+                : 'text-white/60 hover:text-white hover:bg-tint-hover'
             }`}>
             <Icon className="w-4 h-4" />{label}
           </button>
@@ -306,7 +287,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       {activeTab === 'overview' && (
         <div className="mo-panel grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Sistema */}
-          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+          <div className="glass-soft rounded-2xl p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
               <TerminalIcon className="w-4 h-4 text-violet-300" /> Información del Sistema
             </h3>
@@ -342,7 +323,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           {/* Red */}
-          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+          <div className="glass-soft rounded-2xl p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
               <NetworkIcon className="w-4 h-4 text-violet-300" /> Red
             </h3>
@@ -350,14 +331,14 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               {/* Sin interfaces del agente no se inventa ninguna: antes decía
                   siempre "eth0", viniera lo que viniera del servidor. */}
               {primaryIface && (
-                <div className="flex items-center justify-between gap-3 py-2.5 border-b border-white/[0.05]">
+                <div className="flex items-center justify-between gap-3 py-2.5 border-b border-line">
                   <span className="text-sm text-white/50 shrink-0">Interfaz</span>
                   <span className="flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium text-white font-mono truncate">{primaryIface.iface}</span>
                     <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${
                       primaryIface.operstate === 'up'
                         ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
-                        : 'bg-white/[0.06] text-white/50 ring-white/10'
+                        : 'bg-tint-active text-white/50 ring-hairline'
                     }`}>
                       {primaryIface.operstate || 'desconocido'}
                     </span>
@@ -386,7 +367,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                     <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${
                       iface.operstate === 'up'
                         ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
-                        : 'bg-white/[0.06] text-white/50 ring-white/10'
+                        : 'bg-tint-active text-white/50 ring-hairline'
                     }`}>
                       {iface.operstate || '—'}
                     </span>
@@ -397,7 +378,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           {/* Procesos */}
-          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+          <div className="glass-soft rounded-2xl p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
               <ActivityIcon className="w-4 h-4 text-violet-300" /> Procesos
             </h3>
@@ -416,7 +397,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           {/* Recursos detallados */}
-          <div className="glass-soft rounded-2xl p-5 border border-white/[0.06]">
+          <div className="glass-soft rounded-2xl p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
               <CpuIcon className="w-4 h-4 text-violet-300" /> Recursos Detallados
             </h3>
@@ -469,14 +450,14 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                 onClick={() => setOnlyActive(v => !v)}
                 className={`mo-tab h-9 px-3.5 rounded-xl text-xs font-medium border
                   ${onlyActive
-                    ? 'mo-tab-on grad-brand-soft text-white border-white/10'
-                    : 'glass-soft text-white/60 hover:text-white border-transparent'}`}
+                    ? 'mo-tab-on grad-brand-soft text-white border-hairline'
+                    : 'glass-soft text-white/60 hover:text-white hover:border-hairline-hover'}`}
               >
                 Solo activos
               </button>
               <button onClick={() => setInstallOpen(true)}
                 className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-                  shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
+                  elev-brand-sm">
                 <PlusIcon /> Nuevo Servicio
               </button>
             </div>
@@ -489,7 +470,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           )}
 
           {services.length === 0 ? (
-            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+            <div className="edge-dashed rounded-xl py-10 text-center">
               <p className="text-sm text-white/55">Sin servicios reportados</p>
               <p className="text-xs text-white/35 mt-1">
                 El agente envía el inventario de systemd cada pocos minutos.
@@ -503,7 +484,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
                 return (
                   <div key={service.name}
-                    className="glass-soft rounded-xl p-4 border border-white/[0.05] hover:bg-white/[0.05] transition">
+                    className="glass-soft rounded-xl p-4 row-hit transition">
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
@@ -578,13 +559,13 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               </p>
             </div>
             <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
+              elev-brand-sm">
               <PlusIcon /> Nuevo Sitio
             </button>
           </div>
 
           {websites.length === 0 ? (
-            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+            <div className="edge-dashed rounded-xl py-10 text-center">
               <p className="text-sm text-white/55">No se detectaron sitios web</p>
               <p className="text-xs text-white/35 mt-1">
                 El agente busca virtual hosts de nginx y Apache; si no hay ninguno configurado, esta lista queda vacía.
@@ -593,7 +574,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {websites.map(site => (
-                <div key={site.domain} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
+                <div key={site.domain} className="glass-soft rounded-xl p-4">
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
@@ -642,13 +623,13 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               </p>
             </div>
             <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)]">
+              elev-brand-sm">
               <PlusIcon /> Nueva Base
             </button>
           </div>
 
           {databases.length === 0 ? (
-            <div className="rounded-xl py-10 text-center" style={{ border: '1.5px dashed var(--hairline-strong)' }}>
+            <div className="edge-dashed rounded-xl py-10 text-center">
               <p className="text-sm text-white/55">No se detectaron motores de base de datos</p>
               <p className="text-xs text-white/35 mt-1">
                 El agente reconoce MySQL/MariaDB, PostgreSQL, MongoDB y Redis instalados en el sistema.
@@ -657,7 +638,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {databases.map(db => (
-                <div key={db.type} className="glass-soft rounded-xl p-4 border border-white/[0.05]">
+                <div key={db.type} className="glass-soft rounded-xl p-4">
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
@@ -673,7 +654,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                     <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0
                       ${db.running
                         ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
-                        : 'bg-white/[0.06] text-white/50 ring-white/10'}`}>
+                        : 'bg-tint-active text-white/50 ring-hairline'}`}>
                       {db.running ? 'En ejecución' : 'Detenido'}
                     </span>
                   </div>
@@ -693,7 +674,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                   {(db.databases?.length ?? 0) > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-3">
                       {db.databases!.slice(0, 8).map(name => (
-                        <span key={name} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/[0.05] text-white/60">
+                        <span key={name} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-tint-active text-white/60">
                           {name}
                         </span>
                       ))}
@@ -740,7 +721,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
             { name: 'Docker',     type: 'docker',     icon: <CubeIcon className="w-5 h-5" />, desc: 'Contenedores' },
           ].map(({ name, type, icon, desc }) => (
             <button key={type}
-              className="p-4 rounded-xl glass-soft hover:bg-white/[0.07] transition text-left border border-white/[0.05] hover:border-violet-400/25">
+              className="p-4 rounded-xl glass-soft row-hit hover:border-violet-400/25 transition text-left">
               <div className="w-8 h-8 text-white/60 mb-2">{icon}</div>
               <p className="text-sm font-semibold text-white mb-0.5">{name}</p>
               <p className="text-xs text-white/45">{desc}</p>

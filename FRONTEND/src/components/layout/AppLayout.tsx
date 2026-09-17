@@ -49,7 +49,7 @@ const RailRow = ({
     aria-label={badge ? `${label}, ${badge} sin leer` : label}
     aria-current={active ? 'page' : undefined}
     className={`sb-row sb-focus mo-tab rounded-xl text-sm font-medium
-      ${active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-white/[0.04]'}`}
+      ${active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-tint-hover'}`}
   >
     <span className="sb-slot">
       <Icon name={icon} className="w-4 h-4" />
@@ -77,7 +77,7 @@ const SectionHeading = ({ label }: { label: string }) => (
     <span className="sb-fade absolute left-0 text-[10px] uppercase tracking-wider text-white/35 font-semibold">
       {label}
     </span>
-    <span className="sb-fade-rail absolute left-0 w-10 border-t border-white/10" />
+    <span className="sb-fade-rail absolute left-0 w-10 border-t border-hairline" />
   </div>
 );
 
@@ -154,10 +154,10 @@ export const AppLayout = () => {
         >
 
           {/* ── Brand ─────────────────────────────────────────────── */}
-          <div className="shrink-0 px-[14px] pt-4 pb-3 border-b border-white/[0.05]">
+          <div className="shrink-0 px-[14px] pt-4 pb-3 border-b border-line">
             <div className="sb-row">
               <span className="sb-slot">
-                <span className="w-9 h-9 rounded-xl grad-brand flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(168,85,247,0.55)]">
+                <span className="w-9 h-9 rounded-xl grad-brand flex items-center justify-center elev-brand">
                   <Icon name="server" className="w-4 h-4 text-white" />
                 </span>
               </span>
@@ -209,8 +209,8 @@ export const AppLayout = () => {
           </nav>
 
           {/* ── User chip ─────────────────────────────────────────── */}
-          <div className="shrink-0 border-t border-white/[0.05] px-[14px] py-3">
-            <div className="sb-row rounded-xl bg-white/[0.04]">
+          <div className="shrink-0 border-t border-line px-[14px] py-3">
+            <div className="sb-row rounded-xl bg-tint-sunken">
               <span className="sb-slot">
                 <span className="w-8 h-8 rounded-lg grad-brand flex items-center justify-center text-white text-xs font-bold">
                   {userInitials}
@@ -239,7 +239,7 @@ export const AppLayout = () => {
 
         {/* ── Main pane ───────────────────────────────────────────── */}
         <main className="flex-1 min-w-0 flex flex-col gap-0 overflow-hidden">
-          <div className="glass rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative shrink-0">
+          <div className="glass panel-head rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative shrink-0">
             <div className="text-xs text-white/45 font-mono">startcode://{chromeSegment}</div>
           </div>
 

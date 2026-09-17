@@ -28,7 +28,7 @@ const IconButton = ({
 		onClick={onClick}
 		disabled={disabled}
 		className="mo-tab w-9 h-9 shrink-0 rounded-xl glass-soft text-white/70 hover:text-white
-			hover:bg-white/[0.07] flex items-center justify-center transition disabled:opacity-40"
+			row-hit flex items-center justify-center transition disabled:opacity-40"
 	>
 		{children}
 	</button>
@@ -81,7 +81,7 @@ export const SftpPathBar: React.FC<SftpPathBarProps> = ({
 				<button
 					type="button"
 					onClick={() => onNavigate('/')}
-					className="px-1.5 py-0.5 rounded-md text-white/45 hover:text-white hover:bg-white/[0.06] transition"
+					className="px-1.5 py-0.5 rounded-md text-white/45 hover:text-white hover:bg-tint-hover transition"
 				>
 					/
 				</button>
@@ -91,7 +91,7 @@ export const SftpPathBar: React.FC<SftpPathBarProps> = ({
 						<button
 							type="button"
 							onClick={() => onNavigate(`/${crumbs.slice(0, index + 1).join('/')}`)}
-							className={`px-1.5 py-0.5 rounded-md transition hover:bg-white/[0.06] ${
+							className={`px-1.5 py-0.5 rounded-md transition hover:bg-tint-hover ${
 								index === crumbs.length - 1
 									? 'text-white'
 									: 'text-white/45 hover:text-white'

@@ -111,13 +111,13 @@ function ServerOrbit() {
     <div className="relative w-[300px] h-[300px] mx-auto shrink-0">
       <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full glass grain flex items-center justify-center">
         <div className="absolute inset-0 rounded-full grad-brand opacity-30 blur-2xl" />
-        <div className="relative w-12 h-12 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_8px_30px_-4px_rgba(168,85,247,0.7)]">
+        <div className="relative w-12 h-12 rounded-2xl grad-brand flex items-center justify-center text-white elev-brand-hi">
           {I.server}
         </div>
       </div>
-      <div className="absolute inset-0 rounded-full border border-white/[0.06]" />
-      <div className="absolute inset-6 rounded-full border border-white/[0.05] border-dashed" />
-      <div className="absolute inset-12 rounded-full border border-white/[0.04]" />
+      <div className="absolute inset-0 rounded-full border border-hairline" />
+      <div className="absolute inset-6 rounded-full border border-dashed border-edge" />
+      <div className="absolute inset-12 rounded-full border border-hairline-soft" />
       <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full" style={{ animation: 'spin 22s linear infinite' }}>
         <circle cx="150" cy="150" r="138" fill="none" stroke="rgb(var(--brand-1-rgb) / 0.25)" strokeDasharray="2 6" />
         <circle cx="150" cy="12" r="5" fill="var(--brand-light-1)" />
@@ -164,7 +164,7 @@ function TerminalFeed() {
     new Date(Date.now() - offset * 1400).toLocaleTimeString('es-CO', { hour12: false });
   return (
     <div className="glass rounded-2xl grain relative overflow-hidden">
-      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-white/[0.06]">
+      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-line">
         <span className="w-2.5 h-2.5 rounded-full bg-rose-400/90" />
         <span className="w-2.5 h-2.5 rounded-full bg-amber-400/90" />
         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/90" />
@@ -200,7 +200,7 @@ const MiniStat = ({ label, value, bar, grad }: { label: string; value: string; b
   <div className="glass-soft rounded-xl p-3">
     <div className="text-[10px] uppercase tracking-wider text-white/45 font-semibold">{label}</div>
     <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
-    <div className="h-1 rounded-full bg-white/[0.05] mt-2 overflow-hidden">
+    <div className="h-1 rounded-full bg-track mt-2 overflow-hidden">
       <div className={`h-full bg-gradient-to-r ${grad} rounded-full transition-all duration-700`} style={{ width: `${Math.min(100, bar)}%` }} />
     </div>
   </div>
@@ -220,7 +220,7 @@ function StatsStrip() {
 
 /* ── SsoBtn ───────────────────────────────────────────────────────── */
 const SsoBtn = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
-  <button type="button" className="glass-soft rounded-xl h-11 flex items-center justify-center gap-2 text-xs text-white/75 hover:bg-white/[0.06] hover:text-white transition">
+  <button type="button" className="glass-soft rounded-xl h-11 flex items-center justify-center gap-2 text-xs text-white/75 row-hit hover:text-white transition">
     <span className="w-4 h-4">{icon}</span>
     {label}
   </button>
@@ -229,13 +229,13 @@ const SsoBtn = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
 /* ── Left panel ───────────────────────────────────────────────────── */
 function TechShowcase() {
   return (
-    <div className="relative p-8 lg:p-10 overflow-hidden hidden lg:flex flex-col gap-5 border-r border-white/[0.06]">
+    <div className="relative p-8 lg:p-10 overflow-hidden hidden lg:flex flex-col gap-5 border-r border-line">
       <div className="absolute -top-32 -left-20 w-[400px] h-[400px] rounded-full bg-violet-600/30 blur-[100px] pointer-events-none" />
       <div className="absolute -bottom-32 -right-20 w-[400px] h-[400px] rounded-full bg-pink-600/20 blur-[120px] pointer-events-none" />
 
       <div className="relative flex items-center gap-2">
         <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">// Status global · en tiempo real</div>
-        <div className="flex-1 h-px bg-white/[0.06]" />
+        <div className="flex-1 h-px bg-line" />
         <span className="font-mono text-[10px] text-emerald-300">SYNCED</span>
       </div>
 
@@ -397,7 +397,7 @@ export const Login = () => {
       <div className="w-full max-w-[1280px] h-full max-h-[820px] glass rounded-2xl flex flex-col grain relative overflow-hidden">
 
         {/* Window chrome */}
-        <div className="px-5 py-3 flex items-center gap-4 border-b border-white/[0.06] shrink-0">
+        <div className="px-5 py-3 flex items-center gap-4 border-b border-line shrink-0">
           <div className="text-xs text-white/45 font-mono">startcode://auth/login</div>
           <div className="flex-1" />
           <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-white/45">
@@ -424,7 +424,7 @@ export const Login = () => {
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
-                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white elev-brand-hi">
                       {I.shieldCheck}
                     </div>
                   </div>
@@ -467,7 +467,7 @@ export const Login = () => {
                 <button
                   type="submit"
                   disabled={isLoading || !newPwd || !confirmPwd}
-                  className="w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide elev-brand transition-all active:scale-[0.98] disabled:opacity-50"
                 >
                   Cambiar y entrar
                 </button>
@@ -482,7 +482,7 @@ export const Login = () => {
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
-                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white elev-brand-hi">
                       {I.shieldCheck}
                     </div>
                   </div>
@@ -555,7 +555,7 @@ export const Login = () => {
                 <button
                   type="submit"
                   disabled={isLoading || (useBackup ? backupCode.trim().length < 8 : code.join('').length < 6)}
-                  className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] hover:shadow-[0_14px_36px_-8px_rgba(236,72,153,0.6)] transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide elev-brand hover:elev-brand-hi transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }} />
                   <span className="relative inline-flex items-center justify-center gap-2.5">
@@ -586,7 +586,7 @@ export const Login = () => {
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
-                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white shadow-[0_12px_40px_-8px_rgba(168,85,247,0.7)]">
+                    <div className="relative w-16 h-16 rounded-2xl grad-brand flex items-center justify-center text-white elev-brand-hi">
                       <span className="scale-125">{I.server}</span>
                     </div>
                   </div>
@@ -655,7 +655,7 @@ export const Login = () => {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide shadow-[0_10px_30px_-8px_rgba(168,85,247,0.65)] hover:shadow-[0_14px_36px_-8px_rgba(236,72,153,0.6)] transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="relative w-full h-12 rounded-xl grad-brand text-white font-semibold tracking-wide elev-brand hover:elev-brand-hi transition-all active:scale-[0.98] overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }} />
                     <span className="relative inline-flex items-center justify-center gap-2.5">
@@ -667,9 +667,9 @@ export const Login = () => {
                   </button>
 
                   <div className="flex items-center gap-3 py-1">
-                    <div className="flex-1 h-px bg-white/[0.06]" />
+                    <div className="flex-1 h-px bg-line" />
                     <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">o continúa con</span>
-                    <div className="flex-1 h-px bg-white/[0.06]" />
+                    <div className="flex-1 h-px bg-line" />
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">

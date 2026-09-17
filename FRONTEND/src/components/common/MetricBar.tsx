@@ -16,7 +16,7 @@ export const MetricBar = ({
         {Math.round(value)}{suffix}
       </span>
     </div>
-    <div className={`${compact ? 'h-1' : 'h-1.5'} rounded-full bg-white/[0.06] overflow-hidden`}>
+    <div className={`${compact ? 'h-1' : 'h-1.5'} rounded-full bg-track overflow-hidden`}>
       <div
         className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${barGradient(value)}`}
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}

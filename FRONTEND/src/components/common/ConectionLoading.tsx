@@ -69,7 +69,7 @@ export const ConnectionLoading = ({
         {/* Indicador */}
         <div className="flex justify-center mb-5">
           <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-2 border-white/[0.06]" />
+            <div className="absolute inset-0 rounded-full border-2 border-hairline" />
             {isDone ? (
               <div className="absolute inset-0 rounded-full border-2 border-emerald-400/60" />
             ) : isError ? (
@@ -144,7 +144,7 @@ export const ConnectionLoading = ({
         )}
 
         {/* Progreso */}
-        <div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+        <div className="bg-track h-1.5 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500 ease-out"
             style={{

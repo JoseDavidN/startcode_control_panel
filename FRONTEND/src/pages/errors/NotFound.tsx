@@ -74,7 +74,7 @@ export const NotFound = () => {
               { label: 'Code',       value: '404',    icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/> },
               { label: 'Connection', value: 'Lost',   icon: <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-2.39M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20v.01"/> },
             ].map(({ label, value, icon, circle }) => (
-              <div key={label} className="glass-soft rounded-xl p-3 text-center border border-white/[0.05]">
+              <div key={label} className="glass-soft rounded-xl p-3 text-center">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-rose-300 mx-auto mb-2">
                   {circle && <circle cx="12" cy="12" r="9"/>}
                   {icon}
@@ -89,7 +89,7 @@ export const NotFound = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => navigate(ROUTES.DASHBOARD)}
-              className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl grad-brand text-white font-semibold text-sm shadow-[0_8px_24px_-8px_rgba(168,85,247,0.55)] hover:shadow-[0_12px_30px_-8px_rgba(236,72,153,0.55)] transition"
+              className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl grad-brand text-white font-semibold text-sm elev-brand hover:elev-brand-hi transition"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                 <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M9 22V12h6v10"/>
@@ -98,7 +98,7 @@ export const NotFound = () => {
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl glass-soft text-white/80 hover:text-white hover:bg-white/[0.07] text-sm font-medium transition"
+              className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl glass-soft text-white/80 hover:text-white row-hit text-sm font-medium transition"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                 <path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>

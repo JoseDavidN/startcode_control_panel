@@ -39,7 +39,10 @@ export function useSystemInfo() {
 
   const query = useQuery<SystemHealth>({
     queryKey: ['system-health'],
-    queryFn: () => apiService.get<SystemHealth>(API_CONFIG.ENDPOINTS.HEALTH),
+    /* El backend responde el payload plano, no el sobre { success, data } que
+       declara ApiService: el cast alinea el tipo con lo que llega de verdad. */
+    queryFn: () =>
+      apiService.get(API_CONFIG.ENDPOINTS.HEALTH) as unknown as Promise<SystemHealth>,
     staleTime: 30_000,
     refetchInterval: 60_000,
     retry: 1,

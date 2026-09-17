@@ -39,6 +39,14 @@ Todos los mensajes que envía el agente tienen esta estructura base:
 > conectar. Si el servidor se borra y se vuelve a crear, cambian **ambos**
 > valores: `serverId` y `token`.
 
+> **El contrato es aditivo.** El gateway valida cada `data` con guardas de tipo
+> (`BACKEND/src/monitoring/dto/agent-payload.ts`) que ignoran las claves que no
+> conocen: un agente puede añadir campos y seguir siendo compatible. Lo que no
+> se puede es renombrar una clave o cambiarle el tipo — eso exige un `type` de
+> mensaje nuevo. Un payload al que le falte lo imprescindible se rechaza con la
+> ruta exacta del campo (`data.cpu.usage: se esperaba number`) en el log del
+> panel y en un evento `error` que el propio agente registra.
+
 ---
 
 ## 🎯 Tipos de Mensajes
@@ -282,8 +290,7 @@ El agente puede enviar **7 tipos diferentes** de mensajes:
     subState: "running",          // running | exited | dead | failed
     enabled: true,                // Arranca automáticamente
     pid: 12345,                   // PID del proceso principal (null si no corre)
-    memory: 52428800,             // Memoria usada (bytes)
-    cpuPercent: 2.5               // % de CPU
+    memory: 52428800              // Memoria usada (bytes)
   },
   {
     name: "postgresql",
@@ -292,8 +299,7 @@ El agente puede enviar **7 tipos diferentes** de mensajes:
     subState: "running",
     enabled: true,
     pid: 23456,
-    memory: 104857600,
-    cpuPercent: 5.8
+    memory: 104857600
   },
   // ... más servicios (típicamente 50-200)
 ]
@@ -346,22 +352,29 @@ El agente puede enviar **7 tipos diferentes** de mensajes:
     domain: "example.com",
     port: 80,
     ssl: false,
-    configPath: "/etc/nginx/sites-enabled/example.com"
+    path: "/var/www/example",   // DocumentRoot / root del vhost
+    server: "nginx"
   },
   {
     domain: "secure.example.com",
     port: 443,
     ssl: true,
-    certExpiry: 1736812800000,  // Unix timestamp
-    configPath: "/etc/nginx/sites-enabled/secure.example.com"
+    path: "/var/www/secure",
+    server: "nginx",
+    certExpiry: "2026-12-01T10:30:00Z"  // RFC3339; AUSENTE si no se pudo leer
   }
   // ... más sitios
 ]
 ```
 
+`certExpiry` sale del `notAfter` del certificado declarado en el vhost
+(`ssl_certificate` en nginx, `SSLCertificateFile` en Apache). Si el archivo no
+se puede leer —los directorios de Let's Encrypt son 0700—, el campo **no
+viaja**: una fecha inventada sería peor que no tener el dato.
+
 **Procesamiento Backend:**
+- **Guarda:** `websites_count`, `websites_list` (upsert, crea la fila si no existe)
 - **Emite evento WebSocket:** `server:websites:updated`
-- ⚠️ **TODO:** Implementar almacenamiento en BD
 
 ---
 
@@ -374,26 +387,32 @@ El agente puede enviar **7 tipos diferentes** de mensajes:
 ```typescript
 [
   {
-    type: "postgresql",
+    type: "PostgreSQL",
     version: "16.1",
-    databases: ["db_app", "db_analytics", "postgres"],
-    size: 1073741824,           // Tamaño total (bytes)
-    running: true
+    running: true,
+    sizeBytes: 1073741824,      // Tamaño del directorio de datos. AUSENTE si no se pudo medir
+    databases: ["db_app", "db_analytics"]  // AUSENTE si no hubo acceso al motor
   },
   {
-    type: "mysql",
+    type: "MySQL",
     version: "8.0.35",
-    databases: ["wordpress", "ecommerce"],
-    size: 536870912,
-    running: true
+    running: true,
+    sizeBytes: 536870912,
+    databases: ["wordpress", "ecommerce"]
   }
-  // ... más bases de datos
+  // ... más motores
 ]
 ```
 
+`sizeBytes` y `databases` son opcionales a propósito. Ausente significa «no se
+pudo medir / no hubo acceso»; un cero o una lista vacía significan «medido y
+vacío», que no es lo mismo y la interfaz los distingue («sin acceso» frente a
+«0»). El agente no usa credenciales explícitas: se apoya en el acceso local por
+socket que los motores dan al superusuario del sistema.
+
 **Procesamiento Backend:**
+- **Guarda:** `databases_count`, `databases_list` (upsert, crea la fila si no existe)
 - **Emite evento WebSocket:** `server:databases:updated`
-- ⚠️ **TODO:** Implementar almacenamiento en BD
 
 ---
 
@@ -408,6 +427,10 @@ CREATE TABLE tbl_agent_metrics (
   timestamp TIMESTAMP NOT NULL,
 
   -- CPU
+  cpu_manufacturer VARCHAR(100),
+  cpu_brand VARCHAR(255),
+  cpu_cores INTEGER,
+  cpu_physical_cores INTEGER,
   cpu_usage DECIMAL(5,2),
   cpu_usage_per_core JSONB,
   cpu_load_average_1m DECIMAL(10,2),
@@ -422,6 +445,7 @@ CREATE TABLE tbl_agent_metrics (
   memory_usage_percent DECIMAL(5,2),
   swap_total BIGINT,
   swap_used BIGINT,
+  swap_free BIGINT,
   swap_usage_percent DECIMAL(5,2),
 
   -- Disco
@@ -432,12 +456,14 @@ CREATE TABLE tbl_agent_metrics (
   network_private_ips TEXT[],
   network_connections_active INTEGER,
   network_connections_listening INTEGER,
+  network_interfaces JSONB,          -- iface, ip4, ip6, mac, operstate, rx_bytes, tx_bytes
 
   -- Sistema
   system_hostname VARCHAR(255),
   system_platform VARCHAR(50),
   system_distro VARCHAR(100),
   system_kernel VARCHAR(100),
+  system_arch VARCHAR(20),
   system_uptime INTEGER,
   system_boot_time TIMESTAMP,
 
@@ -450,7 +476,15 @@ CREATE TABLE tbl_agent_metrics (
 
   -- Servicios
   services_count INTEGER,
+  services_active INTEGER,
+  services_failed INTEGER,
   services_list JSONB,
+
+  -- Sitios web y bases de datos
+  websites_count INTEGER,
+  websites_list JSONB,
+  databases_count INTEGER,
+  databases_list JSONB,
 
   -- Metadata
   agent_version VARCHAR(20),

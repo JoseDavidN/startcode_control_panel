@@ -24,7 +24,8 @@ export interface ProcessInfo {
 
 export interface ServiceInfo {
   name: string;
-  status: string;
+  /** Igual que en el agente: active | inactive | failed | unknown */
+  state: string;
   pid?: number;
   uptime?: number;
   memory?: number;
@@ -137,6 +138,10 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
+          /* Sin el merge, cada tick de métricas (30 s) borraba servicios,
+             sitios, bases y procesos de este servidor, y los contadores de la
+             lista volvían a cero hasta el siguiente inventario. */
+          ...prev[payload.serverId],
           metrics: payload.metrics,
           status: 'online',
           timestamp: new Date(payload.timestamp),

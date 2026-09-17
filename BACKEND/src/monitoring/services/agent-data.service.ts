@@ -1,5 +1,5 @@
 // src/monitoring/services/agent-data.service.ts
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThan } from 'typeorm';
 import { AgentMetrics } from '../entities/agent-metrics.entity';
@@ -10,7 +10,9 @@ import {
   AccountOverviewDto,
   HistoricalMetricsDto,
   MetricPointDto,
+  ServerLiveSummaryDto,
   ServerSummaryDto,
+  ServersSummaryDto,
   SystemInfoResponseDto,
   AgentConnectionStatusDto,
 } from '../dto/agent-data-response.dto';
@@ -19,6 +21,29 @@ import {
   DASHBOARD_PROJECTION,
   SYSTEM_INFO_PROJECTION,
 } from '../dto/metrics-projections';
+
+/** Fila cruda de la consulta agregada de la lista. */
+interface ServersSummaryRow {
+  serverId: string;
+  name: string;
+  status: string;
+  lastSeen: Date | null;
+  lastMetricAt: Date | null;
+  cpu: string | null;
+  memory: string | null;
+  diskFilesystems: unknown;
+  uptime: string | null;
+  servicesActive: number | null;
+  servicesCount: number | null;
+  servicesFailed: number | null;
+  websites: number | null;
+  databases: number | null;
+  processes: number | null;
+  agentVersion: string | null;
+  hasServicesInv: boolean;
+  hasWebsitesInv: boolean;
+  hasDatabasesInv: boolean;
+}
 
 @Injectable()
 export class AgentDataService {
@@ -31,6 +56,10 @@ export class AgentDataService {
     private metricsHistoryRepository: Repository<AgentMetricsHistory>,
     @InjectRepository(Server)
     private serversRepository: Repository<Server>,
+    /* El gateway usa el helper estático de este servicio y este servicio
+       pregunta al gateway qué agentes están conectados: los dos archivos se
+       importan mutuamente, así que la inyección tiene que ser perezosa. */
+    @Inject(forwardRef(() => AgentGateway))
     private agentGateway: AgentGateway,
   ) {}
 
@@ -193,6 +222,91 @@ export class AgentDataService {
   }
 
   /**
+   * Estado en vivo de todos los servidores del usuario, en UNA consulta.
+   *
+   * La lista leía `tbl_servers.json_metadata`, que nadie escribe: por eso
+   * enseñaba 0 % eternamente. La fuente correcta es `tbl_agent_metrics`, la
+   * misma que ya usan el detalle y el dashboard.
+   *
+   * `tbl_servers` manda en el JOIN para que los servidores sin métricas
+   * aparezcan igual, y `tbl_agent_metrics` tiene `server_id` como clave
+   * primaria (una fila por servidor), así que el LEFT JOIN no necesita
+   * agrupar.
+   */
+  async getServersSummary(userId: string): Promise<ServersSummaryDto> {
+    const rows = await this.serversRepository
+      .createQueryBuilder('s')
+      .leftJoin(AgentMetrics, 'm', 'm.server_id = s.id')
+      .where('s.ownerId = :userId', { userId })
+      .select('s.id', 'serverId')
+      .addSelect('s.name', 'name')
+      .addSelect('s.status', 'status')
+      .addSelect('s.lastSeen', 'lastSeen')
+      .addSelect('m.timestamp', 'lastMetricAt')
+      .addSelect('m.cpu_usage', 'cpu')
+      .addSelect('m.memory_usage_percent', 'memory')
+      .addSelect('m.disk_filesystems', 'diskFilesystems')
+      .addSelect('m.system_uptime', 'uptime')
+      .addSelect('m.services_active', 'servicesActive')
+      .addSelect('m.services_count', 'servicesCount')
+      .addSelect('m.services_failed', 'servicesFailed')
+      .addSelect('m.websites_count', 'websites')
+      .addSelect('m.databases_count', 'databases')
+      .addSelect('m.processes_total', 'processes')
+      .addSelect('m.agent_version', 'agentVersion')
+      /* Los contadores valen 0 en cuanto existe la fila, así que sin esto no
+         se distingue "ningún sitio web" de "el inventario aún no ha llegado".
+         `IS NOT NULL` mira la cabecera de la fila, no deserializa el jsonb. */
+      .addSelect('(m.services_list IS NOT NULL)', 'hasServicesInv')
+      .addSelect('(m.websites_list IS NOT NULL)', 'hasWebsitesInv')
+      .addSelect('(m.databases_list IS NOT NULL)', 'hasDatabasesInv')
+      .orderBy('s.createdAt', 'DESC')
+      .getRawMany<ServersSummaryRow>();
+
+    const servers = rows.map((row) => this.toLiveSummary(row));
+
+    return {
+      servers,
+      total: servers.length,
+      online: servers.filter((s) => s.agentConnected).length,
+      generatedAt: new Date(),
+    };
+  }
+
+  /** `Number(null)` es 0, que es justo el bug que se está arreglando. */
+  private static numberOrNull(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed * 10) / 10 : null;
+  }
+
+  private toLiveSummary(row: ServersSummaryRow): ServerLiveSummaryDto {
+    const hasMetrics = row.lastMetricAt !== null && row.lastMetricAt !== undefined;
+    const num = AgentDataService.numberOrNull;
+
+    return {
+      serverId: row.serverId,
+      name: row.name,
+      status: row.status,
+      agentConnected: this.agentGateway.isAgentConnected(row.serverId),
+      lastSeen: row.lastSeen ?? null,
+      hasMetrics,
+      lastMetricAt: row.lastMetricAt ?? null,
+      cpu: num(row.cpu),
+      memory: num(row.memory),
+      disk: hasMetrics ? AgentDataService.rootDiskUsage(row.diskFilesystems) : null,
+      uptime: num(row.uptime),
+      services: row.hasServicesInv ? num(row.servicesActive) : null,
+      servicesTotal: row.hasServicesInv ? num(row.servicesCount) : null,
+      servicesFailed: row.hasServicesInv ? num(row.servicesFailed) : null,
+      websites: row.hasWebsitesInv ? num(row.websites) : null,
+      databases: row.hasDatabasesInv ? num(row.databases) : null,
+      processes: hasMetrics ? num(row.processes) : null,
+      agentVersion: row.agentVersion ?? null,
+    };
+  }
+
+  /**
    * Obtiene información del sistema de un servidor
    *
    * @param serverId - ID del servidor
@@ -210,6 +324,7 @@ export class AgentDataService {
       platform: latestMetrics.system_platform || '',
       distro: latestMetrics.system_distro || '',
       kernel: latestMetrics.system_kernel || '',
+      arch: latestMetrics.system_arch || '',
       uptime: Number(latestMetrics.system_uptime) || 0,
       bootTime: latestMetrics.system_boot_time || new Date(),
       publicIP: latestMetrics.network_public_ip || '',

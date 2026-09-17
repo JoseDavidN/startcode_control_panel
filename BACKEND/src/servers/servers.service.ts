@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Server, ServerStatus, ServerOs } from './entities/server.entity';
+import { Server, ServerStatus, ServerOs, type ServerAgentMetadata } from './entities/server.entity';
 import { User } from '@auth/entities/user.entity';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
@@ -59,7 +59,9 @@ export class ServersService {
       os: createServerDto.os,
       description: createServerDto.description,
       ownerId: user.id,
-      status: ServerStatus.OFFLINE,
+      /* PENDING, no OFFLINE: el servidor todavía no está caído, es que aún no
+         tiene agente. El gateway lo pondrá ONLINE en cuanto el agente hable. */
+      status: ServerStatus.PENDING,
     });
 
     const savedServer = await this.serversRepository.save(server);
@@ -252,22 +254,24 @@ export class ServersService {
   }
 
   /**
-   * Actualizar metadata del servidor
-   * @param id - ID del servidor
-   * @param metadata - Metadatos del servidor
-   * @returns El servidor actualizado
+   * Guarda el estado de instalación del agente.
+   *
+   * El merge se hace en SQL en vez de leer-modificar-guardar la entidad porque
+   * el gateway escribe en ese mismo jsonb desde otro proceso lógico: con dos
+   * escritores, el último en guardar pisaría al otro.
    */
-  private async updateMetadata(
-    id: string,
-    metadata: any,
-    userId: string,
+  async setAgentState(
+    serverId: string,
+    agent: Partial<ServerAgentMetadata>,
   ): Promise<void> {
-    const server = await this.findOneWithPrivateKey(id, userId);
-
-    server.metadata = { ...server.metadata, ...metadata };
-    server.lastCheckAt = new Date();
-
-    await this.serversRepository.save(server);
+    await this.serversRepository.query(
+      `UPDATE tbl_servers
+          SET json_metadata = COALESCE(json_metadata, '{}'::jsonb)
+                            || jsonb_build_object('agent',
+                                 COALESCE(json_metadata->'agent', '{}'::jsonb) || $2::jsonb)
+        WHERE id = $1`,
+      [serverId, JSON.stringify(agent)],
+    );
   }
 
   /**
@@ -287,6 +291,8 @@ export class ServersService {
       error: 0,
       maintenance: 0,
       checking: 0,
+      warning: 0,
+      pending: 0,
     };
 
     servers.forEach((server) => {
@@ -305,6 +311,14 @@ export class ServersService {
           break;
         case ServerStatus.CHECKING:
           stats.checking++;
+          break;
+        case ServerStatus.WARNING:
+          stats.warning++;
+          break;
+        /* Sin estos dos casos, un servidor pendiente de agente no se contaba en
+           ningún sitio y los totales no cuadraban. */
+        case ServerStatus.PENDING:
+          stats.pending++;
           break;
       }
     });

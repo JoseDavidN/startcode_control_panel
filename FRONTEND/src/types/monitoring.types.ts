@@ -38,3 +38,37 @@ export interface ServerSummary {
 	disk: number;
 	connections: number;
 }
+
+/**
+ * Estado en vivo de un servidor para la lista.
+ *
+ * `null` significa «todavía sin dato» —un servidor sin agente, o un inventario
+ * que aún no ha llegado—, nunca cero. La interfaz pinta `—` en esos casos.
+ */
+export interface ServerLiveSummary {
+	serverId: string;
+	name: string;
+	status: string;
+	agentConnected: boolean;
+	lastSeen: string | null;
+	hasMetrics: boolean;
+	lastMetricAt: string | null;
+	cpu: number | null;
+	memory: number | null;
+	disk: number | null;
+	uptime: number | null;
+	services: number | null;
+	servicesTotal: number | null;
+	servicesFailed: number | null;
+	websites: number | null;
+	databases: number | null;
+	processes: number | null;
+	agentVersion: string | null;
+}
+
+export interface ServersSummary {
+	servers: ServerLiveSummary[];
+	total: number;
+	online: number;
+	generatedAt: string;
+}

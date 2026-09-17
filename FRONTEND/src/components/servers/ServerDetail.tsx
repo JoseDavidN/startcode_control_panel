@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { type ServerData } from '@typings/DashboardTypes';
 import { Modal } from '@components/common/Modal';
 import { ServerTerminal } from '@components/servers/ServerTerminal';
+import { SftpModal, SftpIcon } from '@components/servers/sftp';
+import { AgentCard } from '@components/servers/AgentCard';
 import { useServerDetail } from '@hooks/useServerDetail';
 import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
 import { useServiceAction } from '@hooks/useServiceAction';
-import { timeAgo } from '@utils/time';
+import { daysUntil, timeUntil } from '@utils/time';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -20,7 +22,6 @@ const ChartIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={classN
 const PackageIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
 const GlobeIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>;
 const DbIcon       = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>;
-const FolderIcon   = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>;
 const TerminalIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
 const NetworkIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 011-1h12a1 1 0 011 1v3M12 8v5"/></svg>;
 const ActivityIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
@@ -37,6 +38,14 @@ const statusIcon = (status: string) => {
   if (['warning','maintenance'].includes(status))
     return <AlertTri className="w-5 h-5 text-amber-400" />;
   return <XCircle className="w-5 h-5 text-rose-400" />;
+};
+
+/** Ámbar cuando quedan menos de 15 días, rosa si ya caducó. */
+const certTone = (expiry: string): 'default' | 'warn' | 'danger' => {
+  const days = daysUntil(expiry);
+  if (days === null) return 'default';
+  if (days < 0) return 'danger';
+  return days < 15 ? 'warn' : 'default';
 };
 
 const barGradient = (pct: number) => {
@@ -61,10 +70,23 @@ const MetricBar = ({ label, value, suffix = '%' }: { label: string; value: numbe
 );
 
 /* ── Info row ─────────────────────────────────────────────────────── */
-const InfoRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-center justify-between py-2.5 border-b border-white/[0.05] last:border-0">
-    <span className="text-sm text-white/50">{label}</span>
-    <span className="text-sm font-medium text-white font-mono">{value}</span>
+const toneClass = { default: 'text-white', warn: 'text-amber-300', danger: 'text-rose-300' } as const;
+
+const InfoRow = ({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: keyof typeof toneClass;
+}) => (
+  <div className="flex items-center justify-between gap-3 py-2.5 border-b border-white/[0.05] last:border-0">
+    <span className="text-sm text-white/50 shrink-0">{label}</span>
+    {/* Un modelo de CPU o un kernel largo desbordaban la fila */}
+    <span className={`text-sm font-medium font-mono truncate ${toneClass[tone]}`} title={value}>
+      {value}
+    </span>
   </div>
 );
 
@@ -112,13 +134,13 @@ const TABS = [
   { id: 'services',   label: 'Servicios',       icon: PackageIcon },
   { id: 'websites',   label: 'Sitios Web',      icon: GlobeIcon },
   { id: 'databases',  label: 'Bases de Datos',  icon: DbIcon },
-  { id: 'files',      label: 'Archivos',        icon: FolderIcon },
 ] as const;
 
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
   const [installOpen, setInstallOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [sftpOpen, setSftpOpen] = useState(false);
 
   /* Datos reales del agente. El WebSocket manda para cpu/memoria/disco por ser
      instantáneo; el resto (kernel, IPs, procesos, discos por montaje) solo llega
@@ -146,6 +168,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const services = React.useMemo(() => detail?.services.list ?? [], [detail]);
   const websites = detail?.websites.list ?? [];
   const databases = detail?.databases.list ?? [];
+
+  const primaryIface = detail?.network.primary ?? null;
+  const otherIfaces = (detail?.network.interfaces ?? []).filter(i => i.iface !== primaryIface?.iface);
   const activeServices = services.filter(s => s.state === 'active');
   const failedServices = services.filter(s => s.state === 'failed');
 
@@ -210,12 +235,22 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
               <TerminalIcon className="w-4 h-4" /> Abrir Terminal
             </button>
+            <button onClick={() => setSftpOpen(true)}
+              title="Subir archivos y carpetas por SFTP"
+              className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 hover:bg-white/[0.07] text-sm font-medium">
+              <SftpIcon className="w-4 h-4" /> SFTP
+            </button>
             <button onClick={() => setInstallOpen(true)}
               className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
                 shadow-[0_4px_14px_-4px_rgba(168,85,247,0.55)] hover:shadow-[0_8px_20px_-6px_rgba(236,72,153,0.55)]">
               <PlusIcon /> Instalar Servicio
             </button>
           </div>
+        </div>
+
+        {/* Agente de monitoreo: sin él, todo lo de abajo está vacío */}
+        <div className="mb-3">
+          <AgentCard serverId={server.id} serverName={server.name} />
         </div>
 
         {/* Quick stats */}
@@ -275,12 +310,34 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
               <TerminalIcon className="w-4 h-4 text-violet-300" /> Información del Sistema
             </h3>
+
+            {/* El procesador no cabe en una fila etiqueta/valor */}
+            {detail?.cpu.brand && (
+              <div className="glass rounded-xl p-3 mb-3 flex items-start gap-3">
+                <CpuIcon className="w-4 h-4 text-violet-300 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm text-white truncate" title={detail.cpu.brand}>{detail.cpu.brand}</p>
+                  <p className="text-xs text-white/45 font-mono truncate">
+                    {[
+                      detail.cpu.manufacturer,
+                      detail.cpu.physicalCores
+                        ? `${detail.cpu.cores} lógicos / ${detail.cpu.physicalCores} físicos`
+                        : `${detail.cpu.cores} núcleos`,
+                      detail.system.arch,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-0.5">
               <InfoRow label="Sistema Operativo" value={detail?.system.os ?? dash} />
               <InfoRow label="Kernel"            value={detail?.system.kernel ?? dash} />
               <InfoRow label="Hostname"          value={detail?.system.hostname ?? dash} />
               <InfoRow label="Load Average"      value={detail?.cpu.loadAverage ?? dash} />
-              <InfoRow label="Núcleos"           value={detail ? String(detail.cpu.cores) : dash} />
+              {!detail?.cpu.brand && (
+                <InfoRow label="Núcleos" value={detail ? String(detail.cpu.cores) : dash} />
+              )}
             </div>
           </div>
 
@@ -290,10 +347,53 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               <NetworkIcon className="w-4 h-4 text-violet-300" /> Red
             </h3>
             <div className="space-y-0.5">
+              {/* Sin interfaces del agente no se inventa ninguna: antes decía
+                  siempre "eth0", viniera lo que viniera del servidor. */}
+              {primaryIface && (
+                <div className="flex items-center justify-between gap-3 py-2.5 border-b border-white/[0.05]">
+                  <span className="text-sm text-white/50 shrink-0">Interfaz</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium text-white font-mono truncate">{primaryIface.iface}</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${
+                      primaryIface.operstate === 'up'
+                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
+                        : 'bg-white/[0.06] text-white/50 ring-white/10'
+                    }`}>
+                      {primaryIface.operstate || 'desconocido'}
+                    </span>
+                  </span>
+                </div>
+              )}
               <InfoRow label="IP Privada" value={detail?.network.privateIp ?? dash} />
               <InfoRow label="IP Pública"  value={detail?.network.publicIp ?? dash} />
+              {primaryIface?.mac && <InfoRow label="MAC" value={primaryIface.mac} />}
+              {primaryIface && (
+                <InfoRow
+                  label="Tráfico"
+                  value={`↓ ${formatBytes(primaryIface.rxBytes)} · ↑ ${formatBytes(primaryIface.txBytes)}`}
+                />
+              )}
               <InfoRow label="Host"        value={server.ip} />
             </div>
+
+            {otherIfaces.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Otras interfaces</h4>
+                {otherIfaces.map(iface => (
+                  <div key={iface.iface} className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-xs font-mono text-white/75 truncate">{iface.iface}</span>
+                    <span className="text-xs font-mono text-white/45 truncate">{iface.ip4 || iface.ip6 || '—'}</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${
+                      iface.operstate === 'up'
+                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
+                        : 'bg-white/[0.06] text-white/50 ring-white/10'
+                    }`}>
+                      {iface.operstate || '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Procesos */}
@@ -517,7 +617,11 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                   <div className="space-y-0.5">
                     {site.path && <InfoRow label="Raíz" value={site.path} />}
                     {site.certExpiry && (
-                      <InfoRow label="Certificado" value={`vence ${timeAgo(site.certExpiry)}`} />
+                      <InfoRow
+                        label="Certificado"
+                        value={timeUntil(site.certExpiry)}
+                        tone={certTone(site.certExpiry)}
+                      />
                     )}
                   </div>
                 </div>
@@ -575,8 +679,15 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                   </div>
 
                   <div className="space-y-0.5">
-                    {db.size !== undefined && <InfoRow label="Tamaño" value={String(db.size)} />}
-                    <InfoRow label="Bases" value={String(db.databases?.length ?? 0)} />
+                    {/* Ausente no es cero: si el agente no pudo medirlo, se dice. */}
+                    <InfoRow
+                      label="Tamaño"
+                      value={db.sizeBytes !== undefined ? formatBytes(db.sizeBytes) : dash}
+                    />
+                    <InfoRow
+                      label="Bases"
+                      value={db.databases ? String(db.databases.length) : 'sin acceso'}
+                    />
                   </div>
 
                   {(db.databases?.length ?? 0) > 0 && (
@@ -595,20 +706,22 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </div>
       )}
 
-      {/* ── Files placeholder ───────────────────────────────────────── */}
-      {activeTab === 'files' && (
-        <div className="mo-panel glass rounded-2xl grain p-10 flex flex-col items-center justify-center text-center gap-3">
-          <FolderIcon className="w-10 h-10 text-white/20" />
-          <p className="text-sm text-white/40">Gestor de archivos próximamente</p>
-        </div>
-      )}
-
       {/* ── Terminal SSH ─────────────────────────────────────────────── */}
       {terminalOpen && (
         <ServerTerminal
           serverId={server.id}
           serverName={server.name}
           onClose={() => setTerminalOpen(false)}
+        />
+      )}
+
+      {/* ── SFTP ─────────────────────────────────────────────────────── */}
+      {sftpOpen && (
+        <SftpModal
+          serverId={server.id}
+          serverName={server.name}
+          isOpen
+          onClose={() => setSftpOpen(false)}
         />
       )}
 

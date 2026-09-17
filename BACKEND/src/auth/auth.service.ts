@@ -886,6 +886,21 @@ export class AuthService {
     return this.jwtService.sign(payload, { expiresIn });
   }
 
+  /**
+   * Token efímero para que el servidor remoto descargue el binario del agente
+   * durante su instalación.
+   *
+   * No se reutiliza el token del agente (dura un año y da acceso al gateway:
+   * si se filtra en el log de un proxy, alguien suplanta al agente) ni se deja
+   * el endpoint abierto. Este caduca en minutos, solo sirve para leer un
+   * artefacto y lleva dentro el servidor al que pertenece.
+   */
+  generateAgentInstallToken(serverId: string): string {
+    const payload = { sub: serverId, type: 'agent-install' };
+    const expiresIn = this.configService.get('AGENT_INSTALL_TOKEN_EXPIRES_IN', '5m');
+    return this.jwtService.sign(payload, { expiresIn });
+  }
+
   private generateRefreshToken(user: User, sid: string): string {
     /* `jti` garantiza que cada rotación produzca un token distinto: sin él, dos
        firmas dentro del mismo segundo dan la misma cadena y el token anterior

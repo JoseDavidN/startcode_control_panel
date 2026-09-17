@@ -8,15 +8,12 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { Server as IoServer, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { ClientChannel, Client as SSHClient } from 'ssh2';
 import { Server as ServerEntity } from '@servers/entities/server.entity';
-import { User } from '@auth/entities/user.entity';
-import { Session } from '@auth/entities/session.entity';
+import { WsAuthService } from '@auth/ws-auth.service';
 import { SSHService } from '../services/ssh.service';
 
 interface TerminalSession {
@@ -47,12 +44,7 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     @InjectRepository(ServerEntity)
     private serversRepository: Repository<ServerEntity>,
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-    @InjectRepository(Session)
-    private sessionsRepository: Repository<Session>,
-    private jwtService: JwtService,
-    private configService: ConfigService,
+    private wsAuth: WsAuthService,
     private sshService: SSHService,
   ) {}
 
@@ -65,7 +57,7 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
     };
 
     try {
-      const user = await this.authenticate(token);
+      const user = await this.wsAuth.authenticate(token);
       const server = await this.resolveServer(serverId, user.id);
 
       const ssh = await this.sshService.createDedicatedClient(server);
@@ -133,34 +125,6 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /* ── Internos ──────────────────────────────────────────────────────── */
-
-  /** Mismo contrato que JwtStrategy: solo un access token de sesión viva vale. */
-  private async authenticate(token?: string): Promise<User> {
-    if (!token) throw new Error('Falta el token de acceso');
-
-    let payload: { sub: string; type?: string; sid?: string };
-    try {
-      payload = this.jwtService.verify(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-      });
-    } catch {
-      throw new Error('Token inválido o expirado');
-    }
-
-    if (payload.type !== 'access' || !payload.sid) {
-      throw new Error('Token no válido para esta operación');
-    }
-
-    const user = await this.usersRepository.findOne({ where: { id: payload.sub } });
-    if (!user || !user.isActive) throw new Error('Usuario no autorizado');
-
-    const session = await this.sessionsRepository.findOne({ where: { id: payload.sid } });
-    if (!session || session.revoked || session.userId !== user.id) {
-      throw new Error('Sesión revocada');
-    }
-
-    return user;
-  }
 
   /** El servidor debe existir y ser del usuario; la llave no se selecciona por defecto. */
   private async resolveServer(serverId: string | undefined, userId: string) {

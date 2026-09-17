@@ -68,6 +68,7 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+.env.production
 
 # temp directory
 .temp
@@ -87,3 +88,14 @@ BACKEND_CAMBIOS_SUGERIDOS.md
 CONEXION_BACKEND.md
 ROADMAP.md
 CLAUDE.md
+.claude
+
+pnpm-workspace.yaml
+pnpm-lock.yaml
+mise.toml
+
+migrations*
+# Artefactos del agente publicados con `make release` en el repo del agente.
+# Son binarios de 7 MB regenerables: no se versionan.
+BACKEND/agent-dist/*
+!BACKEND/agent-dist/README.md

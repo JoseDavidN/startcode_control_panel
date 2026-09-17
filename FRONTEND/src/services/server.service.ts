@@ -1,6 +1,21 @@
 // src/services/server.service.ts
 import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
+import type {
+	AgentInstallResult,
+	AgentState,
+	AgentUninstallResult,
+} from '@typings/agent.types';
+
+/* Instalar baja 7 MB y arranca un servicio: los 30 s del cliente se quedan
+   cortos y el usuario vería un timeout mientras el trabajo sigue en marcha. */
+const AGENT_OPERATION_TIMEOUT = 180_000;
+
+function unwrapAgent<T>(response: unknown): T {
+	const first = (response as { data?: unknown })?.data ?? response;
+	const second = (first as { data?: unknown })?.data ?? first;
+	return second as T;
+}
 
 interface CreateServerDto {
 	name: string;
@@ -99,9 +114,15 @@ class ServerService {
 		return updated as Server;
 	}
 
-	async deleteServer(id: string): Promise<{ message: string }> {
-		const response = await apiService.delete<{ message: string }>(
-			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`
+	async deleteServer(
+		id: string,
+		opts?: { force?: boolean; sudoPassword?: string },
+	): Promise<{ message: string; warning?: string }> {
+		/* El borrado desinstala antes el agente, así que puede tardar y puede
+		   devolver 409 si no se pudo. */
+		const response = await apiService.delete<{ message: string; warning?: string }>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`,
+			{ data: opts ?? {}, timeout: AGENT_OPERATION_TIMEOUT },
 		);
 		const payload =
 			response && (response as any).data
@@ -109,11 +130,41 @@ class ServerService {
 				: response;
 		const res =
 			payload && (payload as any).data ? (payload as any).data : payload;
-		return res as { message: string };
+		return res as { message: string; warning?: string };
 	}
 
-	async refreshAllServersStats(): Promise<Server[]> {
-		return this.getServers();
+	/* ── Agente ───────────────────────────────────────────────────── */
+
+	/** Instala el agente en la máquina remota. Devuelve el resultado del intento,
+	 *  también cuando falla: los pasos son lo que pinta la interfaz. */
+	async installAgent(
+		id: string,
+		body: { sudoPassword?: string; panelUrl?: string; reinstall?: boolean } = {},
+	): Promise<AgentInstallResult> {
+		const response = await apiService.post<AgentInstallResult>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/agent/install`,
+			body,
+			{ timeout: AGENT_OPERATION_TIMEOUT },
+		);
+		return unwrapAgent<AgentInstallResult>(response);
+	}
+
+	async uninstallAgent(
+		id: string,
+		body: { sudoPassword?: string; purge?: boolean } = {},
+	): Promise<AgentUninstallResult> {
+		const response = await apiService.delete<AgentUninstallResult>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/agent`,
+			{ data: body, timeout: AGENT_OPERATION_TIMEOUT },
+		);
+		return unwrapAgent<AgentUninstallResult>(response);
+	}
+
+	async getAgentState(id: string): Promise<AgentState> {
+		const response = await apiService.get<AgentState>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/agent`,
+		);
+		return unwrapAgent<AgentState>(response);
 	}
 }
 

@@ -5,6 +5,7 @@ import type {
 	AccountOverview,
 	HistoricalMetrics,
 	ServerSummary,
+	ServersSummary,
 } from '@typings/monitoring.types';
 
 function unwrap<T>(response: unknown): T {
@@ -20,6 +21,12 @@ export const monitoringApi = {
 	async overview(): Promise<AccountOverview> {
 		const res = await apiService.get<AccountOverview>(`${AGENT}/overview`);
 		return unwrap<AccountOverview>(res);
+	},
+
+	/** Estado en vivo de todos los servidores del usuario, en una consulta. */
+	async serversSummary(): Promise<ServersSummary> {
+		const res = await apiService.get<ServersSummary>(`${AGENT}/servers-summary`);
+		return unwrap<ServersSummary>(res);
 	},
 
 	async historical(serverId: string, hours = 24): Promise<HistoricalMetrics> {

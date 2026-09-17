@@ -138,6 +138,79 @@ export class SSHService {
    * @param command - El comando a ejecutar
    * @returns El resultado del comando
    */
+  /**
+   * Ejecuta sobre un cliente ya abierto (el de `createDedicatedClient`), sin
+   * tocar el pool.
+   *
+   * Hace falta porque `executeCommand` abre una conexión nueva por comando —y
+   * de paso mata la anterior de ese servidor—, así que una secuencia de
+   * instalación no puede usarlo. Además cada `exec` es una shell distinta: lo
+   * que necesite compartir estado tiene que ir en una sola llamada.
+   *
+   * `input` se escribe en stdin y se cierra; `onStdout` recibe la salida a
+   * medida que llega, que es lo que permite ir pintando el progreso.
+   */
+  execOnClient(
+    conn: Client,
+    command: string,
+    opts: {
+      input?: string;
+      timeoutMs?: number;
+      onStdout?: (chunk: string) => void;
+    } = {},
+  ): Promise<SSHExecResult> {
+    const timeoutMs = opts.timeoutMs ?? 30000;
+
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(
+          new Error(`Timeout ejecutando el comando remoto (${Math.round(timeoutMs / 1000)} s)`),
+        );
+      }, timeoutMs);
+
+      conn.exec(command, (err, stream) => {
+        if (err) {
+          clearTimeout(timeout);
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+          return;
+        }
+
+        stream
+          .on('close', (code: number) => {
+            clearTimeout(timeout);
+            if (settled) return;
+            settled = true;
+            resolve({ stdout, stderr, code: code ?? 0 });
+          })
+          .on('data', (data: Buffer) => {
+            const chunk = data.toString();
+            stdout += chunk;
+            opts.onStdout?.(chunk);
+          })
+          .on('error', (streamError: Error) => {
+            clearTimeout(timeout);
+            if (settled) return;
+            settled = true;
+            reject(streamError);
+          })
+          .stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+
+        if (opts.input !== undefined) stream.end(opts.input);
+      });
+    });
+  }
+
   async executeCommand(
     server: Server,
     command: string,

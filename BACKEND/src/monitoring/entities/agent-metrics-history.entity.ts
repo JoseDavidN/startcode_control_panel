@@ -33,7 +33,7 @@ export class AgentMetricsHistory {
   @JoinColumn({ name: 'server_id' })
   server: Server;
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @CreateDateColumn({ type: 'timestamptz' })
   timestamp: Date;
 
   // CPU

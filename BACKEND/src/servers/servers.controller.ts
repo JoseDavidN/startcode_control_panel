@@ -13,6 +13,7 @@ import {
   HttpStatus,
   Query,
   Put,
+  ConflictException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,6 +30,8 @@ import { UpdateServerDto } from './dto/update-server.dto';
 import { UpdatePrivateKeyDto } from './dto/update-private-key.dto';
 import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
+import { DeleteServerDto } from './dto/agent-install.dto';
+import { AgentInstallService } from './services/agent-install.service';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import { ServerStatus, ServerOs } from './entities/server.entity';
 
@@ -40,6 +43,7 @@ export class ServersController {
   constructor(
     private readonly serversService: ServersService,
     private readonly authService: AuthService,
+    private readonly agentInstall: AgentInstallService,
   ) {}
 
   @Post()
@@ -333,10 +337,43 @@ export class ServersController {
     status: 403,
     description: 'No tienes permisos para eliminar este servidor',
   })
+  @ApiResponse({
+    status: 409,
+    description:
+      'El agente no se pudo desinstalar; el servidor NO se eliminó. Repite con force para hacerlo de todos modos.',
+  })
   async remove(
     @Param('id') id: string,
+    @Body() dto: DeleteServerDto,
     @Request() req,
-  ): Promise<{ message: string }> {
-    return await this.serversService.remove(id, req.user);
+  ): Promise<{ message: string; warning?: string }> {
+    const server = await this.serversService.findOne(id, req.user);
+    const agentState = server.metadata?.agent?.state;
+    /* Un servidor que nunca tuvo agente se borra sin abrir SSH: si no, un host
+       apagado dado de alta por error sería imposible de quitar sin forzar. */
+    const hasAgent =
+      agentState === 'installed' || agentState === 'failed' || agentState === 'installing';
+
+    let warning: string | undefined;
+
+    if (hasAgent) {
+      const result = await this.agentInstall.uninstall(id, req.user, {
+        sudoPassword: dto.sudoPassword,
+      });
+
+      if (!result.ok) {
+        if (dto.force !== true) {
+          throw new ConflictException({
+            message: 'No se pudo desinstalar el agente, así que el servidor no se eliminó',
+            agentError: result.error,
+            canForce: true,
+          });
+        }
+        warning = `El servidor se eliminó, pero el agente sigue instalado en la máquina: ${result.error?.message ?? 'no se pudo desinstalar'}`;
+      }
+    }
+
+    const removed = await this.serversService.remove(id, req.user);
+    return warning ? { ...removed, warning } : removed;
   }
 }

@@ -19,6 +19,17 @@ export enum ServerStatus {
   CHECKING = 'checking',
 }
 
+/** Estado de la instalación del agente en la máquina remota. */
+export interface ServerAgentMetadata {
+  state: 'not_installed' | 'installing' | 'installed' | 'failed' | 'uninstalling';
+  version?: string;
+  arch?: 'amd64' | 'arm64';
+  installedAt?: string;
+  lastAttemptAt?: string;
+  lastError?: { code: string; message: string; detail?: string; at: string };
+  steps?: { id: string; label: string; status: string; detail?: string }[];
+}
+
 export enum ServerOs {
   UBUNTU = 'ubuntu',
   CENTOS = 'centos',
@@ -63,15 +74,20 @@ export class Server {
 
   @Column({ type: 'jsonb', nullable: true, name: 'json_metadata' })
   metadata: {
-    cpu?: number;
-    memory?: number;
-    disk?: number;
-    uptime?: string;
+    /* Aquí NO van métricas: cpu/memoria/disco viven en tbl_agent_metrics, que
+       es lo que leen el detalle, el dashboard y la lista. El tipo llegó a
+       declararlas y nadie las escribía nunca, así que la lista enseñaba 0 %. */
     osVersion?: string;
     activeServices?: number;
+    agent?: ServerAgentMetadata;
   };
 
-  @Column({ type: 'timestamp', nullable: true, name: 'dat_last_seen' })
+  /* `timestamptz`: la columna guarda un instante, y el driver lo convierte en
+     los dos sentidos. Con `timestamp` a secas se escribía la hora UTC como si
+     fuera local y al leerla se desplazaba por el huso, así que el cron de
+     inactividad comparaba fechas con horas de diferencia y nunca marcaba nada
+     como offline. */
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_last_seen' })
   lastSeen: Date;
 
   @Column({ type: 'text', nullable: true, name: 'str_hostname' })
@@ -96,6 +112,6 @@ export class Server {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   lastCheckAt: Date;
 }

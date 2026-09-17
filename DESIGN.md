@@ -273,6 +273,14 @@ Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 - Body: `overflow-y-auto modal-scroll flex-1 min-h-0`
 - Tamaños: `sm=max-w-md`, `md=max-w-2xl`, `lg=max-w-3xl`, `xl=max-w-5xl`
 
+### Zona de arrastrar y soltar
+```tsx
+<div className={`rounded-xl border border-dashed p-5 text-center transition ${
+  dragging ? 'grad-brand-soft border-violet-400/40' : 'border-white/[0.12]'
+}`}>
+```
+El resaltado al arrastrar se hace con `grad-brand-soft`, no con un color literal. El contenedor lleva un contador de `dragenter`/`dragleave`: sin él, los hijos hacen parpadear el estado. La usa el modal SFTP (`components/servers/sftp/SftpDropZone.tsx`).
+
 ### Separador de sección
 ```tsx
 <div className="border-t border-white/[0.06]" />
@@ -314,6 +322,8 @@ Tres familias **empaquetadas en el proyecto** (`FRONTEND/src/assets/fonts/`, WOF
 | `mono` | JetBrains Mono | Media | Monoespaciada de programación, redonda y muy clara |
 | `rounded` | Nunito | Gruesa | Terminales redondeados, máxima legibilidad a tamaño pequeño |
 
+A las tres se suma **Symbols Nerd Font Mono** (MIT, `ryanoasis/nerd-fonts`), que no es elegible: solo cubre el rango privado de glifos de prompt (powerline, devicons, seti, Font Awesome, codicons, Material Design) que JetBrains Mono no tiene. Va en dos archivos separados por `unicode-range` —símbolos y Material Design— para que el navegador descargue solo el que haga falta.
+
 ### Tokens
 
 | Token | Uso |
@@ -321,8 +331,10 @@ Tres familias **empaquetadas en el proyecto** (`FRONTEND/src/assets/fonts/`, WOF
 | `--font-ui` | Familia de toda la interfaz; la consumen `html, body, #root` y los toasts |
 | `--font-mono` | **Siempre JetBrains Mono**: métricas, IPs y logs (`font-mono`) quedan monoespaciados con cualquier elección |
 | `--font-sans` | Sigue a `--font-ui` para que la utilidad `font-sans` no se salga del sistema |
+| `--font-terminal` | Pila de la terminal SSH: JetBrains Mono + Symbols Nerd Font Mono. Como su paleta, **no sigue la elección del usuario**: un prompt con iconos debe verse igual que en la terminal del escritorio |
 
-- No fijar `font-family` en un componente: usar `var(--font-ui)` o la utilidad `font-mono`.
+- No fijar `font-family` en un componente: usar `var(--font-ui)` o la utilidad `font-mono`. Lo que no es CSS (xterm recibe la familia por opción) lee el token con `getComputedStyle`, no una literal.
+- xterm pinta sobre canvas, y el canvas no dispara la descarga de una fuente: la terminal hace `document.fonts.load` con una muestra de cada subconjunto Nerd Font y rehace el atlas en `loadingdone`, o los iconos quedan en cajas vacías.
 - Color base: `var(--ink)`.
 - Tamaños frecuentes: `text-xs` (10-12px labels), `text-sm` (13-14px body), `text-base` (16px títulos).
 - Tracking en labels de sección: `tracking-wider` + `uppercase`.

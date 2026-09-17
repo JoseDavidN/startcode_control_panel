@@ -57,6 +57,23 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+## Publicar el agente
+
+La instalación remota sirve los binarios del agente desde `agent-dist/`, que
+llena el repositorio del agente:
+
+```bash
+cd ../../startcode-agent/go-agent
+make release     # o: make release DEST=/ruta/a/este/BACKEND/agent-dist
+```
+
+Si la carpeta está vacía, el backend lo avisa al arrancar y cualquier intento de
+instalación falla diciendo exactamente eso. Los artefactos no se versionan.
+
+Además hay que definir `PANEL_PUBLIC_URL` en el `.env`: la URL por la que **los
+servidores monitorizados** alcanzan al panel. No es la del navegador — si abres
+el panel en `localhost`, desde el servidor remoto eso no lleva a ninguna parte.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

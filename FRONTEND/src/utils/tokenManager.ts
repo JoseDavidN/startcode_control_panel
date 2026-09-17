@@ -70,23 +70,8 @@ export class TokenManager {
 		persist(STORAGE_KEYS.USER_DATA, user);
 	}
 
-	// ── Utilidades JWT ──
-
-	static isTokenExpired(token: string): boolean {
-		try {
-			const payload = JSON.parse(atob(token.split('.')[1]));
-			// Considerar expirado 5 minutos antes para renovar a tiempo
-			return payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
-		} catch {
-			return true;
-		}
-	}
-
-	static getTokenPayload(token: string): unknown {
-		try {
-			return JSON.parse(atob(token.split('.')[1]));
-		} catch {
-			return null;
-		}
-	}
+	/* No hay utilidades para juzgar la caducidad del token: el reloj del cliente
+	   puede ir desfasado respecto al servidor y daba por caducada una sesión
+	   recién emitida. La autoridad es el 401 del backend, que el interceptor de
+	   api.service resuelve con el refresh. */
 }

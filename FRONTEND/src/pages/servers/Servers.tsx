@@ -4,7 +4,9 @@ import { AddServerModal, EditServerModal, DeleteServerModal } from '@components/
 import { type ServerData } from '@typings/DashboardTypes';
 import { useServers, useRefreshAllServers } from '@hooks/useServers';
 import type { Server } from '@services/server.service';
-import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
+import { useServersLive } from '@hooks/useServersLive';
+import { emptyRuntime, type ServerRuntime } from '@lib/serverRuntime';
+import { timeAgo } from '@utils/time';
 import { useAppearance } from '@contexts/AppearanceContext';
 import type { ServersView } from '@contexts/AppearanceContext';
 
@@ -111,36 +113,29 @@ function formatUptime(u: string | number | undefined): string {
   return weeks > 0 ? `${weeks}w ${days}d ${hours}h ${minutes}m` : `${days}d ${hours}h ${minutes}m`;
 }
 
-function useServerRuntime(server: ServerData) {
-  const rt = useServerMetrics(server.id);
-  return {
-    connected: rt.connected,
-    status: rt.status !== 'unknown' ? rt.status : server.status,
-    cpu:    Number(rt.metrics?.cpu    ?? server.cpu    ?? 0),
-    memory: Number(rt.metrics?.memory ?? server.memory ?? 0),
-    disk:   Number(rt.metrics?.disk   ?? server.disk   ?? 0),
-    uptime: formatUptime(rt.metrics?.uptime ?? server.uptime ?? 'N/A'),
-    servicesCount:  rt.servicesCount  ?? rt.services?.length  ?? server.activeServices ?? 0,
-    websitesCount:  rt.websites?.length  ?? server.websites?.length  ?? 0,
-    databasesCount: rt.databases?.length ?? server.databases?.length ?? 0,
-  };
-}
+/* Formatea un número que puede no existir todavía: sin dato se pinta «—», no
+   un cero que parecería una medición. */
+const dash = '—';
+const pct = (value: number | null): string => (value === null ? dash : `${value.toFixed(1)}%`);
+const count = (value: number | null): string => (value === null ? dash : String(value));
 
-const StatusBadge = ({ status }: { status: string }) => {
+const StatusBadge = ({ status }: { status: ServerRuntime['state'] }) => {
   if (status === 'online')  return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20">Online</span>;
   if (status === 'warning') return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/20">Atención</span>;
+  /* Un servidor que nunca ha reportado no está caído: es que aún no dice nada.
+     Chip neutro por el canal de tinta, que funciona en los tres temas. */
+  if (status === 'unknown') return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/[0.06] text-white/55 ring-1 ring-white/10">Sin datos</span>;
   return <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/20">Offline</span>;
 };
 
 /* ── Server card (glassmorphism) ──────────────────────────────────── */
-const GlassServerCard = ({ server, onClick, onEdit, onDelete }: {
+const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
   server: ServerData;
+  rt: ServerRuntime;
   onClick: (s: ServerData) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) => {
-  const rt = useServerRuntime(server);
-
   return (
     /* No es un <button>: dentro hay botones de acción y anidarlos sería HTML
        inválido además de robarles el clic. */
@@ -160,8 +155,8 @@ const GlassServerCard = ({ server, onClick, onEdit, onDelete }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <div className="font-semibold text-lg">{server.name}</div>
-              <StatusBadge status={rt.status} />
-              {rt.connected && (
+              <StatusBadge status={rt.state} />
+              {rt.live && rt.state === 'online' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] animate-pulse" />
               )}
             </div>
@@ -178,28 +173,33 @@ const GlassServerCard = ({ server, onClick, onEdit, onDelete }: {
         </div>
 
         {/* Metric tiles row 1 */}
-        <div className="grid grid-cols-3 gap-4 mt-5">
-          <Tile icon={icons.cpu}    label="CPU"   value={`${rt.cpu.toFixed(1)}%`}    tone="emerald" />
-          <Tile icon={icons.ram}    label="RAM"   value={`${rt.memory.toFixed(1)}%`} tone="sky" />
-          <Tile icon={icons.disk}   label="Disco" value={`${rt.disk.toFixed(1)}%`}   tone="violet" />
+        <div className={`grid grid-cols-3 gap-4 mt-5 ${rt.stale ? 'opacity-60' : ''}`}
+          title={rt.stale ? `Último reporte ${timeAgo(rt.lastMetricAt)}` : undefined}>
+          <Tile icon={icons.cpu}    label="CPU"   value={pct(rt.cpu)}    tone="emerald" />
+          <Tile icon={icons.ram}    label="RAM"   value={pct(rt.memory)} tone="sky" />
+          <Tile icon={icons.disk}   label="Disco" value={pct(rt.disk)}   tone="violet" />
         </div>
 
         {/* Metric tiles row 2 */}
         <div className="grid grid-cols-3 gap-4 mt-4">
-          <Tile icon={icons.wrench}   label="Servicios" value={rt.servicesCount}   tone="fuchsia" />
-          <Tile icon={icons.globe}    label="Sitios"    value={rt.websitesCount}   tone="emerald" />
-          <Tile icon={icons.database} label="BBDD"      value={rt.databasesCount}  tone="amber" />
+          <Tile icon={icons.wrench}   label="Servicios" value={count(rt.services)}  tone="fuchsia" />
+          <Tile icon={icons.globe}    label="Sitios"    value={count(rt.websites)}  tone="emerald" />
+          <Tile icon={icons.database} label="BBDD"      value={count(rt.databases)} tone="amber" />
         </div>
 
         {/* Footer */}
         <div className="border-t border-white/[0.06] mt-5 pt-4 flex items-center justify-between text-sm">
           <span className="text-white/55">
-            Servicios clave: <span className="text-white/40">Sin datos</span>
+            {rt.hasMetrics
+              ? <>Servicios activos: <span className="text-white/75 font-mono">{count(rt.services)}</span></>
+              : <span className="text-white/40">Instala el agente para ver métricas</span>}
           </span>
           <div className="flex items-center gap-2 text-white/55">
             {icons.clock}
             <span className="text-xs">Tiempo activo</span>
-            <span className="font-mono text-xs text-white/75">{rt.uptime}</span>
+            <span className="font-mono text-xs text-white/75">
+              {rt.uptime === null ? dash : formatUptime(rt.uptime)}
+            </span>
           </div>
         </div>
       </Card>
@@ -208,28 +208,32 @@ const GlassServerCard = ({ server, onClick, onEdit, onDelete }: {
 };
 
 /* ── Métrica compacta para la vista de lista ──────────────────────── */
-const MiniMetric = ({ label, value, gradient }: { label: string; value: number; gradient: string }) => (
+const MiniMetric = ({ label, value, gradient }: { label: string; value: number | null; gradient: string }) => (
   <div className="w-24">
     <div className="flex items-baseline justify-between mb-1">
       <span className="text-[10px] uppercase tracking-wider text-white/45 font-medium">{label}</span>
-      <span className="text-xs font-mono tabular-nums text-white/80">{value.toFixed(0)}%</span>
+      <span className={`text-xs font-mono tabular-nums ${value === null ? 'text-white/45' : 'text-white/80'}`}>
+        {value === null ? dash : `${value.toFixed(0)}%`}
+      </span>
     </div>
     <div className="bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      {/* Sin dato, la pista se queda vacía: una barra a cero diría que se midió cero. */}
+      {value !== null && (
+        <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700`}
+          style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      )}
     </div>
   </div>
 );
 
 /* ── Fila (vista de lista) ────────────────────────────────────────── */
-const ServerRow = ({ server, onClick, onEdit, onDelete }: {
+const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
   server: ServerData;
+  rt: ServerRuntime;
   onClick: (s: ServerData) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) => {
-  const rt = useServerRuntime(server);
-
   return (
     <div
       role="button"
@@ -245,8 +249,8 @@ const ServerRow = ({ server, onClick, onEdit, onDelete }: {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold truncate">{server.name}</span>
-          <StatusBadge status={rt.status} />
-          {rt.connected && (
+          <StatusBadge status={rt.state} />
+          {rt.live && rt.state === 'online' && (
             <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] animate-pulse shrink-0" />
           )}
         </div>
@@ -255,19 +259,20 @@ const ServerRow = ({ server, onClick, onEdit, onDelete }: {
         </div>
       </div>
 
-      <div className="hidden lg:flex items-center gap-5 shrink-0">
+      <div className={`hidden lg:flex items-center gap-5 shrink-0 ${rt.stale ? 'opacity-60' : ''}`}
+        title={rt.stale ? `Último reporte ${timeAgo(rt.lastMetricAt)}` : undefined}>
         <MiniMetric label="CPU"   value={rt.cpu}
-          gradient={rt.cpu >= 80 ? 'from-rose-500 to-orange-500' : 'from-emerald-500 to-teal-500'} />
+          gradient={rt.cpu !== null && rt.cpu >= 80 ? 'from-rose-500 to-orange-500' : 'from-emerald-500 to-teal-500'} />
         <MiniMetric label="RAM"   value={rt.memory} gradient="from-sky-500 to-blue-500" />
         <MiniMetric label="Disco" value={rt.disk}   gradient="from-violet-500 to-fuchsia-500" />
       </div>
 
       <div className="hidden md:flex items-center gap-4 text-xs text-white/55 shrink-0 tabular-nums">
         <span title="Servicios activos" className="flex items-center gap-1.5">
-          <span className="text-fuchsia-300">{icons.wrench}</span>{rt.servicesCount}
+          <span className="text-fuchsia-300">{icons.wrench}</span>{count(rt.services)}
         </span>
         <span className="flex items-center gap-1.5 font-mono text-white/75">
-          {icons.clock}{rt.uptime}
+          {icons.clock}{rt.uptime === null ? dash : formatUptime(rt.uptime)}
         </span>
       </div>
 
@@ -327,14 +332,25 @@ export const Servers: React.FC = () => {
 
   const { data: servers = [], isLoading, isError } = useServers();
   const refreshMutation = useRefreshAllServers();
+  /* Los números vienen de aquí, no de `GET /servers`: `metadata.cpu` y compañía
+     no los escribe nadie en el backend. */
+  const { runtime, onlineCount } = useServersLive();
 
-  const transformServer = (s: Server): ServerData => ({
-    id: s.id, name: s.name,
-    status: s.status === 'online' ? 'online' : s.status === 'error' ? 'offline' : 'warning',
-    cpu: s.metadata?.cpu ?? 0, memory: s.metadata?.memory ?? 0, disk: s.metadata?.disk ?? 0,
-    uptime: s.metadata?.uptime ?? 'N/A', activeServices: s.metadata?.activeServices ?? 0,
-    location: 'N/A', ip: s.host, os: s.os, services: [], websites: [], databases: [],
-  });
+  const transformServer = (s: Server): ServerData => {
+    const rt = runtime[s.id];
+    return {
+      id: s.id, name: s.name,
+      status: s.status === 'online' ? 'online'
+        : (s.status === 'offline' || s.status === 'error') ? 'offline'
+        : 'warning',
+      /* `ServerData` no admite nulos y es lo que recibe el detalle; los ceros
+         de aquí solo son el valor de arranque, el pintado usa `rt`. */
+      cpu: rt?.cpu ?? 0, memory: rt?.memory ?? 0, disk: rt?.disk ?? 0,
+      uptime: rt?.uptime != null ? String(rt.uptime) : 'N/A',
+      activeServices: rt?.services ?? 0,
+      location: 'N/A', ip: s.host, os: s.os, services: [], websites: [], databases: [],
+    };
+  };
 
   const filteredServers = useMemo(
     () => servers.filter(s =>
@@ -344,8 +360,6 @@ export const Servers: React.FC = () => {
     ),
     [servers, searchTerm]
   );
-
-  const onlineCount = servers.filter(s => s.status === 'online').length;
 
   if (selectedServer) {
     return <ServerDetail server={selectedServer} onBack={() => setSelectedServer(null)} />;
@@ -414,6 +428,7 @@ export const Servers: React.FC = () => {
               <GlassServerCard
                 key={server.id}
                 server={transformServer(server)}
+                rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
                 onClick={setSelectedServer}
                 onEdit={() => setEditing(server)}
                 onDelete={() => setDeleting(server)}
@@ -449,6 +464,7 @@ export const Servers: React.FC = () => {
                   <ServerRow
                     key={server.id}
                     server={transformServer(server)}
+                    rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
                     onClick={setSelectedServer}
                     onEdit={() => setEditing(server)}
                     onDelete={() => setDeleting(server)}

@@ -19,12 +19,6 @@ export function useCurrentUser() {
 				return null;
 			}
 
-			// Verificar si el token está expirado
-			if (TokenManager.isTokenExpired(token)) {
-				TokenManager.clearTokens();
-				return null;
-			}
-
 			try {
 				// El backend puede devolver objeto directo o envuelto { success, data } o { user }
 				const response = await apiService.get<any>(
@@ -51,9 +45,11 @@ export function useCurrentUser() {
 			} catch (error) {
 				console.error('Error getting current user:', error);
 
-				// Intentar obtener usuario guardado localmente
+				/* Caída de red o backend: se conserva el usuario cacheado. Si el
+				   fallo fue un 401 irrecuperable, el interceptor ya limpió los
+				   tokens y entonces no hay sesión que sostener. */
 				const savedUser = TokenManager.getUserData() as User | null;
-				if (savedUser && !TokenManager.isTokenExpired(token)) {
+				if (savedUser && TokenManager.getAccessToken()) {
 					return savedUser;
 				}
 

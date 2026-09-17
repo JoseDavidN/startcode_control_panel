@@ -16,6 +16,7 @@ export const SYSTEM_INFO_PROJECTION: (keyof AgentMetrics)[] = [
   'system_platform',
   'system_distro',
   'system_kernel',
+  'system_arch',
   'system_uptime',
   'system_boot_time',
   'network_public_ip',

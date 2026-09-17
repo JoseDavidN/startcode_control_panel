@@ -113,6 +113,9 @@ export class SystemInfoResponseDto {
   @ApiProperty({ example: '6.8.0-87-generic' })
   kernel: string;
 
+  @ApiProperty({ example: 'x86_64' })
+  arch: string;
+
   @ApiProperty({ example: 226338 })
   uptime: number;
 
@@ -167,9 +170,6 @@ export class ServiceItemDto {
 
   @ApiProperty({ example: 52428800 })
   memory: number;
-
-  @ApiProperty({ example: 2.5 })
-  cpuPercent: number;
 }
 
 /**
@@ -247,4 +247,81 @@ export class AgentConnectionStatusDto {
 
   @ApiProperty({ example: '1.0.0', nullable: true })
   agentVersion: string | null;
+}
+
+/**
+ * Estado en vivo de un servidor para la lista.
+ *
+ * Los numéricos son `null` cuando **todavía no hay dato**: un servidor recién
+ * dado de alta, o un inventario que aún no ha llegado. Cero significa cero
+ * medido, y la interfaz distingue los dos casos.
+ */
+export class ServerLiveSummaryDto {
+  @ApiProperty()
+  serverId: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty({ example: 'online', description: 'Estado persistido en tbl_servers' })
+  status: string;
+
+  @ApiProperty({ example: true, description: 'El agente tiene socket abierto ahora mismo' })
+  agentConnected: boolean;
+
+  @ApiProperty({ nullable: true })
+  lastSeen: Date | null;
+
+  @ApiProperty({ example: true, description: 'false = el agente nunca ha reportado' })
+  hasMetrics: boolean;
+
+  @ApiProperty({ nullable: true })
+  lastMetricAt: Date | null;
+
+  @ApiProperty({ example: 37.5, nullable: true })
+  cpu: number | null;
+
+  @ApiProperty({ example: 65.4, nullable: true })
+  memory: number | null;
+
+  @ApiProperty({ example: 42.1, nullable: true, description: 'Uso del montaje raíz (%)' })
+  disk: number | null;
+
+  @ApiProperty({ example: 226338, nullable: true, description: 'Segundos' })
+  uptime: number | null;
+
+  @ApiProperty({ example: 38, nullable: true, description: 'Servicios activos' })
+  services: number | null;
+
+  @ApiProperty({ example: 104, nullable: true, description: 'Unidades systemd cargadas' })
+  servicesTotal: number | null;
+
+  @ApiProperty({ example: 2, nullable: true })
+  servicesFailed: number | null;
+
+  @ApiProperty({ example: 3, nullable: true })
+  websites: number | null;
+
+  @ApiProperty({ example: 1, nullable: true })
+  databases: number | null;
+
+  @ApiProperty({ example: 177, nullable: true })
+  processes: number | null;
+
+  @ApiProperty({ example: '2.1.0-go', nullable: true })
+  agentVersion: string | null;
+}
+
+export class ServersSummaryDto {
+  @ApiProperty({ type: [ServerLiveSummaryDto] })
+  servers: ServerLiveSummaryDto[];
+
+  @ApiProperty({ example: 4 })
+  total: number;
+
+  @ApiProperty({ example: 3, description: 'Servidores con el agente conectado' })
+  online: number;
+
+  @ApiProperty()
+  generatedAt: Date;
 }

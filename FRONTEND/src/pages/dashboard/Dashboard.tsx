@@ -13,7 +13,7 @@ import {
 import { useServers } from '@hooks/useServers';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { useOverview, useHistorical } from '@hooks/useMonitoring';
-import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useServersLive } from '@hooks/useServersLive';
 import { useSecuritySettings } from '@hooks/useSecuritySettings';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { MetricBar } from '@components/common/MetricBar';
@@ -198,7 +198,7 @@ export const Dashboard: React.FC = () => {
 
   const { data: servers = [], isLoading: serversLoading } = useServers();
   const { data: overview } = useOverview();
-  const { data: live } = useRealtimeMetrics();
+  const { runtime, onlineCount: liveOnlineCount } = useServersLive();
   const { settings: monitoring } = useMonitoringSettings();
   useSecuritySettings();
 
@@ -206,32 +206,33 @@ export const Dashboard: React.FC = () => {
   const chartServer = selected ?? servers[0]?.id;
 
   const time = now.toLocaleTimeString('es-CO', { hour12: false });
-  const onlineCount = servers.filter(s => s.status === 'online').length;
+  const onlineCount = liveOnlineCount;
 
-  /* Salud por servidor: lo del WebSocket manda por ser instantáneo, y lo que
-     guardó el agente en `metadata` cubre el hueco mientras no haya conexión. */
+  /* Salud por servidor: misma fuente que la lista (`useServersLive`), para que
+     las dos pantallas no digan cosas distintas del mismo servidor. Antes leía
+     `metadata.cpu`, que nadie escribe, y pintaba 0 % en cuanto callaba el
+     WebSocket. */
   const health = useMemo(() => {
     return servers
       .map(s => {
-        const rt = live?.[s.id];
-        const meta = (s.metadata ?? {}) as { cpu?: number; memory?: number; disk?: number };
-        const cpu = rt?.metrics?.cpu ?? meta.cpu ?? 0;
-        const memory = rt?.metrics?.memory ?? meta.memory ?? 0;
-        const disk = rt?.metrics?.disk ?? meta.disk ?? 0;
+        const rt = runtime[s.id];
+        const cpu = rt?.cpu ?? 0;
+        const memory = rt?.memory ?? 0;
+        const disk = rt?.disk ?? 0;
         return {
           id: s.id,
           name: s.name,
           host: s.host,
           os: s.osVersion ?? s.os,
-          status: rt?.status ?? s.status,
+          status: rt?.state ?? s.status,
           lastSeen: s.lastSeen ?? null,
           cpu, memory, disk,
           worst: Math.max(cpu, memory, disk),
-          hasData: Boolean(rt?.metrics || meta.cpu !== undefined),
+          hasData: Boolean(rt?.hasMetrics),
         };
       })
       .sort((a, b) => b.worst - a.worst);
-  }, [servers, live]);
+  }, [servers, runtime]);
 
   const atRisk = health.filter(h => h.hasData && h.disk >= monitoring.diskThreshold);
   const silent = health.filter(h => h.status !== 'online');

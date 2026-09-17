@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ServerStatus, ServerOs } from '../entities/server.entity';
+import { ServerStatus, ServerOs, type Server } from '../entities/server.entity';
+
+/** El mismo jsonb que la entidad: sin `any`, para que el compilador avise. */
+export type ServerMetadata = Server['metadata'];
 import { Exclude, Expose } from 'class-transformer';
 
 @Exclude()
@@ -38,7 +41,7 @@ export class ServerResponseDto {
 
   @Expose({ name: 'metadata' })
   @ApiProperty({ required: false })
-  metadata: any;
+  metadata: ServerMetadata;
 
   @Expose({ name: 'ownerId' })
   @ApiProperty()

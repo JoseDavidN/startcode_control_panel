@@ -69,6 +69,7 @@ lerna-debug.log*
 .env.production.local
 .env.local
 .env.production
+.env.development
 
 # temp directory
 .temp
@@ -90,8 +91,6 @@ ROADMAP.md
 CLAUDE.md
 .claude
 
-pnpm-workspace.yaml
-pnpm-lock.yaml
 mise.toml
 
 migrations*

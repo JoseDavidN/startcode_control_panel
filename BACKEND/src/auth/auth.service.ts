@@ -5,7 +5,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -107,6 +107,7 @@ export class AuthService {
     client: ClientContext = {},
   ): Promise<AuthResponseDto | TwoFactorPendingDto | PasswordChangeRequiredDto> {
     const { email, password } = loginDto;
+    const rememberMe = loginDto.rememberMe ?? false;
 
     const user = await this.usersRepository.findOne({
       where: { email },
@@ -137,18 +138,18 @@ export class AuthService {
     if (user.twoFactorEnabled) {
       return {
         requiresTwoFactor: true,
-        tempToken: this.generateTempToken(user, '2fa-pending'),
+        tempToken: this.generateTempToken(user, '2fa-pending', rememberMe),
       };
     }
 
     if (this.isPasswordExpired(user)) {
       return {
         requiresPasswordChange: true,
-        tempToken: this.generateTempToken(user, 'password-expired'),
+        tempToken: this.generateTempToken(user, 'password-expired', rememberMe),
       };
     }
 
-    return this.buildAuthResponse(user, client);
+    return this.buildAuthResponse(user, client, rememberMe);
   }
 
   /** Segundo factor del login: código TOTP o, si no hay app a mano, un código de respaldo. */
@@ -162,6 +163,7 @@ export class AuthService {
       sub: string;
       jti: string;
       exp: number;
+      rememberMe: boolean;
     };
 
     const user = await this.usersRepository.findOne({
@@ -199,11 +201,11 @@ export class AuthService {
     if (this.isPasswordExpired(user)) {
       return {
         requiresPasswordChange: true,
-        tempToken: this.generateTempToken(user, 'password-expired'),
+        tempToken: this.generateTempToken(user, 'password-expired', payload.rememberMe),
       };
     }
 
-    const response = await this.buildAuthResponse(user, client);
+    const response = await this.buildAuthResponse(user, client, payload.rememberMe);
     return usedBackupCode ? { ...response, usedBackupCode: true } : response;
   }
 
@@ -448,9 +450,14 @@ export class AuthService {
 
   /* ── Tokens temporales ─────────────────────────────────────────────── */
 
-  private generateTempToken(user: User, type: '2fa-pending' | 'password-expired'): string {
+  /** `rm` lleva "Mantener sesión iniciada" hasta que se emita la sesión real. */
+  private generateTempToken(
+    user: User,
+    type: '2fa-pending' | 'password-expired',
+    rememberMe = false,
+  ): string {
     return this.jwtService.sign(
-      { sub: user.id, type, jti: crypto.randomUUID() },
+      { sub: user.id, type, jti: crypto.randomUUID(), rm: rememberMe },
       { expiresIn: '5m' },
     );
   }
@@ -464,8 +471,8 @@ export class AuthService {
   private verifyTempToken(
     token: string,
     expected: '2fa-pending' | 'password-expired',
-  ): { sub: string; jti: string } {
-    let payload: { sub: string; type: string; jti: string; exp: number };
+  ): { sub: string; jti: string; rememberMe: boolean } {
+    let payload: { sub: string; type: string; jti: string; exp: number; rm?: boolean };
 
     try {
       payload = this.jwtService.verify(token, {
@@ -484,11 +491,12 @@ export class AuthService {
       throw new UnauthorizedException('Token temporal ya utilizado');
     }
 
-    return { sub: payload.sub, jti: payload.jti, exp: payload.exp } as {
-      sub: string;
-      jti: string;
-      exp: number;
-    };
+    return {
+      sub: payload.sub,
+      jti: payload.jti,
+      exp: payload.exp,
+      rememberMe: payload.rm === true,
+    } as { sub: string; jti: string; exp: number; rememberMe: boolean };
   }
 
   /** Marca el token temporal como gastado: vale para una sola sesión emitida. */
@@ -511,7 +519,11 @@ export class AuthService {
    * así que el equipo desplazado recibe 401 en su siguiente petición y vuelve
    * al login.
    */
-  private async buildAuthResponse(user: User, client: ClientContext): Promise<AuthResponseDto> {
+  private async buildAuthResponse(
+    user: User,
+    client: ClientContext,
+    persistent = false,
+  ): Promise<AuthResponseDto> {
     await this.revokeOtherSessions(user.id);
 
     const session = await this.sessionsRepository.save(
@@ -521,13 +533,14 @@ export class AuthService {
         userAgent: client.userAgent ?? null,
         ip: client.ip ?? null,
         lastUsed: new Date(),
-        expiresAt: new Date(Date.now() + this.refreshTtlMs()),
+        expiresAt: new Date(Date.now() + this.refreshTtlMs(persistent)),
         revoked: false,
+        persistent,
       }),
     );
 
     const token = this.generateToken(user, session.id);
-    const refreshToken = this.generateRefreshToken(user, session.id);
+    const refreshToken = this.generateRefreshToken(user, session.id, persistent);
     await this.sessionsRepository.update(session.id, {
       refreshHash: this.hashToken(refreshToken),
     });
@@ -554,6 +567,7 @@ export class AuthService {
       token,
       refreshToken,
       expiresIn,
+      rememberMe: persistent,
     };
   }
 
@@ -682,6 +696,7 @@ export class AuthService {
       sub: string;
       jti: string;
       exp: number;
+      rememberMe: boolean;
     };
 
     const user = await this.usersRepository.findOne({
@@ -709,7 +724,7 @@ export class AuthService {
 
     this.markTempTokenUsed(payload.jti, payload.exp);
     user.passwordChangedAt = now;
-    return this.buildAuthResponse(user, client);
+    return this.buildAuthResponse(user, client, payload.rememberMe);
   }
 
   /** ¿La contraseña superó los días configurados en las preferencias del usuario? */
@@ -781,11 +796,11 @@ export class AuthService {
       throw new UnauthorizedException('Sesión no válida o revocada');
     }
 
-    const rotated = this.generateRefreshToken(user, session.id);
+    const rotated = this.generateRefreshToken(user, session.id, session.persistent);
     await this.sessionsRepository.update(session.id, {
       refreshHash: this.hashToken(rotated),
       lastUsed: new Date(),
-      expiresAt: new Date(Date.now() + this.refreshTtlMs()),
+      expiresAt: new Date(Date.now() + this.refreshTtlMs(session.persistent)),
       userAgent: client.userAgent ?? session.userAgent,
       ip: client.ip ?? session.ip,
     });
@@ -806,6 +821,7 @@ export class AuthService {
       token: this.generateToken(user, session.id),
       refreshToken: rotated,
       expiresIn: this.configService.get('JWT_EXPIRES_IN', '30m'),
+      rememberMe: session.persistent,
     };
   }
 
@@ -815,10 +831,17 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  private refreshTtlMs(): number {
-    const raw = this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d') as string;
+  /** Duración del refresh: la sesión persistente usa JWT_REFRESH_REMEMBER_EXPIRES_IN. */
+  private refreshExpiresIn(persistent: boolean): string {
+    return persistent
+      ? (this.configService.get('JWT_REFRESH_REMEMBER_EXPIRES_IN', '30d') as string)
+      : (this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d') as string);
+  }
+
+  private refreshTtlMs(persistent = false): number {
+    const raw = this.refreshExpiresIn(persistent);
     const match = /^(\d+)([smhd])$/.exec(raw.trim());
-    if (!match) return 7 * 24 * 60 * 60 * 1000;
+    if (!match) return (persistent ? 30 : 7) * 24 * 60 * 60 * 1000;
     const value = Number(match[1]);
     const unit = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!;
     return value * unit;
@@ -901,7 +924,7 @@ export class AuthService {
     return this.jwtService.sign(payload, { expiresIn });
   }
 
-  private generateRefreshToken(user: User, sid: string): string {
+  private generateRefreshToken(user: User, sid: string, persistent = false): string {
     /* `jti` garantiza que cada rotación produzca un token distinto: sin él, dos
        firmas dentro del mismo segundo dan la misma cadena y el token anterior
        seguiría siendo válido. */
@@ -913,7 +936,7 @@ export class AuthService {
       jti: crypto.randomUUID(),
     };
 
-    const expiresIn = this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d');
+    const expiresIn = this.refreshExpiresIn(persistent) as JwtSignOptions['expiresIn'];
 
     return this.jwtService.sign(payload, {
       expiresIn,

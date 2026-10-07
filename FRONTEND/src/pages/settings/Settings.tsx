@@ -19,6 +19,7 @@ import type { NotifPrefs } from '@contexts/NotificationContext';
 import { useSecuritySettings, passwordAgeDays } from '@hooks/useSecuritySettings';
 import { useSystemInfo } from '@hooks/useSystemInfo';
 import { useUpdater } from '@hooks/useUpdater';
+import { ReleaseNotes } from '@components/settings/ReleaseNotes';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { useServers } from '@hooks/useServers';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
@@ -1412,10 +1413,6 @@ const SystemPane = () => {
             <InfoRow label="Entorno">
               {isLoading ? <Mono>…</Mono> : <SBadge color={envColor as any}>{envLabel}</SBadge>}
             </InfoRow>
-            <InfoRow label="API URL">
-              <Mono className="text-xs">{health?.api?.url ?? API_CONFIG.BASE_URL}</Mono>
-            </InfoRow>
-            <InfoRow label="Frontend"><Mono>{typeof window !== 'undefined' ? window.location.origin : '—'}</Mono></InfoRow>
             <InfoRow label="Uptime backend">
               <Mono>{isLoading ? '…' : health?.uptime != null ? formatUptime(health.uptime) : '—'}</Mono>
             </InfoRow>
@@ -1435,14 +1432,8 @@ const SystemPane = () => {
                   ? <SBadge color="emerald">Conectada</SBadge>
                   : <SBadge color="rose">Desconectada</SBadge>}
             </InfoRow>
-            <InfoRow label="Host">
-              <Mono>{isLoading ? '…' : health?.database ? `${health.database.host}:${health.database.port}` : '—'}</Mono>
-            </InfoRow>
             <InfoRow label="Base de datos">
               <Mono>{isLoading ? '…' : health?.database?.name ?? '—'}</Mono>
-            </InfoRow>
-            <InfoRow label="Ping">
-              <Mono>{isLoading ? '…' : health?.database?.pingMs != null ? `${health.database.pingMs} ms` : '—'}</Mono>
             </InfoRow>
             <InfoRow label="ORM"><Mono>TypeORM</Mono></InfoRow>
           </div>
@@ -1480,7 +1471,7 @@ const SystemPane = () => {
           {updater.available && updater.info && (
             <div className="glass-soft rounded-xl p-4 border border-violet-400/15 space-y-3">
               <div className="text-sm font-medium text-violet-200">Nueva versión disponible: v{updater.info.version}</div>
-              {updater.info.body && <p className="text-xs text-white/55 leading-relaxed">{updater.info.body}</p>}
+              {updater.info.body && <p className="text-xs text-white/55 leading-relaxed whitespace-pre-line">{updater.info.body}</p>}
               {updater.downloading ? (
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-white/55">
@@ -1540,6 +1531,16 @@ const SystemPane = () => {
 
       <div className="border-t border-line" />
 
+      {/* ── Novedades ── */}
+      <div>
+        <SectionTitle>Novedades</SectionTitle>
+        <div className="mt-4">
+          <ReleaseNotes installedVersion={appVersion} />
+        </div>
+      </div>
+
+      <div className="border-t border-line" />
+
       {/* ── Acciones del sistema ── */}
       <div>
         <SectionTitle>Acciones del Sistema</SectionTitle>
@@ -1572,10 +1573,8 @@ const SystemPane = () => {
                 { t: 'INFO',  msg: `Uptime: ${formatUptime(health.uptime)}` },
                 { t: health.database.status === 'connected' ? 'OK' : 'ERR',
                   msg: health.database.status === 'connected'
-                    ? `PostgreSQL conectado — ${health.database.host}:${health.database.port} (${health.database.pingMs ?? '?'} ms)`
-                    : `PostgreSQL desconectado — ${health.database.host}:${health.database.port}` },
-                { t: 'INFO',  msg: `API: ${health.api.url}` },
-                { t: 'INFO',  msg: `Frontend: ${typeof window !== 'undefined' ? window.location.origin : '—'}` },
+                    ? 'PostgreSQL conectado'
+                    : 'PostgreSQL desconectado' },
               ].map(({ t, msg }, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className={`shrink-0 ${t === 'OK' ? 'text-emerald-400' : t === 'ERR' ? 'text-rose-400' : 'text-violet-400'}`}>

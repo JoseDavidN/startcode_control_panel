@@ -78,7 +78,7 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
     document.fonts.addEventListener('loadingdone', onFontsLoaded);
     void document.fonts.load(`${FONT_SIZE}px ${fontFamily}`, NERD_SAMPLE);
 
-    const base = String(API_CONFIG.BASE_URL).replace('/api/v1', '');
+    const base = API_CONFIG.WS_URL;
     const socket = io(`${base}/terminal`, {
       transports: ['websocket'],
       auth: {

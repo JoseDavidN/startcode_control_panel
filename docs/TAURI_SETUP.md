@@ -141,14 +141,14 @@ Reemplazar el contenido generado con:
 
 ## 7. Configurar variables de entorno para producción
 
-Crear `FRONTEND/.env.production` (no commitear si tiene datos sensibles):
+`FRONTEND/.env.production` (no se versiona) es lo que usa `pnpm tauri:build` en local; en CI el workflow lo genera desde el secreto `VITE_API_URL` de GitHub. No poner datos sensibles: queda dentro de la app.
 
 ```env
-VITE_API_URL=https://tu-servidor.com:3001
-VITE_WS_URL=https://tu-servidor.com:3001
+VITE_API_URL=https://tu-servidor.com/api/v1
+VITE_RELEASES_URL=https://releases.startcode.com.co
 ```
 
-Para desarrollo local, el `.env` existente ya está correcto.
+Los WebSockets no tienen variable propia: usan el origen de `VITE_API_URL` sin `/api/v1`. Para desarrollo se usa `FRONTEND/.env.development`; la descripción de cada variable está en `FRONTEND/.env.example`.
 
 ## 8. Generar iconos
 
@@ -179,7 +179,6 @@ El instalador queda en `FRONTEND/src-tauri/target/release/bundle/`.
 
 ## Notas importantes para este proyecto
 
-- **`constants.ts`** ya usa `import.meta.env.VITE_API_URL` — no requiere cambios.
-- **`RealtimeMetricsContext.tsx`** — verificar que use `import.meta.env.VITE_WS_URL` en vez de URL hardcodeada.
+- **`constants.ts`** lee `VITE_API_URL` y de ella saca `API_CONFIG.BASE_URL` y `API_CONFIG.WS_URL`; los sockets (`AppProviders` → `RealtimeMetricsContext`, terminal y SFTP) usan `WS_URL`.
 - **WebSockets** — el CSP configurado arriba ya permite `ws://` y `wss://`, necesario para Socket.io.
 - **CORS en el backend** — asegurarse de que NestJS acepte el origen `tauri://localhost` en producción.

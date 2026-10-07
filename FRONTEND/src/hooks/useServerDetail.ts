@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@services/api.service';
 import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
+import { formatUptime } from '@utils/time';
 
 /**
  * Interfaz para las métricas de CPU detalladas
@@ -72,13 +73,24 @@ export interface SystemInfo {
 /**
  * Interfaz para información de procesos
  */
+/** Proceso del top que publica el agente (unión del top por CPU y por memoria). */
+export interface TopProcess {
+  pid: number;
+  name: string;
+  cpu: number;          // % de CPU
+  mem: number;          // % de memoria
+  memRss: number;       // Memoria residente en bytes
+  user: string;
+  command: string;      // Línea de comandos: el nombre puede ser genérico ("MainThread")
+}
+
 export interface ProcessInfo {
   running: number;      // Procesos en ejecución
   sleeping: number;     // Procesos durmiendo
   stopped: number;      // Procesos detenidos
   zombie: number;       // Procesos zombie
   total: number;        // Total de procesos
-  topList?: any[];      // Lista de procesos principales
+  topList: TopProcess[]; // Procesos principales
 }
 
 /**
@@ -101,6 +113,8 @@ export interface ServicesInfo {
   active: number;
   failed: number;
   list: SystemdServiceInfo[];
+  /** Unidades que el usuario fijó para este servidor. */
+  pinned: string[];
 }
 
 export interface WebsiteInfo {
@@ -205,18 +219,16 @@ export function useServerDetail(
           throw new Error('Respuesta inválida del servidor');
         }
 
-        // Función auxiliar para formatear uptime en segundos a texto
-        const formatUptime = (seconds: number): string => {
-          const days = Math.floor(seconds / 86400);
-          const hours = Math.floor((seconds % 86400) / 3600);
-          const minutes = Math.floor((seconds % 3600) / 60);
-          return `${days} days, ${hours} hours, ${minutes} minutes`;
-        };
-
         /* Los inventarios sí tienen forma conocida: se acotan una vez aquí en
            lugar de hacer accesos sueltos sobre el `any` del payload. */
         const inventory = rawData as {
-          services?: { count?: number; active?: number; failed?: number; list?: SystemdServiceInfo[] };
+          services?: {
+            count?: number;
+            active?: number;
+            failed?: number;
+            list?: SystemdServiceInfo[];
+            pinned?: string[];
+          };
           websites?: { count?: number; list?: WebsiteInfo[] };
           databases?: { count?: number; list?: DatabaseInfo[] };
         };
@@ -324,6 +336,17 @@ export function useServerDetail(
             stopped: rawData.processes?.stopped || 0,
             zombie: rawData.processes?.zombie || 0,
             total: rawData.processes?.total || 0,
+            topList: Array.isArray(rawData.processes?.topList)
+              ? (rawData.processes.topList as Partial<TopProcess>[]).map(p => ({
+                  pid: Number(p.pid) || 0,
+                  name: String(p.name ?? ''),
+                  cpu: Number(p.cpu) || 0,
+                  mem: Number(p.mem) || 0,
+                  memRss: Number(p.memRss) || 0,
+                  user: String(p.user ?? ''),
+                  command: String(p.command ?? ''),
+                }))
+              : [],
           },
 
           services: {
@@ -331,6 +354,7 @@ export function useServerDetail(
             active: Number(inventory.services?.active) || 0,
             failed: Number(inventory.services?.failed) || 0,
             list: Array.isArray(inventory.services?.list) ? inventory.services.list : [],
+            pinned: Array.isArray(inventory.services?.pinned) ? inventory.services.pinned : [],
           },
 
           websites: {

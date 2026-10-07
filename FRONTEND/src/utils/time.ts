@@ -60,3 +60,18 @@ export function daysUntil(date: Date | string | null | undefined): number | null
 	if (Number.isNaN(d.getTime())) return null;
 	return Math.floor((d.getTime() - Date.now()) / 86400000);
 }
+
+/**
+ * Tiempo activo en segundos → "17d 4h 5m". Formato único para la tarjeta de
+ * servidores y el detalle, que antes mostraban semanas en una y días en otra.
+ */
+export function formatUptime(seconds: number | null | undefined): string {
+	if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
+	const total = Math.floor(seconds);
+	const d = Math.floor(total / 86400);
+	const h = Math.floor((total % 86400) / 3600);
+	const m = Math.floor((total % 3600) / 60);
+	if (d > 0) return `${d}d ${h}h ${m}m`;
+	if (h > 0) return `${h}h ${m}m`;
+	return `${m}m`;
+}

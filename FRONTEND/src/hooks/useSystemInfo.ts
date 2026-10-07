@@ -11,15 +11,8 @@ export interface SystemHealth {
   uptime: number;
   database: {
     status: 'connected' | 'disconnected';
-    pingMs: number | null;
-    host: string;
-    port: number;
     name: string;
     engine: string;
-  };
-  api: {
-    url: string;
-    port: number;
   };
 }
 
@@ -33,7 +26,7 @@ export function useSystemInfo() {
         .then(setAppVersion)
         .catch(() => setAppVersion('dev'));
     } else {
-      setAppVersion(import.meta.env.VITE_APP_VERSION ?? 'dev');
+      setAppVersion(String(import.meta.env.VITE_APP_VERSION || 'dev'));
     }
   }, []);
 

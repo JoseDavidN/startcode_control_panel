@@ -281,6 +281,7 @@ export const Login = () => {
   const [email, setEmail]          = useState('');
   const [password, setPassword]    = useState('');
   const [showPwd, setShowPwd]      = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError]          = useState('');
   const [twoFactorPending, set2FA] = useState(false);
   const [tempToken, setTempToken]  = useState('');
@@ -311,7 +312,7 @@ export const Login = () => {
     e.preventDefault();
     setError('');
     try {
-      const result = await login({ email, password });
+      const result = await login({ email, password, rememberMe });
       if (result && 'requiresTwoFactor' in result) {
         setTempToken(result.tempToken);
         set2FA(true);
@@ -640,7 +641,12 @@ export const Login = () => {
 
                   <div className="flex items-center justify-between text-xs pt-1">
                     <label className="flex items-center gap-2 text-white/65 cursor-pointer select-none">
-                      <input type="checkbox" className="chk" defaultChecked />
+                      <input
+                        type="checkbox"
+                        className="chk"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                      />
                       Mantener sesión iniciada
                     </label>
                     <span className="font-mono text-white/45 flex items-center gap-1.5">

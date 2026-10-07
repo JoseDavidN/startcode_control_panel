@@ -1,5 +1,5 @@
 // src/providers/AuthProvider.tsx
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { AuthContext } from '@contexts/AuthContext';
 import { useLoginMutation, useLogoutMutation } from '@hooks/useAuthMutation';
@@ -82,7 +82,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (normalized.tokens) {
         TokenManager.setTokens(
           normalized.tokens.accessToken,
-          normalized.tokens.refreshToken || normalized.tokens.accessToken
+          normalized.tokens.refreshToken || normalized.tokens.accessToken,
+          normalized.rememberMe
         );
       }
       TokenManager.saveUserData(normalized.user);
@@ -112,6 +113,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         TokenManager.setTokens(
           normalized.tokens.accessToken,
           normalized.tokens.refreshToken || normalized.tokens.accessToken,
+          normalized.rememberMe,
         );
       }
       TokenManager.saveUserData(normalized.user);
@@ -175,10 +177,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     [user]
   );
 
-  const value = {
+  /* Memoizado: un objeto nuevo en cada render re-renderizaba a todos los
+     consumidores de useAuth (layout, sockets, guardas) sin que nada cambiara. */
+  const isBusy = isLoading || loginMutation.isPending || logoutMutation.isPending;
+  const value = useMemo(() => ({
     user: user || null,
     isAuthenticated: !!user,
-    isLoading: isLoading || loginMutation.isPending || logoutMutation.isPending,
+    isLoading: isBusy,
     login,
     complete2FALogin,
     completeExpiredPasswordChange,
@@ -187,7 +192,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     hasPermission,
     hasRole,
     hasAnyRole,
-  };
+  }), [user, isBusy, login, complete2FALogin, completeExpiredPasswordChange, logout, refreshAuth,
+    hasPermission, hasRole, hasAnyRole]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

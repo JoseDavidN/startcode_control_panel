@@ -10,16 +10,20 @@ import { NotificationProvider } from '@contexts/NotificationContext';
 import { PreferencesProvider } from '@contexts/PreferencesContext';
 import { PreferencesSync } from '@components/PreferencesSync';
 import { queryClient } from '@lib/queryClient';
+import { API_CONFIG } from '@utils/constants';
 import { useAuth } from '@hooks/useAuth';
 import { useInactivityLogout } from '@hooks/useInactivityLogout';
 import { useSecuritySettings } from '@hooks/useSecuritySettings';
+import { TokenManager } from '@utils/tokenManager';
 
-/* Monta el watcher de inactividad una vez dentro del AuthProvider */
+/* Monta el watcher de inactividad una vez dentro del AuthProvider.
+   Las sesiones con "Mantener sesión iniciada" no se cierran por inactividad. */
 const InactivityWatcher = () => {
   const { logout, isAuthenticated } = useAuth();
   const { settings } = useSecuritySettings();
   const handleLogout = useCallback(() => { if (isAuthenticated) logout(); }, [isAuthenticated, logout]);
-  useInactivityLogout(isAuthenticated ? settings.sessionTimeout : 0, handleLogout);
+  const timeout = isAuthenticated && !TokenManager.isPersistent() ? settings.sessionTimeout : 0;
+  useInactivityLogout(timeout, handleLogout);
   return null;
 };
 
@@ -28,8 +32,7 @@ interface AppProvidersProps {
 }
 
 export const AppProviders = ({ children }: AppProvidersProps) => {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
-  const backendUrl = apiUrl.replace('/api/v1', '');
+  const backendUrl = API_CONFIG.WS_URL;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -52,7 +55,6 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
           style: {
             background: 'rgb(var(--surface-rgb) / 0.92)',
             border: '1px solid var(--hairline)',
-            backdropFilter: 'blur(28px)',
             color: 'var(--ink)',
             fontFamily: 'var(--font-ui)',
           },

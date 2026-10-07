@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { CorsIoAdapter } from './adapters/cors-io.adapter';
+import { resolveCorsOrigins } from './adapters/cors-origins';
 import { join } from 'path';
 
 async function bootstrap() {
@@ -14,9 +15,11 @@ async function bootstrap() {
     prefix: '/public/',
   });
 
-  // CORS HTTP
+  // CORS HTTP — misma lista que el WebSocket, con los orígenes de Tauri.
+  // Antes se pasaba la cadena cruda: con varios orígenes separados por coma
+  // no coincidía ninguno.
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? '*',
+    origin: resolveCorsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });

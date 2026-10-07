@@ -8,6 +8,8 @@ export interface SSHExecResult {
   stdout: string;
   stderr: string;
   code: number;
+  /** La salida superó `maxOutputBytes` y se recortó. */
+  truncated?: boolean;
 }
 
 @Injectable()
@@ -157,14 +159,31 @@ export class SSHService {
       input?: string;
       timeoutMs?: number;
       onStdout?: (chunk: string) => void;
+      /** Tope de stdout + stderr guardados; lo que pase se descarta. */
+      maxOutputBytes?: number;
     } = {},
   ): Promise<SSHExecResult> {
     const timeoutMs = opts.timeoutMs ?? 30000;
+    const maxBytes = opts.maxOutputBytes ?? Infinity;
 
     return new Promise((resolve, reject) => {
       let stdout = '';
       let stderr = '';
+      let size = 0;
+      let truncated = false;
       let settled = false;
+
+      /* Sin tope, un `cat` de un log de gigas se quedaba entero en memoria. */
+      const keep = (chunk: string): string => {
+        if (size >= maxBytes) {
+          truncated = true;
+          return '';
+        }
+        size += chunk.length;
+        if (size <= maxBytes) return chunk;
+        truncated = true;
+        return chunk.slice(0, chunk.length - (size - maxBytes));
+      };
 
       const timeout = setTimeout(() => {
         if (settled) return;
@@ -189,11 +208,11 @@ export class SSHService {
             clearTimeout(timeout);
             if (settled) return;
             settled = true;
-            resolve({ stdout, stderr, code: code ?? 0 });
+            resolve({ stdout, stderr, code: code ?? 0, truncated });
           })
           .on('data', (data: Buffer) => {
             const chunk = data.toString();
-            stdout += chunk;
+            stdout += keep(chunk);
             opts.onStdout?.(chunk);
           })
           .on('error', (streamError: Error) => {
@@ -203,7 +222,7 @@ export class SSHService {
             reject(streamError);
           })
           .stderr.on('data', (data: Buffer) => {
-            stderr += data.toString();
+            stderr += keep(data.toString());
           });
 
         if (opts.input !== undefined) stream.end(opts.input);

@@ -1,0 +1,201 @@
+# Instalables de escritorio (Tauri) para Linux, Windows y macOS, firmados para
+# el actualizador, y la carpeta lista para subir a releases.startcode.com.co.
+#
+# - Tag `v*` (igual a `version` de tauri.conf.json): versión publicable.
+# - Manual (Actions → "Desktop build" → Run workflow): misma compilación, para
+#   probar antes de etiquetar.
+#
+# FRONTEND/.env.production no se versiona (no exponer la dirección real del
+# backend): el workflow lo crea en cada máquina a partir de los secretos y
+# variables del repositorio.
+#
+# Resultado: artefacto `release-site-<versión>` con la carpeta `startcode-panel/`
+# que se sube tal cual al sitio (ver docs/RELEASES.md), más un artefacto con
+# los instalables de cada plataforma.
+#
+# Configuración del repositorio (Settings → Secrets and variables → Actions):
+#   Secrets:   VITE_API_URL, TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   Variables: VITE_RELEASES_URL, RELEASES_BASE_URL (opcionales)
+name: Desktop build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Falla en segundos si la versión no está lista, antes de gastar minutos
+  # de macOS: tag ≠ versión, falta su entrada en versions.json, o faltan
+  # los secretos VITE_API_URL o de firma.
+  check:
+    name: Comprobar versión
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Versión, versions.json y tag
+        working-directory: FRONTEND
+        run: node scripts/check-release.mjs ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+
+      # El valor nunca se imprime: GitHub enmascara los secretos en el log.
+      - name: Secretos
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          [ -n "$VITE_API_URL" ] || { echo "::error::Falta el secreto VITE_API_URL (URL del backend, p. ej. https://panel.ejemplo.com/api/v1)."; exit 1; }
+          case "$VITE_API_URL" in
+            *localhost*|*127.0.0.1*) echo "::warning::El secreto VITE_API_URL apunta a localhost: la app instalada buscará el backend en la máquina del usuario." ;;
+          esac
+          [ "$HAS_KEY" = "true" ] || { echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY (contenido de ~/.tauri/startcode.key)."; exit 1; }
+
+      - id: version
+        run: echo "version=$(node -p "require('./FRONTEND/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (x64)
+            os: ubuntu-22.04
+            args: ''
+            artifact: startcode-panel-linux-x86_64
+          - name: Windows (x64)
+            os: windows-latest
+            args: ''
+            artifact: startcode-panel-windows-x86_64
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            args: '--target aarch64-apple-darwin'
+            artifact: startcode-panel-darwin-aarch64
+          - name: macOS (Intel)
+            os: macos-latest
+            args: '--target x86_64-apple-darwin'
+            artifact: startcode-panel-darwin-x86_64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias de sistema (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libssl-dev build-essential file libxdo-dev
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: FRONTEND/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: FRONTEND/src-tauri -> target
+          key: ${{ matrix.artifact }}
+
+      - name: Instalar dependencias del frontend
+        working-directory: FRONTEND
+        run: pnpm install --frozen-lockfile
+
+      # Lo lee `pnpm build` (beforeBuildCommand de Tauri). Se escribe con
+      # printf desde variables de entorno para que el valor no pase por la
+      # línea de comandos ni por el log.
+      - name: Crear .env.production
+        shell: bash
+        working-directory: FRONTEND
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_RELEASES_URL: ${{ vars.VITE_RELEASES_URL || 'https://releases.startcode.com.co' }}
+        run: |
+          printf 'VITE_API_URL=%s\nVITE_RELEASES_URL=%s\n' "$VITE_API_URL" "$VITE_RELEASES_URL" > .env.production
+
+      # Sin tagName: aquí no se crea ningún Release de GitHub; la publicación
+      # es la carpeta del sitio que arma el job `site`.
+      - name: Compilar y firmar
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Firma de código (cuando existan los certificados):
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: FRONTEND
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+
+      - name: Subir instalables
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            FRONTEND/src-tauri/target/**/release/bundle/deb/*.deb
+            FRONTEND/src-tauri/target/**/release/bundle/rpm/*.rpm
+            FRONTEND/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            FRONTEND/src-tauri/target/**/release/bundle/appimage/*.AppImage.sig
+            FRONTEND/src-tauri/target/**/release/bundle/msi/*.msi
+            FRONTEND/src-tauri/target/**/release/bundle/msi/*.msi.sig
+            FRONTEND/src-tauri/target/**/release/bundle/nsis/*.exe
+            FRONTEND/src-tauri/target/**/release/bundle/nsis/*.exe.sig
+            FRONTEND/src-tauri/target/**/release/bundle/dmg/*.dmg
+            FRONTEND/src-tauri/target/**/release/bundle/macos/*.app.tar.gz
+            FRONTEND/src-tauri/target/**/release/bundle/macos/*.app.tar.gz.sig
+
+  site:
+    name: Carpeta para releases.startcode.com.co
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: startcode-panel-*
+          path: artifacts
+
+      - name: Armar latest.json por plataforma, versions.json y archivos
+        working-directory: FRONTEND
+        env:
+          RELEASES_BASE_URL: ${{ vars.RELEASES_BASE_URL }}
+        run: node scripts/build-update-site.mjs ../artifacts ../site
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-site-${{ needs.check.outputs.version }}
+          path: site
+          if-no-files-found: error

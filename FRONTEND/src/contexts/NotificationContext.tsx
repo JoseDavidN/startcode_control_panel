@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { notify } from '@services/notification.service';
 import { notificationsApi } from '@services/notifications.api';
-import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeSocket } from '@contexts/RealtimeMetricsContext';
 import { useAuth } from '@hooks/useAuth';
 import { usePreferences } from '@contexts/PreferencesContext';
 import type { AppNotification } from '@typings/notification.types';
@@ -43,7 +43,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
    `notifications:changed` (sin payload, el namespace es broadcast), se
    recarga la lista con el JWT propio y se avisa de lo que sea nuevo. */
 function ServerAlertBridge({ securityAlerts }: { securityAlerts: boolean }) {
-  const { socket } = useRealtimeMetrics();
+  const { socket } = useRealtimeSocket();
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   /* Ids ya anunciados: al arrancar se siembran con el pendiente para no

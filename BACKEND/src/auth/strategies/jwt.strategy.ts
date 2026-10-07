@@ -71,11 +71,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     /* Cierre por inactividad del lado del servidor: el temporizador del navegador
-       se reinicia al recargar la página, este no. */
+       se reinicia al recargar la página, este no. Las sesiones persistentes
+       ("Mantener sesión iniciada") solo caducan por su expiración. */
     const timeoutMinutes = mergePreferences(user.preferences, {}).security.sessionTimeout;
     const idleMs = Date.now() - session.lastUsed.getTime();
 
-    if (timeoutMinutes > 0 && idleMs > timeoutMinutes * 60_000) {
+    if (!session.persistent && timeoutMinutes > 0 && idleMs > timeoutMinutes * 60_000) {
       await this.sessionsRepository.update(session.id, { revoked: true });
       throw new UnauthorizedException('Sesión cerrada por inactividad');
     }

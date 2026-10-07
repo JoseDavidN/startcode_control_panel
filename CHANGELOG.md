@@ -7,7 +7,39 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] — 2026-10-07
+
+Versión **menor** sobre 0.2.0: todo lo acumulado desde mayo son funciones nuevas y correcciones; en 0.x los cambios de contrato (como el de `/health`) también van en una menor.
+
+### Añadido (esta iteración)
+- **Mantener sesión iniciada** en el login: refresh token de 30 días (`JWT_REFRESH_REMEMBER_EXPIRES_IN`), columna `bol_persistent` en `tbl_sessions` (migración `add_persistent_to_sessions.sql`) y sin cierre por inactividad; sin marcar, la sesión dura 7 días y los tokens van a `sessionStorage`
+- **Línea de comandos** en el detalle de servidor — `POST /agent-data/servers/:id/commands`: comando por SSH sin TTY, 60 s y 1 MB de salida como máximo, directorio de trabajo arrastrado entre comandos, sudo opcional y confirmación para comandos peligrosos. Limitado a 30 por minuto
+- **Auditoría de comandos** — tabla `tbl_command_audit` (migración `add_command_audit.sql`) con quién, servidor, comando, directorio, sudo, estado, código y duración; `GET /agent-data/servers/:id/commands`. La salida no se guarda
+- **Contenedores Docker** — `POST /agent-data/servers/:id/docker/containers` (`docker ps` + `docker stats` por SSH, con sudo si hace falta) y tab «Docker» que aparece cuando el servidor tiene `docker.service`
+- **Cerrar procesos** — `POST /agent-data/servers/:id/processes/:pid/kill` envía SIGTERM (sin `-9`); protege PID 1, `sshd`, `systemd` y el agente
+- Tarjeta «Consumo de memoria» con los 5 procesos de más RSS (sustituye a «Procesos»); el agente Go 2.1.2 envía la unión del top por CPU y por memoria, con la línea de comandos
+- Actualizador de la app de escritorio contra `releases.startcode.com.co`, novedades por versión (`FRONTEND/src/release/versions.json`) en Configuración → Sistema y workflow `desktop-build` para Linux, Windows y macOS
+
+### Cambiado
+- `GET /health` ya no expone host ni puerto de la base de datos, URL ni puerto del API, ni el ping: es público
+- La versión del backend se lee de `package.json`; con `node dist/main` se mostraba siempre `1.0.0`
+- `execOnClient` acepta `maxOutputBytes`; `ServiceControlService.resolveSudo` y `run` son públicos para reutilizar la escalera de sudo
+- Rendimiento del frontend: carga por página, un store por servidor para el WebSocket y menos capas de `backdrop-filter`
+
+### Corregido
+- El tiempo activo salía en semanas en la lista y en días en el detalle
+- `app.controller.spec.ts` no proveía `DataSource` ni `ConfigService`
+
 ### Añadido
+- **El tab de servicios pasa a ser operable de verdad.** Iniciar, parar y reiniciar estaban cableados pero no funcionaban: `sudo systemctl` sin `-n` y sin PTY se colgaba hasta el timeout donde el usuario SSH no tenía NOPASSWD, un fallo de systemctl volvía como 200 con `success: false` y React Query lo daba por bueno, y la lista se leía del inventario del agente —de hasta cinco minutos antes— así que el estado nunca cambiaba después de actuar
+- `ServiceControlService` resuelve privilegios como el instalador del agente (root / `sudo -n` / contraseña validada antes de tocar nada) sobre **una sola** conexión SSH, relee el estado con `systemctl show`, lo parchea en `services_list` y emite `server:services:updated`: el badge y el PID cambian al instante
+- **Journal de una unidad** en el propio panel — `POST /agent-data/servers/:id/services/:name/logs` devuelve las últimas líneas de `journalctl -u`, que es lo que explica un `failed`. Se intenta sin sudo y solo se escala si el journal se queja
+- **Servicios fijados por servidor** (`PUT /agent-data/servers/:id/services/pinned`, guardados en `metadata.pinnedServices`): un servidor reporta ~160 unidades y casi ninguna importa, así que las fijadas salen en su propia sección encima del inventario
+- `enable` / `disable` desde la tarjeta: «Habilitado al arranque» era un texto informativo sobre algo que no se podía cambiar
+- Confirmación antes de parar un servicio, y contraseña de sudo pedida en el mismo modal cuando el servidor la exige (se reutiliza mientras el detalle esté abierto; solo en memoria)
+- `sshd`, `ssh` y `startcode-agent` no se pueden parar ni deshabilitar desde el panel: todo lo que el panel hace en la máquina viaja por SSH, así que pararlas la dejaría incomunicada sin forma de deshacerlo desde aquí. Reiniciarlas sigue permitido
 - **Instalación del agente desde el panel** — al dar de alta un servidor, el agente se instala solo por SSH: comprueba permisos, systemd y arquitectura, el servidor remoto descarga el binario del propio panel (verificando su sha256), se escribe la configuración y arranca el servicio. Los pasos que enseña el modal ahora son trabajo real, no temporizadores
 - **Desinstalación al eliminar un servidor** — se para el servicio y se borran binario, unidad y configuración. Si no se puede, el borrado **se bloquea** con el error a la vista y una casilla para eliminar de todos modos
 - Tarjeta «Agente de monitoreo» en el detalle del servidor: estado, versión, fecha, último error y botones de instalar, reinstalar y desinstalar

@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { type ServerData } from '@typings/DashboardTypes';
 import { Modal } from '@components/common/Modal';
-import { ServerTerminal } from '@components/servers/ServerTerminal';
-import { SftpModal, SftpIcon } from '@components/servers/sftp';
+import { SftpIcon } from '@components/servers/sftp/icons';
 import { AgentCard } from '@components/servers/AgentCard';
-import { useServerDetail } from '@hooks/useServerDetail';
+import { useServerDetail, type TopProcess } from '@hooks/useServerDetail';
 import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
-import { useServiceAction } from '@hooks/useServiceAction';
-import { daysUntil, timeUntil } from '@utils/time';
+import { useServiceAction, usePinnedServices, useKillProcess } from '@hooks/useServiceAction';
+import { ServiceActionModal } from '@components/servers/ServiceActionModal';
+import { ProcessKillModal } from '@components/servers/ProcessKillModal';
+
+import { ServiceLogsModal } from '@components/servers/ServiceLogsModal';
+import { ServiceCard } from '@components/servers/ServiceCard';
+import { unitName } from '@utils/services';
+import { notify } from '@services/notification.service';
+import type { ServiceAction } from '@services/service-control.service';
 import { MetricBar } from '@components/common/MetricBar';
-import { barGradient } from '@utils/metrics';
+import { barGradient, formatBytes } from '@utils/metrics';
+import { formatUptime } from '@utils/time';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -19,7 +26,6 @@ const AlertTri     = ({ className='w-5 h-5' }) => <svg {...sp} className={classN
 const XCircle      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>;
 const ChevronLeft  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M15 18l-6-6 6-6"/></svg>;
 const PlusIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M12 5v14M5 12h14"/></svg>;
-const GearIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>;
 const ChartIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M4 20V10M10 20V4M16 20v-6M22 20H2"/></svg>;
 const PackageIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
 const GlobeIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>;
@@ -27,27 +33,36 @@ const DbIcon       = ({ className='w-5 h-5' }) => <svg {...sp} className={classN
 const TerminalIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
 const NetworkIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 011-1h12a1 1 0 011 1v3M12 8v5"/></svg>;
 const ActivityIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+const CloseIcon    = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M18 6L6 18M6 6l12 12"/></svg>;
+const MemoryIcon   = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="2" y="7" width="20" height="10" rx="1.5"/><path d="M6 11v2M10 11v2M14 11v2M18 11v2M6 17v3M18 17v3"/></svg>;
 const CpuIcon      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
 const CodeIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>;
-const PlayIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><polygon points="5 3 19 12 5 21 5 3"/></svg>;
-const PauseIcon    = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
 const CubeIcon     = ({ className='w-8 h-8' }) => <svg {...sp} className={className}><path d="M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>;
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
+/* Nombre legible de un proceso. El nombre corto (comm) lo puede fijar el propio
+   programa ("MainThread") y entonces no dice qué es: se deriva del comando,
+   y para intérpretes se añade el script ("python3 worker.py"). */
+const INTERPRETERS = /^(python[\d.]*|node|java|php[\d.]*|ruby|perl|bash|sh|dotnet)$/;
+const baseName = (path: string) => path.split('/').pop() ?? path;
+
+const processLabel = (proc: TopProcess): string => {
+  const [exe = '', ...args] = proc.command.trim().split(/\s+/);
+  const bin = baseName(exe);
+  if (!bin || (proc.name && bin.startsWith(proc.name))) return proc.name || bin || `PID ${proc.pid}`;
+  if (INTERPRETERS.test(bin)) {
+    const script = args.find(a => !a.startsWith('-'));
+    if (script) return `${bin} ${baseName(script)}`;
+  }
+  return bin;
+};
+
 const statusIcon = (status: string) => {
   if (['online','running','active','connected'].includes(status))
     return <CheckCircle className="w-5 h-5 text-emerald-400" />;
   if (['warning','maintenance'].includes(status))
     return <AlertTri className="w-5 h-5 text-amber-400" />;
   return <XCircle className="w-5 h-5 text-rose-400" />;
-};
-
-/** Ámbar cuando quedan menos de 15 días, rosa si ya caducó. */
-const certTone = (expiry: string): 'default' | 'warn' | 'danger' => {
-  const days = daysUntil(expiry);
-  if (days === null) return 'default';
-  if (days < 0) return 'danger';
-  return days < 15 ? 'warn' : 'default';
 };
 
 /* ── Info row ─────────────────────────────────────────────────────── */
@@ -71,37 +86,13 @@ const InfoRow = ({
   </div>
 );
 
-/* ── Service icon map ─────────────────────────────────────────────── */
-const serviceIconMap: Record<string, React.ReactNode> = {
-  nginx: <GlobeIcon />, apache: <GlobeIcon />,
-  mysql: <DbIcon />, postgresql: <DbIcon />, redis: <DbIcon />, mongodb: <DbIcon />,
-  wordpress: <CodeIcon />, nodejs: <TerminalIcon />, docker: <CubeIcon className="w-5 h-5" />,
-};
-const getServiceIcon = (type: string) => serviceIconMap[type] ?? <PackageIcon />;
-
-/* ── Estado de una unidad systemd ─────────────────────────────────── */
-const ServiceStateBadge = ({ state }: { state: string }) => {
-  const tone =
-    state === 'active'  ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20' :
-    state === 'failed'  ? 'bg-rose-500/15 text-rose-300 ring-rose-400/20' :
-                          'bg-tint-active text-white/50 ring-hairline';
-  const label =
-    state === 'active' ? 'Activo' : state === 'failed' ? 'Fallido' :
-    state === 'inactive' ? 'Inactivo' : 'Desconocido';
-
-  return (
-    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0 ${tone}`}>
-      {label}
-    </span>
-  );
-};
-
-/** systemd reporta la memoria de cada unidad en bytes. */
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
+/** Cómo se cuenta la acción ya ejecutada en el aviso. */
+const ACTION_PAST: Record<ServiceAction, string> = {
+  start: 'iniciado',
+  stop: 'detenido',
+  restart: 'reiniciado',
+  enable: 'habilitado al arranque',
+  disable: 'quitado del arranque',
 };
 
 /* ── Component ────────────────────────────────────────────────────── */
@@ -110,11 +101,22 @@ interface ServerDetailProps {
   onBack: () => void;
 }
 
+/* Bajo demanda: xterm, el cliente SFTP y Docker solo se descargan al abrirlos,
+   no con el detalle (xterm solo pesa más que el resto de la vista). */
+const ServerTerminal = lazy(() =>
+  import('@components/servers/ServerTerminal').then(m => ({ default: m.ServerTerminal })));
+const SftpModal = lazy(() =>
+  import('@components/servers/sftp/SftpModal').then(m => ({ default: m.SftpModal })));
+const DockerTab = lazy(() =>
+  import('@components/servers/DockerTab').then(m => ({ default: m.DockerTab })));
+const CommandsTab = lazy(() =>
+  import('@components/servers/CommandsTab').then(m => ({ default: m.CommandsTab })));
+
 const TABS = [
   { id: 'overview',   label: 'Resumen',        icon: ChartIcon },
   { id: 'services',   label: 'Servicios',       icon: PackageIcon },
-  { id: 'websites',   label: 'Sitios Web',      icon: GlobeIcon },
-  { id: 'databases',  label: 'Bases de Datos',  icon: DbIcon },
+  { id: 'commands',   label: 'Comandos',        icon: CodeIcon },
+  { id: 'docker',     label: 'Docker',          icon: CubeIcon },
 ] as const;
 
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
@@ -135,11 +137,24 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
     disk: rt.metrics?.disk ?? detail?.disk?.[0]?.usagePercent ?? server.disk,
   };
 
-  const uptime = detail?.system.uptime ?? server.uptime;
+  /* Los cerrados se ocultan ya: el top no se refresca hasta el siguiente
+     inventario del agente. */
+  const [killedPids, setKilledPids] = useState<Set<number>>(() => new Set());
+  const topMemory = [...(detail?.processes.topList ?? [])]
+    .filter(p => !killedPids.has(p.pid))
+    .sort((a, b) => b.memRss - a.memRss)
+    .slice(0, 5);
+
+  /* Misma fuente y formato que la tarjeta: el tiempo real del socket primero. */
+  const uptime = formatUptime(
+    rt.metrics?.uptime ?? detail?.system.uptimeSeconds ?? (Number(server.uptime) || null),
+  );
   const dash = '—';
 
   /* ── Servicios systemd ── */
   const serviceAction = useServiceAction(server.id);
+  const setPinned = usePinnedServices(server.id);
+  const [logsFor, setLogsFor] = useState<string | null>(null);
   const [serviceFilter, setServiceFilter] = useState('');
   const [onlyActive, setOnlyActive] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -147,21 +162,47 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   /* useMemo estabiliza la referencia: si no, la lista se recrea en cada render
      y el filtrado de abajo se recalcula siempre. */
   const services = React.useMemo(() => detail?.services.list ?? [], [detail]);
-  const websites = detail?.websites.list ?? [];
-  const databases = detail?.databases.list ?? [];
+  /* El tab Docker solo aparece si el inventario trae la unidad docker.service. */
+  const dockerUnit = services.find(s => unitName(s.name) === 'docker');
+  const visibleTabs = TABS.filter(t => t.id !== 'docker' || dockerUnit);
 
   const primaryIface = detail?.network.primary ?? null;
   const otherIfaces = (detail?.network.interfaces ?? []).filter(i => i.iface !== primaryIface?.iface);
   const activeServices = services.filter(s => s.state === 'active');
   const failedServices = services.filter(s => s.state === 'failed');
 
+  /* Los que el usuario fijó para este servidor. Un servidor reporta ~160
+     unidades y casi ninguna importa: esta lista es la que decide qué se ve. */
+  const pinned = React.useMemo(() => detail?.services.pinned ?? [], [detail]);
+  const pinnedSet = React.useMemo(
+    () => new Set(pinned.map(unitName)),
+    [pinned],
+  );
+
+  const pinnedServices = React.useMemo(() => {
+    const term = serviceFilter.trim().toLowerCase();
+
+    return services
+      .filter(s => pinnedSet.has(unitName(s.name)))
+      /* Con un filtro escrito, lo fijado tampoco se libra: si no, la búsqueda
+         devolvería resultados que no coinciden con lo buscado. */
+      .filter(s =>
+        !term ||
+        s.name.toLowerCase().includes(term) ||
+        (s.displayName ?? '').toLowerCase().includes(term),
+      )
+      .sort((a, b) => pinned.indexOf(a.name) - pinned.indexOf(b.name));
+  }, [services, pinnedSet, pinned, serviceFilter]);
+
   /* Con ~160 unidades, pintarlas todas es ruido: primero las que fallan, luego
-     las activas, y se corta la lista salvo que el usuario filtre. */
+     las activas, y se corta la lista salvo que el usuario filtre. Lo fijado ya
+     tiene su propia sección arriba y no se repite aquí. */
   const visibleServices = React.useMemo(() => {
     const term = serviceFilter.trim().toLowerCase();
     const weight = (state: string) => (state === 'failed' ? 0 : state === 'active' ? 1 : 2);
 
     return services
+      .filter(s => !pinnedSet.has(unitName(s.name)))
       .filter(s => (onlyActive ? s.state === 'active' : true))
       .filter(s =>
         !term ||
@@ -170,22 +211,129 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       )
       .sort((a, b) => weight(a.state) - weight(b.state) || a.name.localeCompare(b.name))
       .slice(0, term ? 200 : 60);
-  }, [services, serviceFilter, onlyActive]);
+  }, [services, serviceFilter, onlyActive, pinnedSet]);
 
-  const runServiceAction = (serviceName: string, action: 'start' | 'stop' | 'restart') => {
+  /* Una acción bloquea solo su tarjeta, y el spinner va en el botón que la
+     lanzó, no en los cuatro. */
+  const cardBusy = (serviceName: string) =>
+    serviceAction.isPending && serviceAction.variables?.serviceName === serviceName;
+  const cardRunning = (serviceName: string) =>
+    cardBusy(serviceName) ? serviceAction.variables?.action : undefined;
+
+  const togglePin = (serviceName: string) => {
+    const next = pinnedSet.has(unitName(serviceName))
+      ? pinned.filter(name => unitName(name) !== unitName(serviceName))
+      : [...pinned, serviceName];
+
+    setPinned.mutate(next, {
+      onError: () => notify.error('No se pudo guardar el servicio fijado', serviceName),
+    });
+  };
+
+  /* Parar pide confirmación, y cualquier acción puede acabar pidiendo la
+     contraseña de sudo: las dos cosas viven en el mismo modal. */
+  const [prompt, setPrompt] = useState<
+    { serviceName: string; action: ServiceAction; phase: 'confirm' | 'sudo'; hint?: string } | null
+  >(null);
+  /* La contraseña validada se reusa mientras el detalle esté abierto, para no
+     pedirla en cada clic. Solo en memoria: ni localStorage ni caché. */
+  const [sudoPassword, setSudoPassword] = useState<string | undefined>();
+
+  const execute = async (serviceName: string, action: ServiceAction, password?: string) => {
     setActionError(null);
-    serviceAction.mutate(
-      { serviceName, action },
-      {
-        onError: (err: unknown) => {
-          const message =
-            typeof err === 'object' && err !== null && 'message' in err
-              ? String((err as { message?: unknown }).message)
-              : 'No se pudo ejecutar la acción';
-          setActionError(`${serviceName}: ${message}`);
-        },
-      },
-    );
+
+    try {
+      const result = await serviceAction.mutateAsync({ serviceName, action, sudoPassword: password });
+
+      if (password) setSudoPassword(password);
+      setPrompt(null);
+
+      if (result.success) {
+        notify.success(`Servicio ${ACTION_PAST[action]}`, serviceName);
+      } else {
+        notify.error(`No se pudo ejecutar «${action}» en ${serviceName}`, result.error);
+        setActionError(`${serviceName}: ${result.error ?? 'systemctl terminó con error'}`);
+      }
+    } catch (err: unknown) {
+      const error = (err ?? {}) as { code?: string; hint?: string; message?: string };
+
+      /* El servidor pide contraseña de sudo: se abre la segunda fase del modal
+         con el mismo servicio y acción, en vez de dar el error por perdido. */
+      if (error.code === 'SUDO_REQUIRED') {
+        setSudoPassword(undefined);
+        setPrompt({ serviceName, action, phase: 'sudo', hint: error.hint ?? error.message });
+        return;
+      }
+
+      const message = error.message ?? 'No se pudo ejecutar la acción';
+      setActionError(`${serviceName}: ${message}`);
+
+      /* Con la contraseña rechazada el modal sigue abierto para reintentar. */
+      if (error.code !== 'SUDO_PASSWORD') {
+        setPrompt(null);
+        notify.error(`No se pudo ejecutar «${action}» en ${serviceName}`, message);
+      }
+    }
+  };
+
+  /* ── Cerrar proceso (SIGTERM) ── */
+  const killProcess = useKillProcess(server.id);
+  const [killPrompt, setKillPrompt] = useState<
+    { proc: TopProcess; phase: 'confirm' | 'sudo'; hint?: string } | null
+  >(null);
+  const [killError, setKillError] = useState<string | null>(null);
+
+  const executeKill = async (proc: TopProcess, password?: string) => {
+    setKillError(null);
+    const label = processLabel(proc);
+
+    try {
+      const result = await killProcess.mutateAsync({ pid: proc.pid, sudoPassword: password });
+
+      if (password) setSudoPassword(password);
+      setKillPrompt(null);
+
+      if (!result.success) {
+        notify.error(`No se pudo cerrar ${label}`, result.error);
+        return;
+      }
+      if (result.exited) {
+        setKilledPids(prev => new Set(prev).add(proc.pid));
+        notify.success('Proceso cerrado', `${label} (PID ${proc.pid})`);
+      } else {
+        notify.warning('Señal enviada', `${label} (PID ${proc.pid}) sigue activo: puede tardar en terminar o ignorar SIGTERM.`);
+      }
+    } catch (err: unknown) {
+      const error = (err ?? {}) as { code?: string; hint?: string; message?: string };
+
+      if (error.code === 'SUDO_REQUIRED') {
+        setSudoPassword(undefined);
+        setKillPrompt({ proc, phase: 'sudo', hint: error.hint ?? error.message });
+        return;
+      }
+
+      if (error.code === 'PROCESS_NOT_FOUND') {
+        setKilledPids(prev => new Set(prev).add(proc.pid));
+      }
+
+      const message = error.message ?? 'No se pudo cerrar el proceso';
+      setKillError(message);
+      if (error.code !== 'SUDO_PASSWORD') {
+        setKillPrompt(null);
+        notify.error(`No se pudo cerrar ${label}`, message);
+      }
+    }
+  };
+
+  const runServiceAction = (serviceName: string, action: ServiceAction) => {
+    setActionError(null);
+
+    if (action === 'stop') {
+      setPrompt({ serviceName, action, phase: 'confirm' });
+      return;
+    }
+
+    void execute(serviceName, action, sudoPassword);
   };
 
   return (
@@ -261,7 +409,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
 
       {/* ── Tabs ────────────────────────────────────────────────────── */}
       <div className="glass rounded-2xl grain p-2 flex gap-1 flex-wrap">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {visibleTabs.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className={`mo-tab flex items-center gap-2 h-9 px-4 rounded-xl text-sm font-medium ${
               activeTab === id
@@ -377,23 +525,45 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
             )}
           </div>
 
-          {/* Procesos */}
+          {/* Consumo de memoria: los 5 procesos con más memoria residente */}
           <div className="glass-soft rounded-2xl p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white/80 mb-4">
-              <ActivityIcon className="w-4 h-4 text-violet-300" /> Procesos
+              <MemoryIcon className="w-4 h-4 text-violet-300" /> Consumo de memoria
             </h3>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'En ejecución', value: detail?.processes.running ?? 0, color: 'text-emerald-300' },
-                { label: 'Zombies',      value: detail?.processes.zombie  ?? 0, color: 'text-rose-300' },
-                { label: 'Total',        value: detail?.processes.total   ?? 0, color: 'text-white' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="glass rounded-xl p-3 text-center">
-                  <p className={`text-2xl font-bold ${color} mb-1`}>{value}</p>
-                  <p className="text-[10px] text-white/45 uppercase tracking-wider">{label}</p>
-                </div>
-              ))}
-            </div>
+            {topMemory.length === 0 ? (
+              <p className="text-xs text-white/45">Sin datos de procesos todavía.</p>
+            ) : (
+              <div className="space-y-2">
+                {topMemory.map(proc => (
+                  <div key={proc.pid} className="glass rounded-xl px-3 py-2"
+                    title={`${proc.command || proc.name}${proc.user ? `\nUsuario: ${proc.user}` : ''}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-white/85 truncate">{processLabel(proc)}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs font-mono font-semibold text-white">{formatBytes(proc.memRss)}</span>
+                        <button
+                          onClick={() => { setKillError(null); setKillPrompt({ proc, phase: 'confirm' }); }}
+                          disabled={killProcess.isPending && killProcess.variables?.pid === proc.pid}
+                          title="Cerrar proceso (SIGTERM)"
+                          aria-label={`Cerrar ${processLabel(proc)} (PID ${proc.pid})`}
+                          className="mo-tab w-6 h-6 rounded-md flex items-center justify-center text-white/35 hover:text-rose-300 transition disabled:opacity-40"
+                        >
+                          <CloseIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 mt-0.5 mb-1.5">
+                      <span className="text-[10px] font-mono text-white/45">PID {proc.pid}</span>
+                      <span className="text-[10px] font-mono text-white/55">{proc.mem.toFixed(1)}% RAM</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-track overflow-hidden">
+                      <div className={`h-full rounded-full bg-gradient-to-r ${barGradient(proc.mem)} transition-all duration-700`}
+                        style={{ width: `${Math.min(100, proc.mem)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Recursos detallados */}
@@ -477,233 +647,136 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {visibleServices.map(service => {
-                const busy =
-                  serviceAction.isPending && serviceAction.variables?.serviceName === service.name;
-
-                return (
-                  <div key={service.name}
-                    className="glass-soft rounded-xl p-4 row-hit transition">
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
-                          {getServiceIcon(service.name)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate" title={service.name}>
-                            {service.name}
-                          </p>
-                          <p className="text-xs text-white/45 truncate" title={service.displayName}>
-                            {service.displayName || service.subState}
-                          </p>
-                        </div>
-                      </div>
-                      <ServiceStateBadge state={service.state} />
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs text-white/45 mb-3 flex-wrap">
-                      <span>{service.enabled ? 'Habilitado al arranque' : 'No habilitado'}</span>
-                      {service.pid && <span className="font-mono">PID {service.pid}</span>}
-                      {service.memory > 0 && (
-                        <span className="font-mono tabular-nums">{formatBytes(service.memory)}</span>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => runServiceAction(service.name, 'start')}
-                        disabled={busy || service.state === 'active'}
-                        className="mo-tab flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40"
-                      >
-                        <PlayIcon /> Iniciar
-                      </button>
-                      <button
-                        onClick={() => runServiceAction(service.name, 'stop')}
-                        disabled={busy || service.state !== 'active'}
-                        className="mo-tab flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-rose-500/15 border border-rose-400/20 text-rose-300 hover:bg-rose-500/25 text-xs font-medium disabled:opacity-40"
-                      >
-                        <PauseIcon /> Parar
-                      </button>
-                      <button
-                        onClick={() => runServiceAction(service.name, 'restart')}
-                        disabled={busy}
-                        title="Reiniciar"
-                        className="mo-tab w-8 h-8 rounded-lg glass-soft flex items-center justify-center text-white/55 hover:text-white disabled:opacity-40"
-                      >
-                        <GearIcon className="w-4 h-4" />
-                      </button>
-                    </div>
+            <>
+              {pinnedServices.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs font-medium text-white/55 mb-3">
+                    Fijados · {pinnedServices.length}
+                  </p>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {pinnedServices.map(service => (
+                      <ServiceCard
+                        key={service.name}
+                        service={service}
+                        pinned
+                        busy={cardBusy(service.name)}
+                        running={cardRunning(service.name)}
+                        onAction={runServiceAction}
+                        onTogglePin={togglePin}
+                        onLogs={setLogsFor}
+                      />
+                    ))}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              )}
+
+              {pinnedServices.length > 0 && visibleServices.length > 0 && (
+                <p className="text-xs font-medium text-white/55 mb-3">
+                  Resto del inventario
+                </p>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {visibleServices.map(service => (
+                  <ServiceCard
+                    key={service.name}
+                    service={service}
+                    pinned={false}
+                    busy={cardBusy(service.name)}
+                    running={cardRunning(service.name)}
+                    onAction={runServiceAction}
+                    onTogglePin={togglePin}
+                    onLogs={setLogsFor}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
-          {services.length > visibleServices.length && (
+          {services.length > visibleServices.length + pinnedServices.length && (
             <p className="text-xs text-white/35 mt-4 text-center">
-              Mostrando {visibleServices.length} de {services.length}. Afina el filtro para ver el resto.
+              Mostrando {visibleServices.length + pinnedServices.length} de {services.length}.
+              Fija los que uses a diario o afina el filtro para ver el resto.
             </p>
           )}
         </div>
       )}
 
-      {/* ── Websites ────────────────────────────────────────────────── */}
-      {activeTab === 'websites' && (
-        <div className="mo-panel glass rounded-2xl grain p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="text-base font-semibold text-white">Sitios Web</h2>
-              <p className="text-xs text-white/45 mt-0.5">
-                {websites.length > 0 ? `${websites.length} detectados` : 'Sin inventario del agente'}
-              </p>
-            </div>
-            <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              elev-brand-sm">
-              <PlusIcon /> Nuevo Sitio
-            </button>
-          </div>
-
-          {websites.length === 0 ? (
-            <div className="edge-dashed rounded-xl py-10 text-center">
-              <p className="text-sm text-white/55">No se detectaron sitios web</p>
-              <p className="text-xs text-white/35 mt-1">
-                El agente busca virtual hosts de nginx y Apache; si no hay ninguno configurado, esta lista queda vacía.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {websites.map(site => (
-                <div key={site.domain} className="glass-soft rounded-xl p-4">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
-                        <GlobeIcon className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{site.domain}</p>
-                        <p className="text-xs text-white/45 truncate">
-                          {site.server ?? 'servidor web'}{site.port ? ` · puerto ${site.port}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0
-                      ${site.ssl
-                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
-                        : 'bg-amber-500/15 text-amber-300 ring-amber-400/20'}`}>
-                      {site.ssl ? 'SSL' : 'Sin SSL'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-0.5">
-                    {site.path && <InfoRow label="Raíz" value={site.path} />}
-                    {site.certExpiry && (
-                      <InfoRow
-                        label="Certificado"
-                        value={timeUntil(site.certExpiry)}
-                        tone={certTone(site.certExpiry)}
-                      />
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* ── Acción sobre un servicio ─────────────────────────────────── */}
+      {prompt && (
+        <ServiceActionModal
+          serviceName={prompt.serviceName}
+          action={prompt.action}
+          phase={prompt.phase}
+          hint={prompt.hint}
+          error={actionError}
+          pending={serviceAction.isPending}
+          onConfirm={password =>
+            void execute(prompt.serviceName, prompt.action, password ?? sudoPassword)
+          }
+          onClose={() => { setPrompt(null); setActionError(null); }}
+        />
       )}
 
-      {/* ── Databases ───────────────────────────────────────────────── */}
-      {activeTab === 'databases' && (
-        <div className="mo-panel glass rounded-2xl grain p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="text-base font-semibold text-white">Bases de Datos</h2>
-              <p className="text-xs text-white/45 mt-0.5">
-                {databases.length > 0 ? `${databases.length} motores detectados` : 'Sin inventario del agente'}
-              </p>
-            </div>
-            <button className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl grad-brand text-white text-sm font-medium
-              elev-brand-sm">
-              <PlusIcon /> Nueva Base
-            </button>
-          </div>
+      {/* ── Línea de comandos ───────────────────────────────────────── */}
+      {activeTab === 'commands' && (
+        <Suspense fallback={<div className="glass rounded-2xl grain p-5 text-sm text-white/45">Cargando…</div>}>
+          <CommandsTab serverId={server.id} serverName={server.name} />
+        </Suspense>
+      )}
 
-          {databases.length === 0 ? (
-            <div className="edge-dashed rounded-xl py-10 text-center">
-              <p className="text-sm text-white/55">No se detectaron motores de base de datos</p>
-              <p className="text-xs text-white/35 mt-1">
-                El agente reconoce MySQL/MariaDB, PostgreSQL, MongoDB y Redis instalados en el sistema.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {databases.map(db => (
-                <div key={db.type} className="glass-soft rounded-xl p-4">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg glass flex items-center justify-center text-white/70 shrink-0">
-                        <DbIcon className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{db.type}</p>
-                        <p className="text-xs text-white/45 truncate">
-                          {db.version ? `v${db.version}` : 'versión desconocida'}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 shrink-0
-                      ${db.running
-                        ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20'
-                        : 'bg-tint-active text-white/50 ring-hairline'}`}>
-                      {db.running ? 'En ejecución' : 'Detenido'}
-                    </span>
-                  </div>
+      {/* ── Docker ──────────────────────────────────────────────────── */}
+      {activeTab === 'docker' && dockerUnit && (
+        <Suspense fallback={<div className="glass rounded-2xl grain p-5 text-sm text-white/45">Cargando…</div>}>
+          <DockerTab serverId={server.id} dockerState={dockerUnit.state} />
+        </Suspense>
+      )}
 
-                  <div className="space-y-0.5">
-                    {/* Ausente no es cero: si el agente no pudo medirlo, se dice. */}
-                    <InfoRow
-                      label="Tamaño"
-                      value={db.sizeBytes !== undefined ? formatBytes(db.sizeBytes) : dash}
-                    />
-                    <InfoRow
-                      label="Bases"
-                      value={db.databases ? String(db.databases.length) : 'sin acceso'}
-                    />
-                  </div>
+      {/* ── Cerrar un proceso ────────────────────────────────────────── */}
+      {killPrompt && (
+        <ProcessKillModal
+          name={processLabel(killPrompt.proc)}
+          pid={killPrompt.proc.pid}
+          command={killPrompt.proc.command}
+          phase={killPrompt.phase}
+          hint={killPrompt.hint}
+          error={killError}
+          pending={killProcess.isPending}
+          onConfirm={password => void executeKill(killPrompt.proc, password ?? sudoPassword)}
+          onClose={() => { setKillPrompt(null); setKillError(null); }}
+        />
+      )}
 
-                  {(db.databases?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {db.databases!.slice(0, 8).map(name => (
-                        <span key={name} className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-tint-active text-white/60">
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* ── Journal de un servicio ───────────────────────────────────── */}
+      {logsFor && (
+        <ServiceLogsModal
+          serverId={server.id}
+          serviceName={logsFor}
+          onClose={() => setLogsFor(null)}
+        />
       )}
 
       {/* ── Terminal SSH ─────────────────────────────────────────────── */}
       {terminalOpen && (
-        <ServerTerminal
-          serverId={server.id}
-          serverName={server.name}
-          onClose={() => setTerminalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <ServerTerminal
+            serverId={server.id}
+            serverName={server.name}
+            onClose={() => setTerminalOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* ── SFTP ─────────────────────────────────────────────────────── */}
       {sftpOpen && (
-        <SftpModal
-          serverId={server.id}
-          serverName={server.name}
-          isOpen
-          onClose={() => setSftpOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <SftpModal
+            serverId={server.id}
+            serverName={server.name}
+            isOpen
+            onClose={() => setSftpOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* ── Install Modal ────────────────────────────────────────────── */}

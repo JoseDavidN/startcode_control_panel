@@ -44,7 +44,8 @@ export function useLoginMutation() {
 			if (normalized.tokens) {
 				TokenManager.setTokens(
 					normalized.tokens.accessToken,
-					normalized.tokens.refreshToken || normalized.tokens.accessToken
+					normalized.tokens.refreshToken || normalized.tokens.accessToken,
+					normalized.rememberMe
 				);
 			}
 

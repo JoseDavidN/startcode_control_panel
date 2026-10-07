@@ -16,6 +16,7 @@ import {
   SystemInfoResponseDto,
   AgentConnectionStatusDto,
 } from '../dto/agent-data-response.dto';
+import { ServicePayload } from '../dto/agent-payload';
 import {
   AGENT_STATUS_PROJECTION,
   DASHBOARD_PROJECTION,
@@ -43,6 +44,17 @@ interface ServersSummaryRow {
   hasServicesInv: boolean;
   hasWebsitesInv: boolean;
   hasDatabasesInv: boolean;
+}
+
+/**
+ * Compara nombres de unidad tolerando el sufijo `.service`: el agente guarda
+ * lo que devuelve `systemctl list-units` y el panel puede recibir cualquiera
+ * de las dos formas.
+ */
+function sameUnit(a: string | undefined, b: string): boolean {
+  if (!a) return false;
+  const strip = (unit: string) => unit.replace(/\.service$/, '');
+  return strip(a) === strip(b);
 }
 
 @Injectable()
@@ -394,6 +406,69 @@ export class AgentDataService {
     );
 
     return deletedCount;
+  }
+
+  /**
+   * Actualiza el estado de **un** servicio dentro del inventario guardado.
+   *
+   * El agente manda el inventario completo cada 5 minutos y además deduplica:
+   * sin esto, un `systemctl stop` lanzado desde el panel no se vería en la
+   * interfaz hasta el siguiente ciclo. Aquí se parchea la entrada concreta y
+   * se recuentan activos y fallidos, para que `GET .../latest` devuelva ya el
+   * estado real.
+   *
+   * Devuelve la lista resultante, o `null` si el servidor todavía no tiene
+   * inventario (nada que parchear).
+   */
+  async patchServiceState(
+    serverId: string,
+    patch: {
+      name: string;
+      state: string;
+      subState: string;
+      pid: number | null;
+      enabled: boolean;
+    },
+  ): Promise<ServicePayload[] | null> {
+    const metrics = await this.metricsRepository.findOne({
+      where: { server_id: serverId },
+      select: ['server_id', 'services_list'],
+    });
+
+    const list: ServicePayload[] = Array.isArray(metrics?.services_list)
+      ? (metrics.services_list as ServicePayload[])
+      : [];
+    if (list.length === 0) return null;
+
+    const index = list.findIndex((service) => sameUnit(service?.name, patch.name));
+    if (index === -1) return null;
+
+    const services = [...list];
+    services[index] = {
+      ...services[index],
+      state: patch.state,
+      subState: patch.subState,
+      enabled: patch.enabled,
+      pid: patch.pid,
+      /* La memoria la mide el agente; tras parar el servicio ya no aplica. */
+      memory: patch.state === 'active' ? services[index].memory : 0,
+    };
+
+    const counted = (state: string) => services.filter((s) => s.state === state).length;
+
+    await this.metricsRepository.upsert(
+      {
+        server_id: serverId,
+        timestamp: new Date(),
+        services_list: services,
+        services_count: services.length,
+        services_active: counted('active'),
+        services_failed: counted('failed'),
+      },
+      { conflictPaths: ['server_id'] },
+    );
+
+    return services;
   }
 
   /**

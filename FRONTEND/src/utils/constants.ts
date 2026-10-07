@@ -1,5 +1,10 @@
+const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1').replace(/\/+$/, '');
+
 export const API_CONFIG = {
-	BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1',
+	/* Sin barra final: los endpoints empiezan por `/` y quedaría `//auth`. */
+	BASE_URL: API_URL,
+	/* Origen de los sockets (métricas, terminal, SFTP): el del API sin `/api/v1`. */
+	WS_URL: API_URL.replace(/\/api\/v1$/, ''),
 	TIMEOUT: 30000,
 	ENDPOINTS: {
 		LOGIN: '/auth/login',
@@ -32,6 +37,7 @@ export const STORAGE_KEYS = {
 	ACCESS_TOKEN: 'access_token',
 	REFRESH_TOKEN: 'refresh_token',
 	USER_DATA: 'user_data',
+	REMEMBER_ME: 'remember_me',
 };
 
 export const ROUTES = {

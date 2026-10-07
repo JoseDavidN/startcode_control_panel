@@ -80,6 +80,8 @@ export class Server {
     osVersion?: string;
     activeServices?: number;
     agent?: ServerAgentMetadata;
+    /** Unidades systemd que el usuario quiere ver primero en este servidor. */
+    pinnedServices?: string[];
   };
 
   /* `timestamptz`: la columna guarda un instante, y el driver lo convierte en

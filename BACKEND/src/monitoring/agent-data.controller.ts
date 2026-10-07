@@ -3,9 +3,11 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Param,
   Query,
   Body,
+  HttpCode,
   UseGuards,
   Request,
   ParseIntPipe,
@@ -23,7 +25,17 @@ import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import { AgentDataService } from './services/agent-data.service';
 import { ServersService } from '@servers/servers.service';
 import { ServiceControlService } from './services/service-control.service';
-import { ServiceActionDto } from './dto/service-action.dto';
+import { DockerService } from './services/docker.service';
+import { CommandService } from './services/command.service';
+import { Throttle } from '@nestjs/throttler';
+import {
+  DockerContainersDto,
+  ExecCommandDto,
+  KillProcessDto,
+  PinnedServicesDto,
+  ServiceActionDto,
+  ServiceLogsDto,
+} from './dto/service-action.dto';
 import {
   AccountOverviewDto,
   ServersSummaryDto,
@@ -32,6 +44,11 @@ import {
   SystemInfoResponseDto,
   AgentConnectionStatusDto,
 } from './dto/agent-data-response.dto';
+
+/** Lo único que estos endpoints necesitan del request que deja `JwtAuthGuard`. */
+interface AuthedRequest {
+  user: { id: string };
+}
 
 @ApiTags('Agent Data')
 @Controller('agent-data')
@@ -42,6 +59,8 @@ export class AgentDataController {
     private readonly agentDataService: AgentDataService,
     private readonly serversService: ServersService,
     private readonly serviceControlService: ServiceControlService,
+    private readonly dockerService: DockerService,
+    private readonly commandService: CommandService,
   ) {}
 
   /**
@@ -55,10 +74,13 @@ export class AgentDataController {
     description: 'Métricas más recientes',
   })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
-  async getLatestMetrics(@Param('id') serverId: string, @Request() req) {
+  async getLatestMetrics(@Param('id') serverId: string, @Request() req: AuthedRequest) {
     const serverName = await this.verifyServerAccess(serverId, req.user.id);
 
-    const metrics = await this.agentDataService.getLatestMetrics(serverId);
+    const [metrics, pinned] = await Promise.all([
+      this.agentDataService.getLatestMetrics(serverId),
+      this.serversService.getPinnedServices(serverId, req.user.id),
+    ]);
 
     if (!metrics) {
       throw new NotFoundException(
@@ -130,6 +152,9 @@ export class AgentDataController {
         active: metrics.services_active ?? 0,
         failed: metrics.services_failed ?? 0,
         list: metrics.services_list || [],
+        /* Viaja con el inventario para que el tab no necesite otra consulta:
+           sin ellos la lista es un volcado de ~160 unidades sin jerarquía. */
+        pinned,
       },
       websites: {
         count: metrics.websites_count || 0,
@@ -296,6 +321,11 @@ export class AgentDataController {
   @ApiParam({ name: 'serviceName', description: 'Nombre del servicio systemd' })
   @ApiResponse({ status: 200, description: 'Resultado de la acción' })
   @ApiResponse({ status: 400, description: 'Nombre de servicio o acción inválidos' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El usuario SSH necesita contraseña de sudo (código SUDO_REQUIRED): reenvía la acción con `sudoPassword`.',
+  })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
   async executeServiceAction(
     @Param('id') serverId: string,
@@ -304,7 +334,153 @@ export class AgentDataController {
     @Request() req,
   ) {
     await this.verifyServerAccess(serverId, req.user.id);
-    return this.serviceControlService.executeAction(serverId, req.user.id, serviceName, dto.action);
+    return this.serviceControlService.executeAction(
+      serverId,
+      req.user.id,
+      serviceName,
+      dto.action,
+      dto.sudoPassword,
+    );
+  }
+
+  /**
+   * Línea de comandos: un comando suelto por SSH, auditado
+   */
+  @Post('servers/:id/commands')
+  @HttpCode(200)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @ApiOperation({
+    summary: 'Ejecutar un comando en el servidor',
+    description:
+      'Sin TTY y con un máximo de 60 s. Devuelve la salida (stdout y stderr juntos, hasta 1 MB), el código de salida y el directorio final. Cada intento queda en la auditoría.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: 'Resultado del comando' })
+  @ApiResponse({ status: 400, description: 'Comando vacío, demasiado largo o peligroso sin confirmar (DANGEROUS_COMMAND)' })
+  @ApiResponse({ status: 403, description: 'Con sudo, el usuario SSH necesita contraseña (SUDO_REQUIRED)' })
+  async execCommand(
+    @Param('id') serverId: string,
+    @Body() dto: ExecCommandDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.commandService.exec(serverId, req.user.id, dto);
+  }
+
+  /**
+   * Auditoría de la línea de comandos del servidor
+   */
+  @Get('servers/:id/commands')
+  @ApiOperation({ summary: 'Historial auditado de comandos del servidor' })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: 'Últimos comandos: quién, cuándo, dónde y cómo terminaron' })
+  async commandHistory(
+    @Param('id') serverId: string,
+    @Query('limit') limit: string | undefined,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.commandService.history(serverId, Number(limit) || 50);
+  }
+
+  /**
+   * Contenedores Docker en ejecución
+   */
+  @Post('servers/:id/docker/containers')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Listar los contenedores Docker en ejecución',
+    description:
+      'Lee `docker ps` y `docker stats --no-stream` por SSH. POST porque puede llevar la contraseña de sudo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: 'Contenedores en ejecución con su consumo' })
+  @ApiResponse({ status: 403, description: 'El usuario SSH no puede usar docker y sudo pide contraseña (SUDO_REQUIRED)' })
+  @ApiResponse({ status: 503, description: 'Docker no está instalado o el daemon no responde (DOCKER_UNAVAILABLE)' })
+  async listDockerContainers(
+    @Param('id') serverId: string,
+    @Body() dto: DockerContainersDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.dockerService.listContainers(serverId, req.user.id, dto.sudoPassword);
+  }
+
+  /**
+   * Cierra un proceso con SIGTERM (no forzado)
+   */
+  @Post('servers/:id/processes/:pid/kill')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Cerrar un proceso del servidor',
+    description: 'Envía SIGTERM (`kill -TERM`, sin `-9`) para que el proceso termine limpio.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiParam({ name: 'pid', description: 'PID del proceso' })
+  @ApiResponse({ status: 200, description: 'Resultado; `exited` indica si ya terminó' })
+  @ApiResponse({ status: 400, description: 'PID inválido o proceso protegido (PROTECTED_PROCESS)' })
+  @ApiResponse({ status: 403, description: 'El proceso es de otro usuario y sudo pide contraseña (SUDO_REQUIRED)' })
+  @ApiResponse({ status: 404, description: 'El proceso ya no existe (PROCESS_NOT_FOUND)' })
+  async killProcess(
+    @Param('id') serverId: string,
+    @Param('pid', ParseIntPipe) pid: number,
+    @Body() dto: KillProcessDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.serviceControlService.killProcess(serverId, req.user.id, pid, dto.sudoPassword);
+  }
+
+  /**
+   * Últimas líneas del journal de una unidad
+   */
+  @Post('servers/:id/services/:serviceName/logs')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Leer el journal de un servicio',
+    description:
+      'Devuelve las últimas líneas de `journalctl -u <unidad>`, que es lo que explica por qué una unidad está en `failed`.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiParam({ name: 'serviceName', description: 'Nombre del servicio systemd' })
+  @ApiResponse({ status: 200, description: 'Líneas del journal' })
+  @ApiResponse({ status: 403, description: 'El journal exige privilegios (SUDO_REQUIRED)' })
+  async getServiceLogs(
+    @Param('id') serverId: string,
+    @Param('serviceName') serviceName: string,
+    @Body() dto: ServiceLogsDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.serviceControlService.readLogs(serverId, req.user.id, serviceName, {
+      lines: dto.lines,
+      sudoPassword: dto.sudoPassword,
+    });
+  }
+
+  /**
+   * Servicios fijados del servidor
+   */
+  @Put('servers/:id/services/pinned')
+  @ApiOperation({
+    summary: 'Fijar los servicios que importan en este servidor',
+    description:
+      'Reemplaza la lista entera. Son los que el tab de servicios enseña primero, por encima del inventario completo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: 'Lista de servicios fijados ya guardada' })
+  async setPinnedServices(
+    @Param('id') serverId: string,
+    @Body() dto: PinnedServicesDto,
+    @Request() req: AuthedRequest,
+  ): Promise<{ pinned: string[] }> {
+    const pinned = await this.serversService.setPinnedServices(
+      serverId,
+      req.user.id,
+      dto.services,
+    );
+
+    return { pinned };
   }
 
   /**

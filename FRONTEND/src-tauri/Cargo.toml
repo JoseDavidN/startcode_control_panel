@@ -14,6 +14,12 @@ rust-version = "1.77.2"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Solo para compilaciones de prueba (`--features devtools`): deja el inspector
+# web en el binario de release y lo abre al arrancar. No usar en versiones
+# publicadas.
+devtools = ["tauri/devtools"]
+
 [build-dependencies]
 tauri-build = { version = "2.6.2" }
 

@@ -92,3 +92,39 @@ startcode-panel/
 ```
 
 Los `.deb` y `.rpm` no se actualizan solos (Tauri solo actualiza el AppImage en Linux): quien instale con ellos debe descargar el nuevo paquete.
+
+## Compilación de prueba (solo Windows, con devtools)
+
+Para diagnosticar la app instalada sin publicar nada:
+
+```bash
+git push origin dev
+git tag test-win-1 && git push origin test-win-1
+```
+
+El tag `test-*` compila solo Windows con la feature `devtools` (Cargo): la app abre el inspector web al arrancar, con la pestaña *Network* para ver la URL exacta de cada petición y el error real. El artefacto se llama `startcode-panel-windows-x86_64-devtools` y no se genera carpeta del sitio. Estos instalables **no se distribuyen**.
+
+Para repetir, usar otro número (`test-win-2`) o borrar el tag remoto (`git push origin :refs/tags/test-win-1`) y volver a subirlo.
+
+## Firma de código en Windows (aviso de SmartScreen)
+
+Sin firma, Windows muestra «Windows protegió su PC» y «Editor: desconocido». Para quitarlo hace falta un certificado de firma de código de una autoridad reconocida:
+
+| Opción | Coste aprox. | Notas |
+|---|---|---|
+| Certificado **OV** (Sectigo, Certum, DigiCert…) | 70–300 USD/año | Desde 2023 viene en token USB o HSM en la nube; para CI se necesita la variante en la nube o exportable a `.pfx` según el proveedor |
+| **Azure Trusted Signing** (Microsoft) | ~10 USD/mes | Sin token físico, pensado para CI; requiere verificación de identidad de la empresa (o persona en los países admitidos) |
+| Certificado **EV** | 300–600 USD/año | Ya no da reputación inmediata en SmartScreen frente a OV; solo compensa si se exige por otro motivo |
+
+Importante: la firma quita «Editor desconocido» desde el primer día, pero **SmartScreen construye reputación** por certificado y descargas; con un certificado nuevo el aviso puede seguir saliendo durante las primeras instalaciones hasta que se acumula.
+
+### Activarla con un certificado `.pfx`
+
+1. Convertir el certificado a base64 (PowerShell):
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("certificado.pfx")) | Set-Clipboard
+   ```
+2. En GitHub → Secrets: `WINDOWS_CERTIFICATE` (lo copiado) y `WINDOWS_CERTIFICATE_PASSWORD`.
+3. Nada más: el workflow detecta el secreto, importa el certificado en el runner de Windows y genera `tauri.windows.conf.json` con su huella; Tauri firma el `.exe`, el `.msi` y el ejecutable de la app con marca de tiempo de DigiCert. Sin el secreto, compila sin firmar como hasta ahora.
+
+Con Azure Trusted Signing la firma se hace con `bundle.windows.signCommand` y la herramienta `trusted-signing-cli`; si se elige esa vía, hay que adaptar el paso «Certificado de firma (Windows)» del workflow.

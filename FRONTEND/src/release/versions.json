@@ -3,6 +3,17 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.1.1",
+      "type": "patch",
+      "date": "2026-10-07",
+      "title": "Nuevo icono de la aplicación",
+      "changes": {
+        "fixed": [
+          "Icono propio de StartCode Panel en el instalador, la barra de tareas, el Dock y el menú de aplicaciones (sustituye al icono genérico de Tauri)"
+        ]
+      }
+    },
+    {
       "version": "0.1.0",
       "type": "minor",
       "date": "2026-10-07",

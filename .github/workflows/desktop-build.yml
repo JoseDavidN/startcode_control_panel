@@ -3,8 +3,9 @@
 #
 # - Tag `v*` (igual a `version` de tauri.conf.json): versión publicable, las
 #   cuatro plataformas y la carpeta del sitio.
-# - Tag `test-*` (p. ej. test-win-1): prueba rápida, solo Windows y con el
-#   inspector web (devtools) abierto al arrancar. No genera carpeta del sitio.
+# - Tag `test-*` (p. ej. test-mac-1): prueba rápida, solo macOS Intel y con
+#   el inspector web (devtools) abierto al arrancar. No genera carpeta del
+#   sitio. La plataforma de prueba se cambia en TEST_PLATFORM (job check).
 # - Manual (Actions → "Desktop build" → Run workflow, requiere el workflow en
 #   la rama por defecto): eliges plataformas y si lleva devtools.
 #
@@ -29,7 +30,7 @@ on:
       platforms:
         description: Plataformas
         type: choice
-        options: [all, windows, linux, macos]
+        options: [all, windows, linux, macos, macos-intel, macos-arm]
         default: all
       devtools:
         description: Incluir el inspector web (solo pruebas)
@@ -88,20 +89,22 @@ jobs:
       - id: plan
         env:
           IS_TEST_TAG: ${{ startsWith(github.ref, 'refs/tags/test-') }}
+          # Plataforma de los tags test-*: all, windows, linux, macos, macos-intel o macos-arm
+          TEST_PLATFORM: macos-intel
           INPUT_PLATFORMS: ${{ inputs.platforms || 'all' }}
           INPUT_DEVTOOLS: ${{ inputs.devtools || false }}
         run: |
           node <<'JS' >> "$GITHUB_OUTPUT"
           const test = process.env.IS_TEST_TAG === 'true';
-          const platforms = test ? 'windows' : process.env.INPUT_PLATFORMS;
+          const platforms = test ? process.env.TEST_PLATFORM : process.env.INPUT_PLATFORMS;
           const devtools = test || process.env.INPUT_DEVTOOLS === 'true';
           const all = [
             { name: 'Linux (x64)', os: 'ubuntu-22.04', args: '', artifact: 'startcode-panel-linux-x86_64', group: 'linux' },
             { name: 'Windows (x64)', os: 'windows-latest', args: '', artifact: 'startcode-panel-windows-x86_64', group: 'windows' },
-            { name: 'macOS (Apple Silicon)', os: 'macos-latest', args: '--target aarch64-apple-darwin', artifact: 'startcode-panel-darwin-aarch64', group: 'macos' },
-            { name: 'macOS (Intel)', os: 'macos-latest', args: '--target x86_64-apple-darwin', artifact: 'startcode-panel-darwin-x86_64', group: 'macos' },
+            { name: 'macOS (Apple Silicon)', os: 'macos-latest', args: '--target aarch64-apple-darwin', artifact: 'startcode-panel-darwin-aarch64', group: 'macos', only: 'macos-arm' },
+            { name: 'macOS (Intel)', os: 'macos-latest', args: '--target x86_64-apple-darwin', artifact: 'startcode-panel-darwin-x86_64', group: 'macos', only: 'macos-intel' },
           ];
-          const include = all.filter(p => platforms === 'all' || p.group === platforms);
+          const include = all.filter(p => platforms === 'all' || p.group === platforms || p.only === platforms);
           console.log(`matrix=${JSON.stringify({ include })}`);
           console.log(`devtools=${devtools}`);
           console.log(`site=${platforms === 'all' && !devtools}`);

@@ -93,18 +93,18 @@ startcode-panel/
 
 Los `.deb` y `.rpm` no se actualizan solos (Tauri solo actualiza el AppImage en Linux): quien instale con ellos debe descargar el nuevo paquete.
 
-## Compilación de prueba (solo Windows, con devtools)
+## Compilación de prueba (una plataforma, con devtools)
 
 Para diagnosticar la app instalada sin publicar nada:
 
 ```bash
 git push origin dev
-git tag test-win-1 && git push origin test-win-1
+git tag test-mac-1 && git push origin test-mac-1
 ```
 
-El tag `test-*` compila solo Windows con la feature `devtools` (Cargo): la app abre el inspector web al arrancar, con la pestaña *Network* para ver la URL exacta de cada petición y el error real. El artefacto se llama `startcode-panel-windows-x86_64-devtools` y no se genera carpeta del sitio. Estos instalables **no se distribuyen**.
+El tag `test-*` compila una sola plataforma —hoy **macOS Intel**, se cambia con `TEST_PLATFORM` en el job `check` del workflow (`windows`, `linux`, `macos`, `macos-intel`, `macos-arm`, `all`)— con la feature `devtools` (Cargo): la app abre el inspector web al arrancar, con la pestaña *Network* para ver la URL exacta de cada petición y el error real. El artefacto lleva el sufijo `-devtools` (p. ej. `startcode-panel-darwin-x86_64-devtools`) y no se genera carpeta del sitio. Estos instalables **no se distribuyen**.
 
-Para repetir, usar otro número (`test-win-2`) o borrar el tag remoto (`git push origin :refs/tags/test-win-1`) y volver a subirlo.
+Para repetir, usar otro número (`test-mac-2`) o borrar el tag remoto (`git push origin :refs/tags/test-mac-1`) y volver a subirlo.
 
 ## Firma de código en Windows (aviso de SmartScreen)
 

@@ -6,6 +6,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { CorsIoAdapter } from './adapters/cors-io.adapter';
 import { resolveCorsOrigins } from './adapters/cors-origins';
 import { join } from 'path';
+import type { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -13,6 +14,19 @@ async function bootstrap() {
   // Servir archivos estáticos desde la carpeta public
   app.useStaticAssets(join(__dirname, '..', 'public'), {
     prefix: '/public/',
+  });
+
+  /* Private Network Access: el webview de la app de escritorio (WebView2 en
+     Windows) puede tratar `tauri.localhost` como origen público y, antes de
+     llamar a una IP privada (LAN, Tailscale), manda una preflight con
+     `Access-Control-Request-Private-Network`. Sin esta respuesta la bloquea
+     y la app ve "sin respuesta", aunque el navegador sí conecte. Va antes de
+     enableCors, que es quien cierra la preflight. */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.headers['access-control-request-private-network'] === 'true') {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
   });
 
   // CORS HTTP — misma lista que el WebSocket, con los orígenes de Tauri.

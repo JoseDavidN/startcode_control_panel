@@ -56,6 +56,7 @@ export type Permission = (typeof Permission)[keyof typeof Permission];
 export interface LoginCredentials {
 	email: string;
 	password: string;
+	rememberMe?: boolean;
 }
 
 export interface AuthTokens {
@@ -69,6 +70,7 @@ export interface AuthResponse {
 	token?: string; // Token único desde backend (compatibilidad)
 	tokens?: AuthTokens; // Formato normalizado en frontend
 	expiresIn?: string; // Token expiration info
+	rememberMe?: boolean; // Sesión emitida con "Mantener sesión iniciada"
 }
 
 export interface TwoFactorPendingResponse {

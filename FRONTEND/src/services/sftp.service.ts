@@ -24,7 +24,7 @@ export interface SftpConnection {
 	close(): void;
 }
 
-const socketBase = () => String(API_CONFIG.BASE_URL).replace('/api/v1', '');
+const socketBase = () => API_CONFIG.WS_URL;
 
 /**
  * Abre la sesión SFTP. Vive mientras el modal esté abierto: al cerrar el

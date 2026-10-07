@@ -44,7 +44,7 @@ Tres blobs de color con `filter: blur(72px)` y opacidad base `0.72` (clase `.aur
 - Blob 2: `#ec4899` (rosa) — medio derecha, `opacity: 0.58`
 - Blob 3: `#6366f1` (índigo) — abajo centro, `opacity: 0.52`
 
-Las animaciones float1/float2/float3 están definidas en `App.css`.
+Las animaciones float1/float2/float3 están definidas en `App.css` y solo trasladan (sin `scale`): escalar una capa con blur obliga a re-rasterizarla en cada fotograma.
 
 ---
 
@@ -147,6 +147,8 @@ Un nivel es **una sola propiedad `box-shadow`**, con el labio de luz dentro del 
 | `--shadow-modal` | Modales y la terminal |
 
 **La profundidad se resuelve sola**: `.glass` y `.glass-soft` bajan de nivel automáticamente según cuántas superficies tengan encima, así que una tarjeta dentro de un panel no necesita decir nada. Para romper la regla se escribe la utilidad (`elev-panel`), que siempre gana.
+
+**Solo la superficie exterior borronea**: dentro de otra superficie glass, `.glass`, `.glass-soft` y `.glass-input` conservan alfa y brillo pero no llevan `backdrop-filter` (ya están sobre cristal borroso; repetir el blur no se ve y cuesta un recálculo por capa en cada fotograma). Igual con `.grain`: el de una tarjeta dentro de un panel con grano no se pinta. Los modales van en portal, así que su caja sigue siendo superficie exterior.
 
 **Solar invierte el reparto**: menos borde y más contacto. Empatar el trazo con Nocturno exigiría alfa 0,23, y a esa altura deja de leerse como borde y se lee como color marrón; la definición que falta la ponen las sombras, que sobre fondo claro sí rinden.
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { serverService } from '@services/server.service';
-import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeSocket } from '@contexts/RealtimeMetricsContext';
 import type {
 	AgentInstallStep,
 	AgentStepStatus,
@@ -73,7 +73,7 @@ export function useAgentState(serverId: string, enabled = true) {
  * la operación sigue funcionando: solo se pierde la animación.
  */
 export function useAgentInstallProgress(serverId: string | null) {
-	const { socket } = useRealtimeMetrics();
+	const { socket } = useRealtimeSocket();
 	const [progress, setProgress] = useState<Record<string, AgentStepStatus>>({});
 	const [steps, setSteps] = useState<AgentInstallStep[]>([]);
 	const serverRef = useRef(serverId);

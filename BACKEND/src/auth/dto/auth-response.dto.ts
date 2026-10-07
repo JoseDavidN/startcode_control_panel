@@ -64,6 +64,12 @@ export class AuthResponseDto {
     description: 'true si se entró con un código de respaldo en lugar del TOTP',
   })
   usedBackupCode?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: 'true si la sesión se emitió con "Mantener sesión iniciada"',
+  })
+  rememberMe?: boolean;
 }
 
 export class TwoFactorPendingDto {

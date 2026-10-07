@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ServerDetail } from '@components/servers';
+import { ServerDetail } from '@components/servers/ServerDetail';
 import { AddServerModal, EditServerModal, DeleteServerModal } from '@components/common';
 import { type ServerData } from '@typings/DashboardTypes';
 import { useServers, useRefreshAllServers } from '@hooks/useServers';
 import type { Server } from '@services/server.service';
 import { useServersLive } from '@hooks/useServersLive';
 import { emptyRuntime, type ServerRuntime } from '@lib/serverRuntime';
-import { timeAgo } from '@utils/time';
+import { formatUptime, timeAgo } from '@utils/time';
 import { useAppearance } from '@contexts/AppearanceContext';
 import type { ServersView } from '@contexts/AppearanceContext';
 import { Card } from '@components/common/Card';
@@ -88,28 +88,6 @@ const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
 );
 
 /* ── Métricas derivadas — compartidas por la tarjeta y la fila ────── */
-function formatUptime(u: string | number | undefined): string {
-  if (!u || u === 'N/A') return 'N/A';
-  let weeks = 0, days = 0, hours = 0, minutes = 0;
-  if (typeof u === 'number') {
-    const totalMinutes = Math.floor(u / 60);
-    const totalHours   = Math.floor(totalMinutes / 60);
-    const totalDays    = Math.floor(totalHours / 24);
-    weeks   = Math.floor(totalDays / 7);
-    days    = totalDays % 7;
-    hours   = totalHours % 24;
-    minutes = totalMinutes % 60;
-  } else {
-    u.split(', ').forEach(part => {
-      if (part.includes('week'))   weeks   = parseInt(part);
-      else if (part.includes('day'))    days    = parseInt(part);
-      else if (part.includes('hour'))   hours   = parseInt(part);
-      else if (part.includes('minute')) minutes = parseInt(part);
-    });
-    if (days >= 7) { weeks += Math.floor(days / 7); days = days % 7; }
-  }
-  return weeks > 0 ? `${weeks}w ${days}d ${hours}h ${minutes}m` : `${days}d ${hours}h ${minutes}m`;
-}
 
 /* Formatea un número que puede no existir todavía: sin dato se pinta «—», no
    un cero que parecería una medición. */

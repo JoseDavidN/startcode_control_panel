@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { memo, useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Area,
@@ -14,7 +14,6 @@ import { useServers } from '@hooks/useServers';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { useOverview, useHistorical } from '@hooks/useMonitoring';
 import { useServersLive } from '@hooks/useServersLive';
-import { useSecuritySettings } from '@hooks/useSecuritySettings';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { MetricBar } from '@components/common/MetricBar';
 import { barGradient } from '@utils/metrics';
@@ -87,8 +86,45 @@ const SectionTitle = ({ children, right }: { children: React.ReactNode; right?: 
   </div>
 );
 
+/* ── Reloj ────────────────────────────────────────────────────────── */
+/* Aislado en su propio componente: con el estado en el Dashboard, el tic de
+   cada segundo re-renderizaba la página entera, gráfica incluida. */
+const Clock = () => {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="font-mono text-base text-white/95 tabular-nums">
+      {now.toLocaleTimeString('es-CO', { hour12: false })}
+    </div>
+  );
+};
+
 /* ── Gráfica de 24 h ──────────────────────────────────────────────── */
-const HistoryChart = ({
+/* Props estables fuera del render: recharts compara por identidad. */
+const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: -18 };
+const X_TICK = { fontSize: 11, fill: 'rgb(var(--surface-rgb) / 0)' };
+const Y_TICK = { fontSize: 11 };
+const AXIS_STYLE = { fill: 'currentColor' };
+const Y_DOMAIN: [number, number] = [0, 100];
+const TOOLTIP_STYLE = {
+  background: 'rgb(var(--surface-rgb) / 0.92)',
+  border: '1px solid var(--hairline)',
+  borderRadius: 12,
+  color: 'var(--ink)',
+  fontSize: 12,
+};
+const fmtTime = (t: number) =>
+  new Date(t).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtLabel = (t: number) =>
+  new Date(t).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtValue = (v: number, name: string): [string, string] => [`${Math.round(v)}%`, name];
+
+const HistoryChart = memo(({
   serverId, cpuThreshold, memoryThreshold,
 }: {
   serverId: string | undefined;
@@ -121,13 +157,10 @@ const HistoryChart = ({
     );
   }
 
-  const fmtTime = (t: number) =>
-    new Date(t).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
-
   return (
     <div className="h-[260px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+        <AreaChart data={points} margin={CHART_MARGIN}>
           <defs>
             <linearGradient id="gCpu" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--brand-1)" stopOpacity={0.45} />
@@ -142,18 +175,18 @@ const HistoryChart = ({
           <CartesianGrid stroke="var(--hairline-soft)" vertical={false} />
           <XAxis
             dataKey="t" tickFormatter={fmtTime} minTickGap={48}
-            tick={{ fontSize: 11, fill: 'rgb(var(--surface-rgb) / 0)' }}
+            tick={X_TICK}
             stroke="var(--hairline)"
             tickLine={false}
             axisLine={false}
-            style={{ fill: 'currentColor' }}
+            style={AXIS_STYLE}
             className="text-white/40"
           />
           <YAxis
-            domain={[0, 100]} unit="%" width={46}
+            domain={Y_DOMAIN} unit="%" width={46}
             tickLine={false} axisLine={false} minTickGap={8}
             className="text-white/40"
-            tick={{ fontSize: 11 }}
+            tick={Y_TICK}
           />
 
           {/* Los mismos umbrales que disparan las alertas: explican por qué saltó una */}
@@ -161,17 +194,9 @@ const HistoryChart = ({
           <ReferenceLine y={memoryThreshold} stroke="var(--color-rose-400)" strokeDasharray="4 4" strokeOpacity={0.35} />
 
           <Tooltip
-            contentStyle={{
-              background: 'rgb(var(--surface-rgb) / 0.92)',
-              border: '1px solid var(--hairline)',
-              borderRadius: 12,
-              color: 'var(--ink)',
-              fontSize: 12,
-            }}
-            labelFormatter={(t: number) =>
-              new Date(t).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
-            }
-            formatter={(v: number, name: string) => [`${Math.round(v)}%`, name]}
+            contentStyle={TOOLTIP_STYLE}
+            labelFormatter={fmtLabel}
+            formatter={fmtValue}
           />
 
           <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--brand-1)" fill="url(#gCpu)" strokeWidth={2} dot={false} />
@@ -180,29 +205,21 @@ const HistoryChart = ({
       </ResponsiveContainer>
     </div>
   );
-};
+});
+HistoryChart.displayName = 'HistoryChart';
 
 /* ── Dashboard ────────────────────────────────────────────────────── */
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { data: unreadCount = 0 } = useUnreadCount();
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   const { data: servers = [], isLoading: serversLoading } = useServers();
   const { data: overview } = useOverview();
   const { runtime, onlineCount: liveOnlineCount } = useServersLive();
   const { settings: monitoring } = useMonitoringSettings();
-  useSecuritySettings();
 
   const [selected, setSelected] = useState<string | undefined>();
   const chartServer = selected ?? servers[0]?.id;
 
-  const time = now.toLocaleTimeString('es-CO', { hour12: false });
   const onlineCount = liveOnlineCount;
 
   /* Salud por servidor: misma fuente que la lista (`useServersLive`), para que
@@ -254,7 +271,7 @@ export const Dashboard: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
             <div className="text-[10px] uppercase tracking-wider text-white/45 font-medium">Hora actual</div>
-            <div className="font-mono text-base text-white/95 tabular-nums">{time}</div>
+            <Clock />
           </div>
           <button
             onClick={() => navigate(ROUTES.NOTIFICATIONS)}

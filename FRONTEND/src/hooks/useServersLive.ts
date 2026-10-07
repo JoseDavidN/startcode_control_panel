@@ -4,15 +4,13 @@ import { monitoringApi } from '@services/monitoring.api';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
 import { mergeServerRuntime, type ServerRuntime } from '@lib/serverRuntime';
 
-/** Los eventos que cambian lo que muestra la lista y obligan a releer. */
-const INVALIDATING_EVENTS = [
-	'agent:connected',
-	'agent:disconnected',
-	'server:services:updated',
-	'server:websites:updated',
-	'server:databases:updated',
-	'server:processes:updated',
-] as const;
+/**
+ * Los eventos que cambian lo que muestra la lista y obligan a releer. Los de
+ * inventario (servicios, sitios, bases, procesos) no: `mergeServerRuntime` ya
+ * los aplica desde el socket, y releer era pedir dos veces lo mismo al backend
+ * en cada ciclo del agente.
+ */
+const INVALIDATING_EVENTS = ['agent:connected', 'agent:disconnected'] as const;
 
 /* Al reiniciar el backend todos los agentes reconectan a la vez: sin esto
    serían N refetch en el mismo segundo. */
@@ -28,13 +26,15 @@ const INVALIDATE_DEBOUNCE_MS = 1000;
  */
 export function useServersLive() {
 	const queryClient = useQueryClient();
-	const { data: liveData, socket } = useRealtimeMetrics();
+	const { data: liveData, socket, connected } = useRealtimeMetrics();
 
 	const query = useQuery({
 		queryKey: ['servers-summary'],
 		queryFn: () => monitoringApi.serversSummary(),
 		staleTime: 15_000,
-		refetchInterval: 60_000,
+		/* Con el socket conectado los datos ya llegan en vivo: el sondeo queda
+		   como red de seguridad. */
+		refetchInterval: connected ? 5 * 60_000 : 60_000,
 		refetchOnWindowFocus: true,
 		retry: false,
 	});

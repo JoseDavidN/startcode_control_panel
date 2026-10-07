@@ -1,0 +1,21 @@
+{
+  "$comment": "Novedades por versión. Se muestra en Configuración → Sistema y alimenta las notas de la actualización. La entrada de cada versión publicada es obligatoria: el workflow falla si falta. type: major | minor | patch. Secciones de changes (todas opcionales): added, changed, fixed, removed, security.",
+  "app": "startcode-panel",
+  "versions": [
+    {
+      "version": "0.1.0",
+      "type": "minor",
+      "date": "2026-10-07",
+      "title": "Primera versión de escritorio",
+      "changes": {
+        "added": [
+          "Monitoreo en tiempo real de servidores con el agente StartCode",
+          "Gestión de servicios systemd, journal y servicios fijados",
+          "Terminal SSH, SFTP, línea de comandos con auditoría y contenedores Docker",
+          "Consumo de memoria por proceso con cierre por SIGTERM",
+          "Mantener sesión iniciada en el login"
+        ]
+      }
+    }
+  ]
+}

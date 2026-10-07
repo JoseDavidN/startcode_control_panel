@@ -2,22 +2,19 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ROUTES } from '@utils/constants';
 import { useAuth } from '@hooks/useAuth';
-import { useServers } from '@hooks/useServers';
 import { useAppearance } from '@contexts/AppearanceContext';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
-  | 'chart' | 'server' | 'cube' | 'globe' | 'database' | 'folder'
+  | 'chart' | 'server' | 'database' | 'cloud'
   | 'bell' | 'gear' | 'logout' | 'search' | 'monitor';
 
 const PATHS: Record<IconName, string> = {
   chart:        'M4 20V10M10 20V4M16 20v-6M22 20H2',
   server:       'M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01',
-  cube:         'M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z M3 7.5L12 12l9-4.5M12 12v9',
-  globe:        'M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18',
   database:     'M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
-  folder:       'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z',
+  cloud:        'M7 18a4 4 0 01-.4-8A6 6 0 0118 10.5a3.75 3.75 0 01-.5 7.5H7z',
   bell:         'M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9 M10 21a2 2 0 004 0',
   gear:         'M12 12m-3 0a3 3 0 106 0 3 3 0 00-6 0M19.4 15a1.7 1.7 0 00.4 1.8l.1.1a2 2 0 01-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.8-.4 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 01-2.8-2.9l.1-.1a1.7 1.7 0 00.4-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.4-1.9L4.1 7a2 2 0 012.9-2.8l.1.1a1.7 1.7 0 001.9.4H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.4l.1-.1a2 2 0 012.9 2.9l-.1.1a1.7 1.7 0 00-.4 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z',
   logout:       'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
@@ -38,18 +35,23 @@ const Icon = ({ name, className = 'w-4 h-4' }: { name: IconName; className?: str
    Geometría congelada: slot fijo de 40px + label en posición absoluta.
    Nada se desmonta al colapsar, sólo cambia la opacidad. */
 const RailRow = ({
-  icon, label, active = false, badge, onClick, collapsed,
+  icon, label, active = false, badge, onClick, collapsed, soon = false,
 }: {
   icon: IconName; label: string; active?: boolean; badge?: string | null;
   onClick: () => void; collapsed: boolean;
+  /** La sección todavía no existe: se ve, pero no navega a un 404. */
+  soon?: boolean;
 }) => (
   <button
-    onClick={onClick}
-    title={collapsed ? label : undefined}
-    aria-label={badge ? `${label}, ${badge} sin leer` : label}
+    onClick={soon ? undefined : onClick}
+    disabled={soon}
+    title={collapsed ? (soon ? `${label} · próximamente` : label) : undefined}
+    aria-label={badge ? `${label}, ${badge} sin leer` : soon ? `${label}, próximamente` : label}
     aria-current={active ? 'page' : undefined}
     className={`sb-row sb-focus mo-tab rounded-xl text-sm font-medium
-      ${active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-tint-hover'}`}
+      ${soon
+        ? 'text-white/30 cursor-not-allowed'
+        : active ? 'nav-active text-white' : 'text-white/65 hover:text-white hover:bg-tint-hover'}`}
   >
     <span className="sb-slot">
       <Icon name={icon} className="w-4 h-4" />
@@ -66,6 +68,15 @@ const RailRow = ({
         className="sb-trail sb-fade text-[10px] font-semibold px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 ring-1 ring-pink-400/25"
       >
         {badge}
+      </span>
+    )}
+
+    {soon && !badge && (
+      <span
+        aria-hidden
+        className="sb-trail sb-fade text-[10px] font-semibold px-1.5 py-0.5 rounded bg-tint-active text-white/40 ring-1 ring-hairline"
+      >
+        Pronto
       </span>
     )}
   </button>
@@ -105,22 +116,20 @@ export const AppLayout = () => {
   const location = useLocation();
   const navigate  = useNavigate();
   const { user, logout } = useAuth();
-  const { data: servers = [] } = useServers();
 
   const { isSidebarCollapsed: collapsed } = useAppearance();
   const { data: unreadCount = 0 } = useUnreadCount();
   const ready = useFirstFrameReady();
 
-  const primaryServer = servers[0] ?? null;
-  void primaryServer;
 
-  const nav: [string, string, IconName][] = [
-    [ROUTES.DASHBOARD, 'Panel',          'chart'],
-    ['/servers',       'Servidores',     'server'],
-    ['/services',      'Servicios',      'cube'],
-    ['/websites',      'Sitios Web',     'globe'],
-    ['/databases',     'Bases de Datos', 'database'],
-    ['/files',         'Archivos',       'folder'],
+  /* `soon` marca lo que todavía no tiene página: el ítem se ve, pero no
+     navega. Antes los cuatro apuntaban a rutas inexistentes y acababan en el
+     404 sin avisar. */
+  const nav: { path: string; label: string; icon: IconName; soon?: boolean }[] = [
+    { path: ROUTES.DASHBOARD, label: 'Panel',          icon: 'chart' },
+    { path: '/servers',       label: 'Servidores',     icon: 'server' },
+    { path: '/databases',     label: 'Bases de Datos', icon: 'database', soon: true },
+    { path: '/cloud',         label: 'Cloud',          icon: 'cloud',    soon: true },
   ];
   const meta: [string, string, IconName, string?][] = [
     [ROUTES.NOTIFICATIONS, 'Notificaciones', 'bell', unreadCount > 0 ? String(unreadCount) : undefined],
@@ -177,11 +186,12 @@ export const AppLayout = () => {
             <SectionHeading label="Workspace" />
 
             <div className="space-y-0.5">
-              {nav.map(([path, label, icon]) => (
+              {nav.map(({ path, label, icon, soon }) => (
                 <RailRow
                   key={path}
                   icon={icon}
                   label={label}
+                  soon={soon}
                   active={path === ROUTES.DASHBOARD
                     ? location.pathname === ROUTES.DASHBOARD || location.pathname === '/'
                     : location.pathname.startsWith(path)}

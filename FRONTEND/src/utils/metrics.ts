@@ -10,3 +10,11 @@ export const barGradient = (pct: number): string => {
 	if (pct >= 50) return 'from-sky-500 to-cyan-400';
 	return 'from-emerald-500 to-teal-400';
 };
+
+/** systemd y el agente reportan tamaños en bytes; esto es lo que se pinta. */
+export const formatBytes = (bytes: number): string => {
+	if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+	if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+	if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+	return `${bytes} B`;
+};

@@ -160,6 +160,8 @@ class ApiService {
 				message: data?.message || 'Error en la petición',
 				statusCode: error.response.status,
 				errors: data?.errors,
+				code: data?.code,
+				hint: data?.hint,
 			};
 		} else if (error.request) {
 			return {

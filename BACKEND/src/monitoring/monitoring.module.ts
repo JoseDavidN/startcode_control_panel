@@ -5,6 +5,9 @@ import { AgentDataService } from './services/agent-data.service';
 import { ServerStatusService } from './services/server-status.service';
 import { SSHService } from './services/ssh.service';
 import { ServiceControlService } from './services/service-control.service';
+import { DockerService } from './services/docker.service';
+import { CommandService } from './services/command.service';
+import { CommandAudit } from './entities/command-audit.entity';
 import { Server } from '@servers/entities/server.entity';
 import { User } from '@auth/entities/user.entity';
 import { Session } from '@auth/entities/session.entity';
@@ -19,13 +22,22 @@ import { NotificationsModule } from '@/notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Server, AgentMetrics, AgentMetricsHistory, User, Session]),
+    TypeOrmModule.forFeature([Server, AgentMetrics, AgentMetricsHistory, User, Session, CommandAudit]),
     AuthModule,
     forwardRef(() => ServersModule),
     NotificationsModule,
   ],
   controllers: [AgentDataController],
-  providers: [AgentGateway, TerminalGateway, AgentDataService, ServerStatusService, SSHService, ServiceControlService],
+  providers: [
+    AgentGateway,
+    TerminalGateway,
+    AgentDataService,
+    ServerStatusService,
+    SSHService,
+    ServiceControlService,
+    DockerService,
+    CommandService,
+  ],
   exports: [AgentGateway, AgentDataService, ServerStatusService, SSHService, ServiceControlService],
 })
 export class MonitoringModule {}

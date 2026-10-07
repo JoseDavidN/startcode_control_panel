@@ -95,7 +95,7 @@ export function normalizeAuthResponse(response: any): AuthResponse {
 		throw new Error('Respuesta inválida del servidor en login');
 	}
 
-	const { user, token, refreshToken, tokens, expiresIn } = payload;
+	const { user, token, refreshToken, tokens, expiresIn, rememberMe } = payload;
 
 	// Normalizar usuario
 	const normalizedUser = normalizeUser(user);
@@ -109,6 +109,7 @@ export function normalizeAuthResponse(response: any): AuthResponse {
 	return {
 		user: normalizedUser,
 		expiresIn,
+		rememberMe: rememberMe === true,
 		token: token,
 		tokens: {
 			accessToken,

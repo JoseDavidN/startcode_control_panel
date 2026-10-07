@@ -122,6 +122,14 @@ cp .env.example .env
 npm run start
 ```
 
+## Generar instalables de escritorio
+
+La app de escritorio (Tauri, `FRONTEND/src-tauri`) se compila en GitHub Actions (`.github/workflows/desktop-build.yml`) para Linux (`.deb`, `.rpm`, `.AppImage`), Windows (`.msi`, `.exe`) y macOS (`.dmg`, Apple Silicon e Intel), firmada para el actualizador automático, y se publica en `releases.startcode.com.co`.
+
+Configuración, pasos de cada versión, novedades (`FRONTEND/src/release/versions.json`) y servidor web: **[docs/RELEASES.md](docs/RELEASES.md)**.
+
+Los instalables no llevan firma de código: Windows muestra SmartScreen (*Más información → Ejecutar de todas formas*) y macOS pide abrir con clic derecho → *Abrir* la primera vez.
+
 ## Contribución
 
 ¡Las contribuciones son bienvenidas! Este proyecto está en constante evolución y apreciamos cualquier aporte de la comunidad.

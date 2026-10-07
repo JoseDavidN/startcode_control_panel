@@ -1,4 +1,6 @@
 // src/routes/AppRoutes.tsx
+import { Suspense, lazy } from 'react';
+import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@components/guard/ProtectedRoute';
 import { AppLayout } from '@components/layout/AppLayout';
@@ -8,20 +10,23 @@ import { ROUTES } from '@utils/constants';
 // Auth Pages
 import { Login } from '@pages/auth/Login';
 
-// Errors
-import { NotFound } from '@pages/errors/NotFound';
+import { Loading } from '@components/ui/Loading';
 
-// Dashboard
-import { Dashboard } from '@pages/dashboard/Dashboard';
+/* Cada página en su propio chunk: recharts (Dashboard), Settings y el detalle
+   de servidores ya no se descargan ni se evalúan al abrir la app. El login
+   queda en el bundle principal porque es la primera pantalla. */
+const NotFound = lazy(() => import('@pages/errors/NotFound').then(m => ({ default: m.NotFound })));
+const Dashboard = lazy(() => import('@pages/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
+const Settings = lazy(() => import('@pages/settings/Settings').then(m => ({ default: m.Settings })));
+const Notifications = lazy(() =>
+  import('@pages/notifications/Notifications').then(m => ({ default: m.Notifications })));
+const Servers = lazy(() => import('@pages/servers/Servers').then(m => ({ default: m.Servers })));
 
-// Settings
-import { Settings } from '@pages/settings';
-
-// Notifications
-import { Notifications } from '@pages/notifications';
-
-// Servers
-import { Servers } from '@pages/servers';
+/* El Suspense va por página y no alrededor de <Routes>: así el layout (barra
+   lateral, cabecera) se queda en pantalla mientras llega el chunk. */
+const Page = ({ children }: { children: ReactNode }) => (
+  <Suspense fallback={<Loading />}>{children}</Suspense>
+);
 
 // Servers (pendientes)
 // import { ServerList } from '../pages/servers/ServerList';
@@ -54,18 +59,18 @@ export const AppRoutes = () => {
       {/* Protected Routes - Dashboard principal */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
-          <Route path={ROUTES.SERVERS} element={<Servers />} />
-          <Route path={ROUTES.NOTIFICATIONS} element={<Notifications />} />
-          <Route path={ROUTES.SETTINGS} element={<Settings />} />
+          <Route path={ROUTES.DASHBOARD} element={<Page><Dashboard /></Page>} />
+          <Route path={ROUTES.SERVERS} element={<Page><Servers /></Page>} />
+          <Route path={ROUTES.NOTIFICATIONS} element={<Page><Notifications /></Page>} />
+          <Route path={ROUTES.SETTINGS} element={<Page><Settings /></Page>} />
         </Route>
       </Route>
 
       {/* Error Pages disponibles */}
-      <Route path={ROUTES.NOT_FOUND} element={<NotFound />} />
+      <Route path={ROUTES.NOT_FOUND} element={<Page><NotFound /></Page>} />
 
       {/* Catch all - 404 */}
-      <Route path="*" element={<NotFound />} />
+      <Route path="*" element={<Page><NotFound /></Page>} />
 
       {/* ====== RUTAS PENDIENTES - DESCOMENTAR CUANDO LOS COMPONENTES ESTÉN LISTOS ====== */}
 

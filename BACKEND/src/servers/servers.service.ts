@@ -275,6 +275,47 @@ export class ServersService {
   }
 
   /**
+   * Servicios fijados del servidor, comprobando de paso que es del usuario.
+   *
+   * Un servidor reporta ~160 unidades systemd y casi ninguna importa: esta
+   * lista es la que decide qué se enseña primero en el tab de servicios.
+   */
+  async getPinnedServices(serverId: string, userId: string): Promise<string[]> {
+    const server = await this.serversRepository.findOne({
+      where: { id: serverId },
+      select: ['ownerId', 'metadata'],
+    });
+
+    if (!server || server.ownerId !== userId) {
+      throw new NotFoundException('Servidor no encontrado o sin acceso');
+    }
+
+    return server.metadata?.pinnedServices ?? [];
+  }
+
+  /** Reemplaza la lista entera. Mismo merge en SQL que `setAgentState`. */
+  async setPinnedServices(
+    serverId: string,
+    userId: string,
+    services: string[],
+  ): Promise<string[]> {
+    await this.getPinnedServices(serverId, userId);
+
+    /* Sin duplicados y en el orden en que los fijó el usuario. */
+    const unique = [...new Set(services.map((name) => name.trim()).filter(Boolean))];
+
+    await this.serversRepository.query(
+      `UPDATE tbl_servers
+          SET json_metadata = COALESCE(json_metadata, '{}'::jsonb)
+                            || jsonb_build_object('pinnedServices', $2::jsonb)
+        WHERE id = $1`,
+      [serverId, JSON.stringify(unique)],
+    );
+
+    return unique;
+  }
+
+  /**
    * Obtener estadisticas de servidores
    * @returns Las estadisticas de los servidores
    */

@@ -6,9 +6,11 @@ import { storeGet, storeSet, storeClearKeys } from '@lib/tauriStore';
 let _access: string | null = null;
 let _refresh: string | null = null;
 let _user: unknown = null;
+// "Mantener sesión iniciada": decide dónde se guardan los tokens y si aplica el cierre por inactividad.
+let _persistent = false;
 
 function persist(key: string, value: unknown): void {
-	storeSet(key, value).catch((e) =>
+	storeSet(key, value, _persistent).catch((e) =>
 		console.error('[TokenManager] persist error:', e)
 	);
 }
@@ -19,6 +21,7 @@ export class TokenManager {
 		_access = await storeGet<string>(STORAGE_KEYS.ACCESS_TOKEN);
 		_refresh = await storeGet<string>(STORAGE_KEYS.REFRESH_TOKEN);
 		_user = await storeGet<unknown>(STORAGE_KEYS.USER_DATA);
+		_persistent = (await storeGet<boolean>(STORAGE_KEYS.REMEMBER_ME)) === true;
 	}
 
 	// ── Lecturas síncronas (usadas en el interceptor de Axios) ──
@@ -35,11 +38,18 @@ export class TokenManager {
 		return _user;
 	}
 
+	static isPersistent(): boolean {
+		return _persistent;
+	}
+
 	// ── Escrituras: actualiza cache inmediatamente y persiste en background ──
 
-	static setTokens(accessToken: string, refreshToken: string): void {
+	/** Sin `persistent` (rotación del refresh) se conserva el modo de la sesión actual. */
+	static setTokens(accessToken: string, refreshToken: string, persistent?: boolean): void {
+		if (persistent !== undefined) _persistent = persistent;
 		_access = accessToken;
 		_refresh = refreshToken;
+		persist(STORAGE_KEYS.REMEMBER_ME, _persistent);
 		persist(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
 		persist(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
 	}
@@ -58,10 +68,12 @@ export class TokenManager {
 		_access = null;
 		_refresh = null;
 		_user = null;
+		_persistent = false;
 		storeClearKeys([
 			STORAGE_KEYS.ACCESS_TOKEN,
 			STORAGE_KEYS.REFRESH_TOKEN,
 			STORAGE_KEYS.USER_DATA,
+			STORAGE_KEYS.REMEMBER_ME,
 		]).catch((e) => console.error('[TokenManager] clear error:', e));
 	}
 

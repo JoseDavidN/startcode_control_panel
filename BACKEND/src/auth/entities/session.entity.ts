@@ -51,6 +51,10 @@ export class Session {
   @Column({ type: 'boolean', default: false, name: 'bol_revoked' })
   revoked: boolean;
 
+  /** "Mantener sesión iniciada": TTL largo y sin cierre por inactividad. */
+  @Column({ type: 'boolean', default: false, name: 'bol_persistent' })
+  persistent: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

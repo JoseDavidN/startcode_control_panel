@@ -9,6 +9,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.1.1] — 2026-10-07
+
+### Corregido
+- La app de escritorio usaba los iconos genéricos de la plantilla de Tauri; ahora usa el de StartCode Panel en todos los tamaños y formatos (`src-tauri/icons/`, generados con `pnpm tauri icon` desde una imagen de 1024×1024): instalador, barra de tareas de Windows, Dock de macOS y menú de aplicaciones de Linux
+- Versión de la app alineada en `tauri.conf.json`, `Cargo.toml` y `FRONTEND/package.json` (este último decía `1.0.0` sin uso)
+
+---
+
 ## [0.3.0] — 2026-10-07
 
 Versión **menor** sobre 0.2.0: todo lo acumulado desde mayo son funciones nuevas y correcciones; en 0.x los cambios de contrato (como el de `/health`) también van en una menor.

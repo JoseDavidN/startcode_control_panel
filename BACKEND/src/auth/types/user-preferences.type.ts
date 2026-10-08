@@ -31,7 +31,6 @@ export interface MonitoringPrefs {
   cpuThreshold: number;      // %
   memoryThreshold: number;   // %
   diskThreshold: number;     // %
-  retentionDays: number;
 }
 
 export interface UserPreferences {
@@ -58,7 +57,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     cpuThreshold: 80,
     memoryThreshold: 85,
     diskThreshold: 90,
-    retentionDays: 30,
   },
 };
 
@@ -79,6 +77,17 @@ function defined<T extends object>(source: T | undefined | null): Partial<T> {
 }
 
 /**
+ * Deja solo las claves que existen en los valores por defecto. Lo guardado
+ * puede traer campos retirados (p. ej. `monitoring.retentionDays`); si se
+ * devolvieran, el cliente los reenviaría y `forbidNonWhitelisted` daría 400.
+ */
+function known<T extends object>(defaults: T, merged: T): T {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(defaults)) out[key] = (merged as Record<string, unknown>)[key];
+  return out as T;
+}
+
+/**
  * Merge por sección: lo que no se envía no se pisa.
  * Solo hay dos niveles, así que no hace falta un deep-merge genérico.
  */
@@ -90,9 +99,9 @@ export function mergePreferences(
 ): UserPreferences {
   const base = current ?? {};
   return {
-    appearance: { ...DEFAULT_PREFERENCES.appearance, ...defined(base.appearance), ...defined(patch.appearance) },
-    notifications: { ...DEFAULT_PREFERENCES.notifications, ...defined(base.notifications), ...defined(patch.notifications) },
-    security: { ...DEFAULT_PREFERENCES.security, ...defined(base.security), ...defined(patch.security) },
-    monitoring: { ...DEFAULT_PREFERENCES.monitoring, ...defined(base.monitoring), ...defined(patch.monitoring) },
+    appearance: known(DEFAULT_PREFERENCES.appearance, { ...DEFAULT_PREFERENCES.appearance, ...defined(base.appearance), ...defined(patch.appearance) }),
+    notifications: known(DEFAULT_PREFERENCES.notifications, { ...DEFAULT_PREFERENCES.notifications, ...defined(base.notifications), ...defined(patch.notifications) }),
+    security: known(DEFAULT_PREFERENCES.security, { ...DEFAULT_PREFERENCES.security, ...defined(base.security), ...defined(patch.security) }),
+    monitoring: known(DEFAULT_PREFERENCES.monitoring, { ...DEFAULT_PREFERENCES.monitoring, ...defined(base.monitoring), ...defined(patch.monitoring) }),
   };
 }

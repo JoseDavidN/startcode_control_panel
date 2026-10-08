@@ -6,14 +6,15 @@ import { ServersService } from '@servers/servers.service';
 import { SSHService, SSHExecResult } from './ssh.service';
 import { ServiceControlService } from './service-control.service';
 import { CommandAudit, CommandAuditStatus } from '../entities/command-audit.entity';
+import { checkCommandPolicy } from './command-policy';
 
 export interface CommandResult {
   id: string;
   command: string;
-  /** Directorio en el que se ejecutó. */
+  /** Directorio en el que se ejecutó: siempre el home del usuario SSH. */
   cwd: string;
-  /** Directorio al terminar: si el comando hizo `cd`, el siguiente parte de aquí. */
-  nextCwd: string;
+  /** Home del usuario SSH (no el de root con sudo), para mostrar las rutas como `~`. */
+  home: string | null;
   output: string;
   exitCode: number | null;
   status: CommandAuditStatus;
@@ -37,7 +38,6 @@ export interface CommandHistoryEntry {
 
 export interface ExecCommandOptions {
   command: string;
-  cwd?: string;
   sudo?: boolean;
   sudoPassword?: string;
   /** El usuario ya confirmó un comando marcado como peligroso. */
@@ -69,6 +69,14 @@ const DANGEROUS: { pattern: RegExp; reason: string }[] = [
   { pattern: /\bsystemctl\s+(stop|disable|mask)\s+(sshd?|startcode-agent)\b/, reason: 'corta la conexión del panel con el servidor' },
 ];
 
+/**
+ * `sudo ` escrito a mano al inicio: se quita y el comando va por la escalera
+ * de sudo del panel, que es la que sabe pasar la contraseña (sin TTY, un
+ * `sudo` del usuario se quedaría pidiéndola). Con opciones (`sudo -u postgres`)
+ * no se toca: el usuario está pidiendo algo que la escalera no hace.
+ */
+const LEADING_SUDO = /^sudo\s+(?!-)/;
+
 /** Comilla simple de shell: `'` → `'\''`. */
 const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
@@ -85,16 +93,28 @@ export class CommandService {
   ) {}
 
   /**
-   * Ejecuta un comando suelto por SSH, sin TTY. Cada llamada es una conexión
-   * nueva, así que el directorio de trabajo viaja con la petición (`cwd`) y se
-   * devuelve el final (`nextCwd`). Todo intento queda auditado, también los
-   * que fallan antes de ejecutarse.
+   * Ejecuta un comando puntual por SSH, sin TTY, siempre en el home del
+   * usuario SSH: cada llamada es una conexión nueva y el directorio no se
+   * arrastra entre comandos. Lo que convierte esto en una terminal (moverse,
+   * ver la ruta, inspeccionar discos, abrir un shell) lo rechaza
+   * `checkCommandPolicy` antes de conectar. Todo intento que llega a
+   * conectar queda auditado, también los que fallan.
    */
   async exec(serverId: string, userId: string, opts: ExecCommandOptions): Promise<CommandResult> {
-    const command = opts.command.trim();
+    const typed = opts.command.trim();
+    const command = typed.replace(LEADING_SUDO, '').trim();
     if (!command) throw new BadRequestException('El comando está vacío');
     if (command.length > MAX_COMMAND_LENGTH) {
       throw new BadRequestException(`El comando supera ${MAX_COMMAND_LENGTH} caracteres`);
+    }
+
+    const violation = checkCommandPolicy(command);
+    if (violation) {
+      throw new BadRequestException({
+        code: 'BLOCKED_COMMAND',
+        message: `\`${violation.program}\` no está permitido en la línea de comandos: ${violation.reason}.`,
+        hint: 'La línea de comandos es para comandos puntuales; para trabajar como en una consola, abre la terminal SSH.',
+      });
     }
 
     const danger = DANGEROUS.find(d => d.pattern.test(command));
@@ -107,8 +127,7 @@ export class CommandService {
     }
 
     const server = await this.serversService.findOneWithPrivateKey(serverId, userId);
-    const cwd = opts.cwd?.trim() || '~';
-    const sudo = Boolean(opts.sudo);
+    const sudo = Boolean(opts.sudo) || command !== typed;
     const started = Date.now();
 
     this.logger.log(
@@ -119,7 +138,7 @@ export class CommandService {
     let result: SSHExecResult;
     try {
       conn = await this.sshService.createDedicatedClient(server);
-      const remote = this.buildRemoteCommand(command, cwd);
+      const remote = this.buildRemoteCommand(command);
 
       if (sudo) {
         const strategy = await this.serviceControl.resolveSudo(conn, server, opts.sudoPassword);
@@ -137,14 +156,15 @@ export class CommandService {
       }
     } catch (error) {
       /* SSH caído, sudo rechazado… también se audita: es un intento. */
-      await this.audit({ serverId, userId, command, cwd, sudo, status: CommandAuditStatus.FAILED,
+      await this.audit({ serverId, userId, command, cwd: '~', sudo, status: CommandAuditStatus.FAILED,
         exitCode: null, durationMs: Date.now() - started, truncated: false });
       throw error;
     } finally {
       conn?.end();
     }
 
-    const { output, exitCode, nextCwd } = this.parse(result, cwd);
+    const { output, exitCode, home } = this.parse(result);
+    const cwd = home ?? '~';
     const status = TIMEOUT_CODES.includes(exitCode ?? -1) && !result.stderr.includes(MARK)
       ? CommandAuditStatus.TIMEOUT
       : exitCode === 0
@@ -160,7 +180,7 @@ export class CommandService {
       id: row.id,
       command,
       cwd,
-      nextCwd,
+      home,
       output: status === CommandAuditStatus.TIMEOUT
         ? `${output}\n[cortado: superó ${COMMAND_TIMEOUT_S} s]`.trimStart()
         : output,
@@ -203,35 +223,38 @@ export class CommandService {
   }
 
   /**
-   * `bash -c` con el comando dentro de un bloque `{ }` del mismo shell, para
-   * que un `cd` cambie el `$PWD` que se devuelve. stdout y stderr del comando
-   * van juntos (como en una terminal); stderr de la envoltura solo lleva la
-   * marca con el código y el directorio final. `timeout` mata el proceso en
-   * el servidor, no solo la espera del panel.
+   * `bash -c` con el comando dentro de un bloque `{ }`, siempre desde el home.
+   * stdout y stderr del comando van juntos (como en una terminal); stderr de
+   * la envoltura solo lleva la marca con el código y el home. `timeout` mata
+   * el proceso en el servidor, no solo la espera del panel.
+   *
+   * `~` es siempre el home del usuario SSH: con sudo el shell corre como root
+   * y `cd ~` llevaría a /root, así que se resuelve desde `$SUDO_USER`.
    */
-  private buildRemoteCommand(command: string, cwd: string): string {
-    const target = cwd === '~' ? 'cd ~' : `cd -- ${shellQuote(cwd)} 2>/dev/null || cd ~`;
+  private buildRemoteCommand(command: string): string {
     const script = [
-      target,
+      '__home=$(getent passwd "${SUDO_USER:-$(id -un)}" | cut -d: -f6)',
+      '__home=${__home:-$HOME}',
+      'cd -- "$__home"',
       `{ ${command}\n} 2>&1`,
       '__rc=$?',
-      `printf '${MARK}%s\\t%s' "$__rc" "$PWD" >&2`,
+      `printf '${MARK}%s\\t%s' "$__rc" "$__home" >&2`,
       'exit $__rc',
     ].join('\n');
 
     return `timeout -k 5 ${COMMAND_TIMEOUT_S} bash -c ${shellQuote(script)}`;
   }
 
-  private parse(result: SSHExecResult, cwd: string) {
+  private parse(result: SSHExecResult) {
     const markAt = result.stderr.lastIndexOf(MARK);
     let exitCode: number | null = result.code;
-    let nextCwd = cwd;
+    let home: string | null = null;
 
     if (markAt >= 0) {
-      const [rc, pwd] = result.stderr.slice(markAt + MARK.length).split('\t');
+      const [rc, homeDir] = result.stderr.slice(markAt + MARK.length).split('\t');
       const parsed = Number(rc);
       if (Number.isFinite(parsed)) exitCode = parsed;
-      if (pwd?.trim()) nextCwd = pwd.trim();
+      if (homeDir?.trim()) home = homeDir.trim();
     }
 
     /* Lo que quede en stderr fuera de la marca (p. ej. sudo o el propio bash)
@@ -239,7 +262,7 @@ export class CommandService {
     const extra = (markAt >= 0 ? result.stderr.slice(0, markAt) : result.stderr).trim();
     const output = [result.stdout.replace(/\s+$/, ''), extra].filter(Boolean).join('\n');
 
-    return { output, exitCode, nextCwd };
+    return { output, exitCode, home };
   }
 
   private async audit(entry: Omit<CommandAudit, 'id' | 'createdAt' | 'user' | 'server'>) {

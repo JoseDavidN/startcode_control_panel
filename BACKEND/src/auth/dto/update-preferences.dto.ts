@@ -66,10 +66,6 @@ export class MonitoringPrefsDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 100 })
   @IsOptional() @IsInt() @Min(1) @Max(100)
   diskThreshold?: number;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 3650 })
-  @IsOptional() @IsInt() @Min(1) @Max(3650)
-  retentionDays?: number;
 }
 
 /**

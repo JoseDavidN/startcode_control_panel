@@ -293,25 +293,6 @@ export class AgentDataController {
     return this.agentDataService.getServersSummary(req.user.id);
   }
 
-  @Get('storage-stats')
-  @ApiOperation({ summary: 'Obtener estadísticas de almacenamiento de métricas' })
-  @ApiResponse({ status: 200, description: 'Estadísticas de almacenamiento' })
-  async getStorageStats() {
-    return this.agentDataService.getStorageStats();
-  }
-
-  /**
-   * Elimina registros históricos más antiguos que N días
-   */
-  @Post('cleanup')
-  @ApiOperation({ summary: 'Purgar historial de métricas antiguo' })
-  @ApiResponse({ status: 200, description: 'Registros eliminados' })
-  async cleanupMetrics(@Body() body: { retentionDays?: number }) {
-    const days = Math.max(1, Math.min(365, body.retentionDays ?? 30));
-    const deletedCount = await this.agentDataService.cleanOldMetrics(days);
-    return { deletedCount, retentionDays: days };
-  }
-
   /**
    * Ejecuta una acción (start/stop/restart) sobre un servicio del servidor vía SSH
    */

@@ -131,7 +131,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-white">Agente de monitoreo</span>
+              <span className="text-sm font-semibold text-white">Agente StartCode</span>
               <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 ${badge.className}`}>
                 {isLoading ? '…' : badge.label}
               </span>

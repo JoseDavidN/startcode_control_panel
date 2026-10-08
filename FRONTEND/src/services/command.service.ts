@@ -6,9 +6,10 @@ export type CommandStatus = 'ok' | 'error' | 'timeout' | 'failed';
 export interface CommandResult {
   id: string;
   command: string;
+  /** Siempre el home del usuario SSH: el directorio no se arrastra entre comandos. */
   cwd: string;
-  /** Directorio al terminar: el siguiente comando parte de aquí. */
-  nextCwd: string;
+  /** Home del usuario SSH; con él las rutas se muestran como `~`. */
+  home: string | null;
   output: string;
   exitCode: number | null;
   status: CommandStatus;
@@ -32,7 +33,6 @@ export interface CommandHistoryEntry {
 
 export interface ExecCommandInput {
   command: string;
-  cwd?: string;
   sudo?: boolean;
   /** Solo tras un `SUDO_REQUIRED`; no se guarda en ninguna parte. */
   sudoPassword?: string;

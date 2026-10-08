@@ -28,5 +28,8 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: (data: ChangePasswordPayload) =>
       apiService.post(API_CONFIG.ENDPOINTS.CHANGE_PASSWORD, data),
+    /* El usuario en caché trae `passwordChangedAt`: sin refrescarlo, Seguridad
+       seguía contando los días desde la contraseña anterior hasta recargar. */
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
   });
 }

@@ -3,34 +3,43 @@ import { IS_TAURI } from '@lib/tauriStore';
 
 /* Notificación nativa del sistema operativo.
 
+   Se llama a los comandos del plugin con `invoke`, no a las funciones de
+   `@tauri-apps/plugin-notification`: esas pasan por `window.Notification` y
+   dependen de que el script del plugin lo haya sustituido. Cuando no es así,
+   acaba en la API web del webview: el permiso lo pide un aviso dentro de la
+   app y la notificación no llega al sistema.
+
    El gate es IS_TAURI, no un try/catch alrededor del import: Vite resuelve el
-   módulo del plugin también en el navegador, así que el catch no saltaba nunca
-   y el respaldo web quedaba inalcanzable. Los permisos ya están declarados en
-   src-tauri/capabilities/default.json, pero hay que pedirlos igualmente. */
+   módulo también en el navegador. Los permisos están en
+   src-tauri/capabilities/default.json. */
 async function sendNativeTauri(title: string, body: string): Promise<boolean> {
   try {
-    const mod = await import('@tauri-apps/plugin-notification');
-    let granted = await mod.isPermissionGranted();
-    if (!granted) granted = (await mod.requestPermission()) === 'granted';
+    const { invoke } = await import('@tauri-apps/api/core');
+    let granted = await invoke<boolean | null>('plugin:notification|is_permission_granted');
+    if (!granted) {
+      granted = (await invoke<string>('plugin:notification|request_permission')) === 'granted';
+    }
     if (!granted) return false;
-    mod.sendNotification({ title, body });
+    await invoke('plugin:notification|notify', { options: { title, body } });
     return true;
-  } catch {
+  } catch (error) {
+    console.warn('Notificación del sistema no disponible:', error);
     return false;
   }
 }
 
-function sendNativeWeb(title: string, body: string): void {
-  if (typeof Notification === 'undefined') return;
+/** Navegador: `false` si no se puede mostrar (sin API o permiso denegado). */
+function sendNativeWeb(title: string, body: string): boolean {
+  if (typeof Notification === 'undefined' || Notification.permission === 'denied') return false;
   if (Notification.permission === 'granted') {
     new Notification(title, { body });
-    return;
+    return true;
   }
-  if (Notification.permission !== 'denied') {
-    void Notification.requestPermission().then(p => {
-      if (p === 'granted') new Notification(title, { body });
-    });
-  }
+  void Notification.requestPermission().then(p => {
+    if (p === 'granted') new Notification(title, { body });
+    else toast.error(title, { ...BASE, description: body, duration: 9000 });
+  });
+  return true;
 }
 
 /* ── Toast styles compartidos ─────────────────────────────────────── */
@@ -58,17 +67,21 @@ export const notify = {
   info: (title: string, desc?: string) =>
     toast.info(title, { ...BASE, description: desc }),
 
-  /* Notificación nativa del SO — funciona fuera del foco de la app.
-     Para alertas de seguridad. También muestra toast interno como respaldo. */
+  /* Aviso con un botón de acción; se queda hasta que se pulsa o se cierra. */
+  action: (title: string, desc: string, label: string, onClick: () => void) =>
+    toast.info(title, { ...BASE, description: desc, duration: Infinity, closeButton: true, action: { label, onClick } }),
+
+  /* Notificación nativa del SO — funciona fuera del foco de la app. Para
+     alertas de seguridad. El toast interno solo sale si el sistema no la
+     entregó (sin permiso o sin servicio de notificaciones): así la alerta
+     nunca se pierde, pero tampoco aparece dos veces. */
   native: (title: string, body: string) => {
+    const fallback = () =>
+      toast.error(title, { ...BASE, description: `${body}\n(No se pudo mostrar como notificación del sistema.)`, duration: 9000 });
     if (IS_TAURI) {
-      void sendNativeTauri(title, body).then(sent => {
-        if (!sent) sendNativeWeb(title, body);
-      });
+      void sendNativeTauri(title, body).then(sent => { if (!sent) fallback(); });
     } else {
-      sendNativeWeb(title, body);
+      if (!sendNativeWeb(title, body)) fallback();
     }
-    /* Siempre muestra toast interno también */
-    toast.error(title, { ...BASE, description: body, duration: 9000 });
   },
 } as const;

@@ -27,8 +27,6 @@ export interface ServerRuntime {
 	uptime: number | null;
 	services: number | null;
 	servicesTotal: number | null;
-	websites: number | null;
-	databases: number | null;
 	processes: number | null;
 }
 
@@ -105,8 +103,6 @@ export function mergeServerRuntime(
 		uptime,
 		services: liveServicesActive ?? snapshot?.services ?? null,
 		servicesTotal: live?.services?.length ?? snapshot?.servicesTotal ?? null,
-		websites: live?.websites?.length ?? snapshot?.websites ?? null,
-		databases: live?.databases?.length ?? snapshot?.databases ?? null,
 		processes: live?.processes?.total ?? snapshot?.processes ?? null,
 	};
 }
@@ -127,8 +123,6 @@ export function emptyRuntime(id: string, status?: string): ServerRuntime {
 		uptime: null,
 		services: null,
 		servicesTotal: null,
-		websites: null,
-		databases: null,
 		processes: null,
 	};
 }

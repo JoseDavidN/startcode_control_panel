@@ -76,7 +76,7 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 |---|---|
 | `--bg-base`, `--bg-mid`, `--bg-radial` | Fondo de la app y gradiente radial fijo |
 | `--aurora-1..3`, `--aurora-opacity`, `--aurora-2-opacity`, `--aurora-3-opacity` | Blobs animados del fondo |
-| `--surface-rgb` + `--glass-alpha` / `--glass-soft-alpha` / `--glass-input-alpha` | Base de `.glass`, `.glass-soft`, `.glass-input` |
+| `--surface-rgb` + `--glass-alpha` / `--glass-soft-alpha` / `--glass-input-alpha` / `--glass-float-alpha` | Base de `.glass`, `.glass-soft`, `.glass-input` y `.glass-float` (casi opaca, para separarse del contenido que pasa por debajo) |
 | `--sheen-*` | Gradiente de brillo superior de los paneles |
 | `--hairline`, `--hairline-soft`, `--hairline-strong`, `--hairline-hover` | Bordes de superficie: normal, anidada, acentuada y al pasar por encima |
 | `--line` | Separadores dentro de un panel (`border-b`, `divide-y`). Deliberadamente más suave que `--hairline`: es el token que se repite N veces en una lista |
@@ -148,7 +148,7 @@ Un nivel es **una sola propiedad `box-shadow`**, con el labio de luz dentro del 
 
 **La profundidad se resuelve sola**: `.glass` y `.glass-soft` bajan de nivel automáticamente según cuántas superficies tengan encima, así que una tarjeta dentro de un panel no necesita decir nada. Para romper la regla se escribe la utilidad (`elev-panel`), que siempre gana.
 
-**Solo la superficie exterior borronea**: dentro de otra superficie glass, `.glass`, `.glass-soft` y `.glass-input` conservan alfa y brillo pero no llevan `backdrop-filter` (ya están sobre cristal borroso; repetir el blur no se ve y cuesta un recálculo por capa en cada fotograma). Igual con `.grain`: el de una tarjeta dentro de un panel con grano no se pinta. Los modales van en portal, así que su caja sigue siendo superficie exterior.
+**Solo la superficie exterior borronea**: dentro de otra superficie glass, `.glass`, `.glass-soft` y `.glass-input` conservan alfa y brillo pero no llevan `backdrop-filter` (ya están sobre cristal borroso; repetir el blur no se ve y cuesta un recálculo por capa en cada fotograma). Igual con `.grain`: el de una tarjeta dentro de un panel con grano no se pinta. Los modales van en portal, así que su caja sigue siendo superficie exterior. La excepción es `.glass-float`: una superficie que flota sobre contenido que se desplaza por debajo (la línea de comandos `sticky` del detalle de servidor, `components/servers/CommandBar.tsx`) recupera el blur aunque esté dentro de otro panel y sube su fondo a `--glass-float-alpha`. Va con `elev-float` y sin `.grain`.
 
 **Solar invierte el reparto**: menos borde y más contacto. Empatar el trazo con Nocturno exigiría alfa 0,23, y a esa altura deja de leerse como borde y se lee como color marrón; la definición que falta la ponen las sombras, que sobre fondo claro sí rinden.
 

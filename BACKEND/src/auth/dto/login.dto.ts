@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
@@ -18,4 +18,13 @@ export class LoginDto {
   @IsOptional()
   @IsBoolean()
   rememberMe?: boolean;
+
+  @ApiProperty({
+    description: 'Token de dispositivo de confianza emitido tras un 2FA correcto; mientras sea válido (7 días) no se pide el código',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  trustedDeviceToken?: string;
 }

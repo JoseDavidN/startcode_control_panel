@@ -34,6 +34,25 @@ import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
 
+/**
+ * IP del dispositivo que hace la petición. Detrás de un proxy manda la
+ * primera de `X-Forwarded-For` (o `X-Real-IP`); si no, la del socket. Node
+ * entrega las IPv4 como IPv6 mapeadas (`::ffff:100.64.0.7`) y la local como
+ * `::1`: se guardan como la IPv4 que son.
+ */
+function clientIp(req: { headers?: Record<string, unknown>; ip?: string }): string | null {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  const realIp = req.headers?.['x-real-ip'];
+  const raw =
+    (typeof forwarded === 'string' && forwarded.split(',')[0]?.trim()) ||
+    (typeof realIp === 'string' && realIp.trim()) ||
+    req.ip ||
+    null;
+  if (!raw) return null;
+  if (raw === '::1') return '127.0.0.1';
+  return raw.replace(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i, '$1');
+}
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
@@ -41,9 +60,14 @@ export class AuthController {
 
   /** Dispositivo que hace la petición: alimenta la lista de sesiones activas. */
   private clientOf(req: { headers?: Record<string, unknown>; ip?: string }): ClientContext {
+    const userAgent = (req.headers?.['user-agent'] as string) ?? null;
+    /* La app de escritorio manda `X-StartCode-Client: desktop/<versión>`: su
+       webview no se distingue de un navegador por el user-agent. */
+    const header = req.headers?.['x-startcode-client'];
+    const app = typeof header === 'string' ? /^desktop\/([\w.+-]{1,32})$/.exec(header) : null;
     return {
-      userAgent: (req.headers?.['user-agent'] as string) ?? null,
-      ip: (req.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip ?? null,
+      userAgent: app ? `${userAgent ?? ''} StartCodePanel/${app[1]}`.trim() : userAgent,
+      ip: clientIp(req),
     };
   }
 

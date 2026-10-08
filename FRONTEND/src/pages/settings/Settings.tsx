@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ROUTES, STORAGE_KEYS, API_CONFIG } from '@utils/constants';
+import { ROUTES, STORAGE_KEYS } from '@utils/constants';
 import {
   useTwoFactorSetup,
   useTwoFactorEnable,
@@ -23,10 +23,8 @@ import { ReleaseNotes } from '@components/settings/ReleaseNotes';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { useServers } from '@hooks/useServers';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
-import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@lib/queryClient';
 import { notify } from '@services/notification.service';
-import { apiService } from '@services/api.service';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
 
@@ -53,6 +51,7 @@ const Icon = ({ name, className = 'w-4 h-4' }: { name: string; className?: strin
     case 'shieldOff': return <svg {...p}><path d="M19.7 14a8.9 8.9 0 00.3-2V6l-8-3-3.5 1.3M4.7 4.7L4 5v7c0 5 3.5 8.5 8 9 2.1-.2 3.9-1.1 5.3-2.4M3 3l18 18"/></svg>;
     case 'shieldCheck':return <svg {...p}><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>;
     case 'monitor':   return <svg {...p}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>;
+    case 'globe':     return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>;
     case 'layout':    return <svg {...p}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>;
     case 'database':  return <svg {...p}><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>;
     case 'gear':      return <svg {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.4 1.8l.1.1a2 2 0 01-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.8-.4 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 01-2.8-2.9l.1-.1a1.7 1.7 0 00.4-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.4-1.9L4.1 7a2 2 0 012.9-2.8l.1.1a1.7 1.7 0 001.9.4H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.4l.1-.1a2 2 0 012.9 2.9l-.1.1a1.7 1.7 0 00-.4 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>;
@@ -607,20 +606,30 @@ const NotifPane = () => {
 };
 
 /* ── Helpers de sesión ────────────────────────────────────────────── */
-function parseUserAgent(ua: string): { browser: string; os: string } {
-  const browser =
+/** `app`: sesión de la app de escritorio, marcada por el backend con `StartCodePanel/<versión>`. */
+function parseUserAgent(ua: string): { browser: string; os: string; app: boolean } {
+  const desktop = /StartCodePanel\/([\w.+-]+)/.exec(ua);
+  const browser = desktop ? `App de escritorio v${desktop[1]}` :
     /Edg\//.test(ua) ? 'Edge' :
     /Chrome\//.test(ua) ? 'Chrome' :
     /Firefox\//.test(ua) ? 'Firefox' :
     /Safari\//.test(ua) && !/Chrome/.test(ua) ? 'Safari' : 'Navegador';
+  /* Móviles antes: el UA de iOS dice «Mac OS X» y el de Android, «Linux». */
   const os =
+    /iPhone|iPad/.test(ua) ? 'iOS' :
+    /Android/.test(ua) ? 'Android' :
     /Mac OS X/.test(ua) ? 'macOS' :
     /Windows NT/.test(ua) ? 'Windows' :
-    /Linux/.test(ua) ? 'Linux' :
-    /iPhone|iPad/.test(ua) ? 'iOS' :
-    /Android/.test(ua) ? 'Android' : 'SO desconocido';
-  return { browser, os };
+    /Linux/.test(ua) ? 'Linux' : 'SO desconocido';
+  return { browser: desktop ? browser : `${browser} (web)`, os, app: Boolean(desktop) };
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** Días completos desde el último cambio de contraseña, en palabras. */
+const agoDays = (days: number) => (days === 0 ? 'hoy' : `hace ${plural(days, 'día', 'días')}`);
+
+/** Sesiones guardadas antes de normalizar la IP en el backend: `::ffff:1.2.3.4` → `1.2.3.4`. */
+const displayIp = (ip: string) => (ip === '::1' ? '127.0.0.1' : ip.replace(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i, '$1'));
 
 /* ── Pane: Seguridad ──────────────────────────────────────────────── */
 const SecurityPane = () => {
@@ -822,6 +831,9 @@ const SecurityPane = () => {
                 <div>
                   <div className="text-sm font-medium">2FA activado</div>
                   <div className="text-xs text-white/55 mt-0.5">Tu cuenta está protegida con TOTP</div>
+                  <div className="text-xs text-white/40 mt-0.5">
+                    Tras verificar el código, este equipo no lo vuelve a pedir durante 7 días. Cambiar la contraseña o reactivar el 2FA lo pide de nuevo.
+                  </div>
                 </div>
               </div>
               <button onClick={() => { setShowDis(v => !v); setDisCode(''); setDisPwd(''); setTfErr(''); }}
@@ -984,10 +996,10 @@ const SecurityPane = () => {
               className={`w-4 h-4 shrink-0 ${pwdExpired ? 'text-rose-300' : pwdWarn ? 'text-amber-300' : 'text-emerald-300'}`} />
             <p className={`text-xs ${pwdExpired ? 'text-rose-200/80' : pwdWarn ? 'text-amber-200/80' : 'text-white/60'}`}>
               {pwdExpired
-                ? `Contraseña expirada — fue cambiada hace ${pwdAge} días. Cámbiala en la pestaña Perfil.`
+                ? `Contraseña expirada — fue cambiada ${agoDays(pwdAge)}. Cámbiala en la pestaña Perfil.`
                 : pwdWarn
-                ? `La contraseña expirará en ${sec.passwordExpiration - pwdAge} días. Cambiada hace ${pwdAge} días.`
-                : `Contraseña al día — cambiada hace ${pwdAge} días.`}
+                ? `La contraseña expirará en ${plural(sec.passwordExpiration - pwdAge, 'día', 'días')}. Cambiada ${agoDays(pwdAge)}.`
+                : `Contraseña al día — cambiada ${agoDays(pwdAge)}; expira en ${plural(sec.passwordExpiration - pwdAge, 'día', 'días')}.`}
             </p>
           </div>
         )}
@@ -1043,12 +1055,12 @@ const SecurityPane = () => {
                   ${session.current
                     ? 'bg-emerald-500/10 border-emerald-400/15 text-emerald-300'
                     : 'bg-tint-sunken border-hairline-soft text-white/50'}`}>
-                  <Icon name="monitor" />
+                  <Icon name={ua.app ? 'monitor' : 'globe'} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">{ua.os} · {ua.browser}</div>
                   <div className="text-xs text-white/55 mt-0.5">
-                    {session.ip ? <span className="font-mono">{session.ip}</span> : 'IP desconocida'}
+                    {session.ip ? <span className="font-mono" title="IP desde la que se inició la sesión">IP {displayIp(session.ip)}</span> : 'IP desconocida'}
                     {' · activa '}{timeAgo(session.lastUsed)}
                   </div>
                 </div>
@@ -1085,13 +1097,9 @@ const SecurityPane = () => {
 };
 
 /* ── Pane: Monitoreo ──────────────────────────────────────────────── */
-interface StorageStats {
-  snapshotCount: number;
-  historyCount: number;
-  oldestHistoryEntry: string | null;
-  newestHistoryEntry: string | null;
-  serversWithHistory: number;
-}
+
+/* Espejo de METRICS_RETENTION_DAYS en el backend (metrics-retention.service.ts): si cambia uno, cambia el otro. */
+const METRICS_RETENTION_DAYS = 30;
 
 const MonitoringPane = () => {
   const { settings, update } = useMonitoringSettings();
@@ -1099,35 +1107,8 @@ const MonitoringPane = () => {
   const { data: rtData, connected: wsConnected } = useRealtimeMetrics();
   const { data: servers } = useServers();
 
-  /* Storage stats */
-  const { data: storageStats, refetch: refetchStats, isLoading: statsLoading } = useQuery<StorageStats>({
-    queryKey: ['storage-stats'],
-    /* Igual que en useSystemInfo: llega el payload plano, no el sobre de ApiService. */
-    queryFn: () =>
-      apiService.get(API_CONFIG.ENDPOINTS.STORAGE_STATS) as unknown as Promise<StorageStats>,
-    staleTime: 30_000,
-  });
-
-  /* Cleanup mutation */
-  const cleanup = useMutation({
-    mutationFn: () => apiService.post<{ deletedCount: number; retentionDays: number }>(
-      API_CONFIG.ENDPOINTS.CLEANUP_METRICS,
-      { retentionDays: settings.retentionDays },
-    ),
-    onSuccess: (res: any) => {
-      const count = res?.deletedCount ?? res?.data?.deletedCount ?? 0;
-      notify.success('Historial purgado', `${count} registros eliminados`);
-      refetchStats();
-      queryClient.invalidateQueries({ queryKey: ['storage-stats'] });
-    },
-    onError: () => notify.error('Error al purgar el historial'),
-  });
-
   /* Live overview from WebSocket */
   const onlineServers = Object.values(rtData).filter(s => s.status === 'online');
-  const avgCpu    = onlineServers.length ? Math.round(onlineServers.reduce((a, s) => a + (s.metrics?.cpu ?? 0), 0) / onlineServers.length) : null;
-  const avgMem    = onlineServers.length ? Math.round(onlineServers.reduce((a, s) => a + (s.metrics?.memory ?? 0), 0) / onlineServers.length) : null;
-  const avgDisk   = onlineServers.length ? Math.round(onlineServers.reduce((a, s) => a + (s.metrics?.disk ?? 0), 0) / onlineServers.length) : null;
   const registeredCount = servers?.length ?? 0;
   const onlineCount     = onlineServers.length;
   const offlineCount    = registeredCount - onlineCount;
@@ -1206,37 +1187,24 @@ const MonitoringPane = () => {
       {/* ── Umbrales de alerta ── */}
       <div>
         <SectionTitle>Umbrales de Alerta</SectionTitle>
-        <p className="text-xs text-white/40 mt-1 mb-4">Las notificaciones se disparan cuando el valor supera el umbral configurado.</p>
+        <p className="text-xs text-white/40 mt-1 mb-4">Se aplican a cada servidor por separado: se notifica cuando cualquiera de ellos supera el umbral.</p>
         <div className="space-y-6">
           {([
-            { label: 'CPU',     key: 'cpuThreshold'    as const, icon: 'cpu',  colorOver: 'text-rose-300',   colorOk: 'text-emerald-300' },
-            { label: 'Memoria', key: 'memoryThreshold' as const, icon: 'ram',  colorOver: 'text-rose-300',   colorOk: 'text-emerald-300' },
-            { label: 'Disco',   key: 'diskThreshold'   as const, icon: 'disk', colorOver: 'text-rose-300',   colorOk: 'text-emerald-300' },
-          ] as const).map(({ label, key, icon, colorOver, colorOk }) => {
+            { label: 'CPU',     key: 'cpuThreshold'    as const, icon: 'cpu' },
+            { label: 'Memoria', key: 'memoryThreshold' as const, icon: 'ram' },
+            { label: 'Disco',   key: 'diskThreshold'   as const, icon: 'disk' },
+          ] as const).map(({ label, key, icon }) => {
             const val = settings[key];
-            const live = key === 'cpuThreshold' ? avgCpu : key === 'memoryThreshold' ? avgMem : avgDisk;
-            const isOver = live != null && live >= val;
             return (
               <div key={key} className="glass-soft rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={isOver ? colorOver : 'text-white/55'}><Icon name={icon} className="w-4 h-4" /></span>
+                    <span className="text-white/55"><Icon name={icon} className="w-4 h-4" /></span>
                     <span className="text-sm font-medium">{label}</span>
-                    {live != null && (
-                      <span className={`text-xs font-mono ml-1 ${isOver ? colorOver : colorOk}`}>
-                        actual: {live}%
-                      </span>
-                    )}
                   </div>
-                  <span className={`text-sm font-mono tabular-nums font-semibold ${isOver ? colorOver : 'text-white'}`}>{val}%</span>
+                  <span className="text-sm font-mono tabular-nums font-semibold text-white">{val}%</span>
                 </div>
                 <RangeSlider min={10} max={100} value={val} onChange={v => handleThreshold(key, v)} className="w-full" />
-                {isOver && live != null && (
-                  <div className="text-xs text-rose-300/80 flex items-center gap-1.5">
-                    <Icon name="alert" className="w-3.5 h-3.5" />
-                    {label} actual ({live}%) supera el umbral — se activarán notificaciones
-                  </div>
-                )}
               </div>
             );
           })}
@@ -1245,73 +1213,25 @@ const MonitoringPane = () => {
 
       <div className="border-t border-line" />
 
-      {/* ── Retención de datos ── */}
+      {/* ── Historial de métricas: informativo, la retención la aplica el backend ── */}
       <div>
-        <SectionTitle>Retención de Datos</SectionTitle>
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="glass-input rounded-xl h-11 flex items-center gap-2 px-3.5">
-              <span className="text-white/45"><Icon name="database" /></span>
-              <select
-                value={settings.retentionDays}
-                onChange={e => update({ retentionDays: +e.target.value })}
-                className="bg-transparent outline-none text-sm text-white/90 pr-2"
-              >
-                <option value={7}>7 días</option>
-                <option value={14}>14 días</option>
-                <option value={30}>30 días</option>
-                <option value={90}>90 días</option>
-                <option value={365}>1 año</option>
-              </select>
+        <SectionTitle>Historial de Métricas</SectionTitle>
+        <p className="text-xs text-white/40 mt-1 mb-4">
+          Cada servidor guarda un punto de CPU, memoria y disco por reporte del agente. Lo usa el gráfico del dashboard.
+        </p>
+        <div className="glass-soft rounded-xl divide-y divide-line">
+          {[
+            { label: 'Datos conservados', value: `${METRICS_RETENTION_DAYS} días` },
+            { label: 'Limpieza automática', value: 'Cada día a las 03:30 (hora del servidor)' },
+            { label: 'Gráfico del dashboard', value: 'Últimas 24 horas' },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between gap-4 px-4 py-3">
+              <span className="text-sm text-white/55">{label}</span>
+              <span className="text-sm text-white/90 font-mono text-right">{value}</span>
             </div>
-            <div className="text-xs text-white/45">Antigüedad máxima de los registros en el historial de métricas.</div>
-          </div>
-
-          {/* Stats reales */}
-          <div className="glass-soft rounded-xl divide-y divide-line">
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-white/55">Registros en historial</span>
-              <span className="text-sm font-mono text-white/90">
-                {statsLoading ? '…' : (storageStats?.historyCount ?? 0).toLocaleString()}
-              </span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-white/55">Servidores con historial</span>
-              <span className="text-sm font-mono text-white/90">
-                {statsLoading ? '…' : storageStats?.serversWithHistory ?? 0}
-              </span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-white/55">Registro más antiguo</span>
-              <span className="text-sm font-mono text-white/90">
-                {statsLoading ? '…' : storageStats?.oldestHistoryEntry
-                  ? new Date(storageStats.oldestHistoryEntry).toLocaleDateString('es-ES')
-                  : '—'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-white/55">Snapshots activos</span>
-              <span className="text-sm font-mono text-white/90">
-                {statsLoading ? '…' : storageStats?.snapshotCount ?? 0}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-white/35 leading-relaxed">
-              Purgar elimina registros del historial de métricas más antiguos que el período seleccionado.
-              Los snapshots actuales por servidor no se eliminan.
-            </p>
-            <button
-              onClick={() => cleanup.mutate()}
-              disabled={cleanup.isPending}
-              className="inline-flex items-center gap-2 h-9 px-4 rounded-xl glass-soft text-rose-300 hover:bg-rose-500/10 border border-rose-500/15 text-xs font-medium transition shrink-0 disabled:opacity-50"
-            >
-              <Icon name={cleanup.isPending ? 'loader' : 'refresh'} className="w-3.5 h-3.5" />
-              {cleanup.isPending ? 'Purgando…' : 'Purgar ahora'}
-            </button>
-          </div>
+          ))}
         </div>
+        <p className="text-xs text-white/35 mt-3">Lo anterior a {METRICS_RETENTION_DAYS} días se elimina; el estado actual de cada servidor no se ve afectado.</p>
       </div>
 
       <SaveBar label="Guardar monitoreo" />
@@ -1320,23 +1240,11 @@ const MonitoringPane = () => {
 };
 
 /* ── Pane: Sistema ────────────────────────────────────────────────── */
-function formatUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (d > 0) return `${d}d ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  return `${m}m ${s}s`;
-}
-
 const SystemPane = () => {
   const { prefs } = usePreferences();
-  const { data: health, isLoading, refetch, dataUpdatedAt, appVersion } = useSystemInfo();
-  const updater = useUpdater(false);
+  const { data: health, isLoading, dataUpdatedAt, appVersion } = useSystemInfo();
+  const updater = useUpdater();
   const [showLogs, setShowLogs] = useState(false);
-  const [autoUpdate, setAutoUpdate] = useState(true);
-  const [notifyUpdate, setNotifyUpdate] = useState(true);
 
   const lastChecked = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -1401,20 +1309,12 @@ const SystemPane = () => {
       {/* ── Sistema + DB en la misma fila ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <SectionTitle>Información del Sistema</SectionTitle>
-            <button onClick={() => refetch()} title="Actualizar" className="text-white/40 hover:text-white transition">
-              <Icon name="refresh" className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          <div className="glass-soft rounded-xl divide-y divide-line">
+          <SectionTitle>Información del Sistema</SectionTitle>
+          <div className="glass-soft rounded-xl mt-4 divide-y divide-line">
             <InfoRow label="Versión app"><Mono>{appVersion !== '—' ? `v${appVersion}` : '—'}</Mono></InfoRow>
             <InfoRow label="Versión backend"><Mono>{isLoading ? '…' : health?.version ? `v${health.version}` : '—'}</Mono></InfoRow>
             <InfoRow label="Entorno">
               {isLoading ? <Mono>…</Mono> : <SBadge color={envColor as any}>{envLabel}</SBadge>}
-            </InfoRow>
-            <InfoRow label="Uptime backend">
-              <Mono>{isLoading ? '…' : health?.uptime != null ? formatUptime(health.uptime) : '—'}</Mono>
             </InfoRow>
           </div>
         </div>
@@ -1435,7 +1335,6 @@ const SystemPane = () => {
             <InfoRow label="Base de datos">
               <Mono>{isLoading ? '…' : health?.database?.name ?? '—'}</Mono>
             </InfoRow>
-            <InfoRow label="ORM"><Mono>TypeORM</Mono></InfoRow>
           </div>
         </div>
       </div>
@@ -1459,7 +1358,7 @@ const SystemPane = () => {
               </div>
             </div>
             {updater.available && updater.info && (
-              <SBadge color="violet">v{updater.info.version} disponible</SBadge>
+              <SBadge color="violet">v{updater.info.version} {updater.ready ? 'lista' : 'disponible'}</SBadge>
             )}
             {!updater.available && !updater.checking && updater.info === null && (
               <div className="flex items-center gap-1.5 text-emerald-300 shrink-0 text-xs">
@@ -1481,8 +1380,16 @@ const SystemPane = () => {
                     <div className="h-full grad-brand rounded-full transition-all duration-300" style={{ width: `${updater.progress}%` }} />
                   </div>
                 </div>
+              ) : updater.ready ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button onClick={() => void updater.installUpdate()}
+                    className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold elev-brand-sm transition">
+                    <Icon name="refresh" className="w-3.5 h-3.5" />Reiniciar ahora
+                  </button>
+                  <span className="text-xs text-white/50">Descargada; se aplica al reiniciar la app.</span>
+                </div>
               ) : (
-                <button onClick={updater.installUpdate}
+                <button onClick={() => void updater.installUpdate()}
                   className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold elev-brand-sm transition">
                   <Icon name="download" className="w-3.5 h-3.5" />Instalar actualización
                 </button>
@@ -1499,14 +1406,14 @@ const SystemPane = () => {
           <NotifRow
             icon={<span className="text-violet-300"><Icon name="refresh" /></span>}
             title="Actualizaciones automáticas"
-            desc="Descargar e instalar actualizaciones en segundo plano cuando estén disponibles"
-            on={autoUpdate} onChange={setAutoUpdate}
+            desc="Descargar las actualizaciones en segundo plano; se aplican al reiniciar la app"
+            on={updater.prefs.auto} onChange={v => updater.setPref('auto', v)}
           />
           <NotifRow
             icon={<span className="text-sky-300"><Icon name="bell" /></span>}
             title="Notificar nuevas versiones"
-            desc="Mostrar un aviso cuando haya una versión más reciente disponible"
-            on={notifyUpdate} onChange={setNotifyUpdate}
+            desc="Mostrar un aviso cuando haya una versión nueva o esté lista para aplicar"
+            on={updater.prefs.notify} onChange={v => updater.setPref('notify', v)}
           />
 
           <div className="glass-soft rounded-xl p-4 flex items-center gap-4">
@@ -1516,10 +1423,13 @@ const SystemPane = () => {
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium">Comprobar actualizaciones</div>
               <div className="text-xs text-white/50 mt-0.5">
-                {updater.checking ? 'Buscando actualizaciones…' : updater.available ? 'Actualización lista para instalar' : 'Estás en la versión más reciente'}
+                {updater.checking ? 'Buscando actualizaciones…'
+                  : updater.ready ? 'Actualización descargada, pendiente de reiniciar'
+                    : updater.available ? 'Hay una actualización disponible'
+                      : 'Se comprueba al abrir la app y cada 6 horas'}
               </div>
             </div>
-            <button onClick={updater.checkForUpdates} disabled={updater.checking}
+            <button onClick={() => void updater.checkForUpdates()} disabled={updater.checking || updater.downloading || updater.ready}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-xl grad-brand text-white text-xs font-semibold elev-brand-sm transition disabled:opacity-60 shrink-0">
               {updater.checking
                 ? <><Icon name="loader" className="w-3.5 h-3.5" />Comprobando…</>
@@ -1570,7 +1480,6 @@ const SystemPane = () => {
             <div className="p-4 space-y-1.5 font-mono text-xs">
               {[
                 { t: 'INFO',  msg: `Backend v${health.version} — ${health.environment}` },
-                { t: 'INFO',  msg: `Uptime: ${formatUptime(health.uptime)}` },
                 { t: health.database.status === 'connected' ? 'OK' : 'ERR',
                   msg: health.database.status === 'connected'
                     ? 'PostgreSQL conectado'

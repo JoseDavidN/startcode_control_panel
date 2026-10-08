@@ -17,6 +17,7 @@ html[data-theme="solar"] {
   --glass-alpha: 0.72;
   --glass-soft-alpha: 0.55;
   --glass-input-alpha: 0.75;
+  --glass-float-alpha: 0.94;
   --sheen-1: rgba(255,255,255,0.55);
   --sheen-2: rgba(255,255,255,0.15);
   --sheen-soft-1: rgba(255,255,255,0.45);

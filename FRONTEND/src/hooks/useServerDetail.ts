@@ -34,6 +34,7 @@ export interface DiskMetrics {
   free: number;         // Espacio libre en GB
   usagePercent: number; // Porcentaje de uso
   mountPoint: string;   // Punto de montaje (ej: "/", "/home")
+  device: string;       // Dispositivo (ej: "/dev/nvme0n1p2"); '' si el agente no lo manda
 }
 
 /**
@@ -298,6 +299,7 @@ export function useServerDetail(
                   free: bytesToGB(availableInBytes),
                   usagePercent: Number(fs.usagePercent) || 0,
                   mountPoint: fs.mount || '/',
+                  device: typeof fs.fs === 'string' ? fs.fs : '',
                 };
               })
             : [{
@@ -305,7 +307,8 @@ export function useServerDetail(
                 used: 0,
                 free: 0,
                 usagePercent: 0,
-                mountPoint: '/'
+                mountPoint: '/',
+                device: '',
               }],
 
           network: {

@@ -52,6 +52,8 @@ export class AuthService {
   /** TOTP: ±1 step (±30 s) de tolerancia de reloj. Sin esto, un desfase mínimo
       hace fallar códigos correctos. */
   private readonly TOTP_WINDOW = 1;
+  /** Días que un dispositivo no vuelve a pedir el código 2FA tras verificarlo. */
+  private readonly TRUSTED_DEVICE_DAYS = 7;
 
   /** Bloqueo temporal de la cuenta tras fallos consecutivos. */
   private readonly MAX_FAILED_ATTEMPTS = 5;
@@ -135,7 +137,7 @@ export class AuthService {
 
     /* El segundo factor va antes que cualquier otra cosa: ni lastLogin ni la
        política de contraseña deben resolverse con la identidad a medio probar. */
-    if (user.twoFactorEnabled) {
+    if (user.twoFactorEnabled && !this.isTrustedDevice(user, loginDto.trustedDeviceToken)) {
       return {
         requiresTwoFactor: true,
         tempToken: this.generateTempToken(user, '2fa-pending', rememberMe),
@@ -197,16 +199,18 @@ export class AuthService {
     await this.clearFailedAttempts(user);
 
     this.markTempTokenUsed(payload.jti, payload.exp);
+    const trustedDeviceToken = this.generateTrustedDeviceToken(user);
 
     if (this.isPasswordExpired(user)) {
       return {
         requiresPasswordChange: true,
         tempToken: this.generateTempToken(user, 'password-expired', payload.rememberMe),
+        trustedDeviceToken,
       };
     }
 
     const response = await this.buildAuthResponse(user, client, payload.rememberMe);
-    return usedBackupCode ? { ...response, usedBackupCode: true } : response;
+    return { ...response, trustedDeviceToken, ...(usedBackupCode ? { usedBackupCode: true } : {}) };
   }
 
   async setup2FA(userId: string): Promise<TwoFactorSetupResponseDto> {
@@ -446,6 +450,43 @@ export class AuthService {
   private async clearFailedAttempts(user: User): Promise<void> {
     if (!user.failedLoginAttempts && !user.lockedUntil) return;
     await this.usersRepository.update(user.id, { failedLoginAttempts: 0, lockedUntil: null });
+  }
+
+  /* ── Dispositivo de confianza (2FA recordado) ──────────────────────── */
+
+  /**
+   * Huella de lo que debe invalidar la confianza: el secreto TOTP (cambia al
+   * desactivar y volver a activar el 2FA) y la fecha de la contraseña (cambia
+   * al cambiarla). Así no hace falta guardar nada en la base de datos.
+   */
+  private trustFingerprint(user: User): string {
+    return crypto
+      .createHash('sha256')
+      .update(`${user.twoFactorSecret ?? ''}:${user.passwordChangedAt?.toISOString() ?? ''}`)
+      .digest('hex')
+      .slice(0, 32);
+  }
+
+  private generateTrustedDeviceToken(user: User): string {
+    return this.jwtService.sign(
+      { sub: user.id, type: '2fa-trusted', fp: this.trustFingerprint(user) },
+      { expiresIn: `${this.TRUSTED_DEVICE_DAYS}d` },
+    );
+  }
+
+  /** Token válido, de este usuario y emitido con su secreto y contraseña actuales. */
+  private isTrustedDevice(user: User, token: string | undefined): boolean {
+    if (!token) return false;
+    try {
+      const payload = this.jwtService.verify<{ sub: string; type: string; fp: string }>(token, {
+        secret: this.configService.get('JWT_SECRET'),
+      });
+      return payload.type === '2fa-trusted'
+        && payload.sub === user.id
+        && payload.fp === this.trustFingerprint(user);
+    } catch {
+      return false;
+    }
   }
 
   /* ── Tokens temporales ─────────────────────────────────────────────── */

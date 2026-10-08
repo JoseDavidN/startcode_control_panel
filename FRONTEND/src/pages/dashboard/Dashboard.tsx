@@ -24,9 +24,12 @@ import { Card } from '@components/common/Card';
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
 
 /* ── KPI card ─────────────────────────────────────────────────────── */
-const Kpi = ({ label, value, sub, icon, tone = 'violet', accent }: {
+/* `pending`: la tarjeta ya tiene su sitio pero el módulo que la alimenta
+   todavía no existe; se marca en vez de enseñar un cero que parecería real. */
+const Kpi = ({ label, value, sub, icon, tone = 'violet', accent, pending }: {
   label: string; value: string | number; sub?: string;
   icon: React.ReactNode; tone?: 'violet' | 'emerald' | 'sky' | 'amber'; accent?: string;
+  pending?: boolean;
 }) => {
   const tones: Record<string, { wrap: string; ring: string }> = {
     violet:  { wrap: 'from-violet-500/30 to-violet-500/10',   ring: 'ring-violet-400/25' },
@@ -38,8 +41,15 @@ const Kpi = ({ label, value, sub, icon, tone = 'violet', accent }: {
   return (
     <Card className="p-5 row-hit flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-xs uppercase tracking-wider text-white/50 font-medium">{label}</div>
-        <div className={`text-4xl font-extrabold tracking-tight mt-1 tabular-nums ${accent ?? ''}`}>{value}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs uppercase tracking-wider text-white/50 font-medium">{label}</span>
+          {pending && (
+            <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md ring-1 bg-tint-active text-white/55 ring-hairline">
+              Próximamente
+            </span>
+          )}
+        </div>
+        <div className={`text-4xl font-extrabold tracking-tight mt-1 tabular-nums ${pending ? 'text-white/30' : accent ?? ''}`}>{value}</div>
         {sub && <div className="text-xs text-white/50 mt-1 truncate">{sub}</div>}
       </div>
       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${t.wrap} ring-1 ${t.ring} flex items-center justify-center backdrop-blur-md shrink-0`}>
@@ -59,8 +69,7 @@ const I = ({ d, className = 'w-5 h-5' }: { d: string; className?: string }) => (
 
 const icons = {
   server:   <I d="M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01" className="w-7 h-7" />,
-  stack:    <I d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5" className="w-6 h-6 text-emerald-300" />,
-  globe:    <I d="M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14.5 0 18-3-3.5-3-14.5 0-18z" className="w-6 h-6 text-sky-300" />,
+  cloud:    <I d="M7 18h10a4 4 0 00.6-7.96A6 6 0 006.2 9.1 4.5 4.5 0 007 18z" className="w-6 h-6 text-sky-300" />,
   database: <I d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" className="w-6 h-6 text-amber-300" />,
   cpu:      <I d="M6 6h12v12H6zM9 9h6v6H9M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" className="w-4 h-4" />,
   alert:    <I d="M12 4L2 20h20L12 4zM12 10v5M12 18v.01" className="w-4 h-4" />,
@@ -292,20 +301,19 @@ export const Dashboard: React.FC = () => {
       {/* ── Única zona con scroll ── */}
       <div className="flex-1 min-h-0 overflow-y-auto scroll-area space-y-5">
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <Kpi label="Servidores Online" value={`${onlineCount}/${servers.length}`}
             accent="text-emerald-300" tone="emerald"
             sub={overview ? `${overview.reporting} con métricas` : undefined}
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-emerald-300"><circle cx="12" cy="12" r="9" /><path d="M8 12l2.5 2.5L16 9.5" /></svg>} />
-          <Kpi label="Servicios" value={overview?.services ?? '—'} tone="violet"
-            sub={overview ? `${overview.processes} procesos` : 'sin datos'}
-            icon={icons.stack} />
-          <Kpi label="Sitios Web" value={overview?.websites ?? '—'} tone="sky"
-            sub={overview && overview.websites === 0 ? 'ninguno detectado' : undefined}
-            icon={icons.globe} />
-          <Kpi label="Bases de Datos" value={overview?.databases ?? '—'} tone="amber"
-            sub={overview && overview.databases === 0 ? 'ninguna detectada' : undefined}
+          {/* Pendiente: conexiones activas cuando exista el tab de Bases de Datos */}
+          <Kpi label="Bases de Datos" value="—" tone="amber" pending
+            sub="Conexiones activas · con el módulo de bases de datos"
             icon={icons.database} />
+          {/* Pendiente: estado del servicio cloud */}
+          <Kpi label="Cloud" value="—" tone="sky" pending
+            sub="Estado en línea · con el módulo cloud"
+            icon={icons.cloud} />
         </div>
 
         {/* Gráfica 24 h */}

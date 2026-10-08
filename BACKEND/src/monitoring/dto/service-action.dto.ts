@@ -52,17 +52,11 @@ export class ServiceLogsDto {
 }
 
 export class ExecCommandDto {
-  @ApiProperty({ description: 'Comando a ejecutar (sin TTY, máximo 60 s)', example: 'df -h' })
+  @ApiProperty({ description: 'Comando puntual (sin TTY, máximo 60 s, en el home del usuario SSH)', example: 'systemctl status nginx' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(4000)
   command: string;
-
-  @ApiPropertyOptional({ description: 'Directorio de trabajo; por defecto el home del usuario SSH', example: '/var/www' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(1024)
-  cwd?: string;
 
   @ApiPropertyOptional({ description: 'Ejecutar con sudo' })
   @IsOptional()

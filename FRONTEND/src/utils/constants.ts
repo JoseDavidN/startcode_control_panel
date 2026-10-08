@@ -26,8 +26,6 @@ export const API_CONFIG = {
 		CHANGE_PASSWORD: '/auth/change-password',
 		PREFERENCES: '/auth/preferences',
 		HEALTH: '/health',
-		STORAGE_STATS: '/agent-data/storage-stats',
-		CLEANUP_METRICS: '/agent-data/cleanup',
 		NOTIFICATIONS: '/notifications',
 		NOTIFICATIONS_UNREAD: '/notifications/unread-count',
 	},

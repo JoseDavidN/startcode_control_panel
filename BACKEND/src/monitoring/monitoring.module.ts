@@ -7,6 +7,7 @@ import { SSHService } from './services/ssh.service';
 import { ServiceControlService } from './services/service-control.service';
 import { DockerService } from './services/docker.service';
 import { CommandService } from './services/command.service';
+import { MetricsRetentionService } from './services/metrics-retention.service';
 import { CommandAudit } from './entities/command-audit.entity';
 import { Server } from '@servers/entities/server.entity';
 import { User } from '@auth/entities/user.entity';
@@ -37,6 +38,7 @@ import { NotificationsModule } from '@/notifications/notifications.module';
     ServiceControlService,
     DockerService,
     CommandService,
+    MetricsRetentionService,
   ],
   exports: [AgentGateway, AgentDataService, ServerStatusService, SSHService, ServiceControlService],
 })

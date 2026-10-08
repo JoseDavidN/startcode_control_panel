@@ -7,6 +7,14 @@ import axios, {
 import { API_CONFIG } from '@utils/constants';
 import { TokenManager } from '@utils/tokenManager';
 import type { ApiError, ApiResponse } from '@typings/api.types';
+import { IS_TAURI } from '@lib/tauriStore';
+
+/* La app de escritorio usa el webview del sistema, cuyo user-agent no la
+   distingue de un navegador (en Windows hasta dice «Edg/»). Se identifica con
+   esta cabecera y el backend la añade al user-agent de la sesión. */
+const CLIENT_HEADERS: Record<string, string> = IS_TAURI
+	? { 'X-StartCode-Client': `desktop/${import.meta.env.VITE_APP_VERSION ?? '0.0.0'}` }
+	: {};
 
 /** Endpoints cuyo 401 hay que devolver tal cual a quien llamó. */
 const AUTH_ENDPOINTS = [
@@ -36,6 +44,7 @@ class ApiService {
 			timeout: API_CONFIG.TIMEOUT,
 			headers: {
 				'Content-Type': 'application/json',
+				...CLIENT_HEADERS,
 			},
 		});
 
@@ -110,7 +119,8 @@ class ApiService {
 							`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.REFRESH}`,
 							{
 								refreshToken,
-							}
+							},
+							{ headers: CLIENT_HEADERS }
 						);
 
 						// El backend devuelve { user, token, refreshToken, expiresIn }

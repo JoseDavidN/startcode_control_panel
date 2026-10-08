@@ -9,6 +9,61 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [0.4.0] — 2026-10-08
+
+Versión **menor** sobre 0.3.0: cambia el contrato de `POST /agent-data/servers/:id/commands`. Va junto con la app de escritorio 0.2.0.
+
+### Añadido
+- 2FA recordado 7 días por dispositivo: tras un código correcto (TOTP o de respaldo), `POST /auth/2fa/verify-login` devuelve `trustedDeviceToken`, un JWT de 7 días con la huella del secreto TOTP y de `passwordChangedAt`. `LoginDto.trustedDeviceToken` lo acepta y, si es válido y del mismo usuario, el login no pide el código. Cambiar la contraseña o desactivar y reactivar el 2FA lo invalida; sin migración
+- Retención automática del historial de métricas (`MetricsRetentionService`): cada día a las 03:30 borra de `tbl_agent_metrics_history` los puntos de más de 30 días, en tandas de 10.000 para no bloquear la tabla mientras los agentes insertan. El historial lo usa el gráfico de 24 h del dashboard (`GET /agent-data/servers/:id/historical`); antes solo se purgaba a mano desde Configuración
+- Política de la línea de comandos (`monitoring/services/command-policy.ts`): rechaza con `BLOCKED_COMMAND` (400), antes de abrir SSH y sin auditar, los comandos que cambian de directorio, muestran la ruta, inspeccionan discos o abren un shell
+- `CommandResult.home`: home del usuario SSH, resuelto desde `$SUDO_USER` para que con sudo no sea `/root`
+
+### Cambiado
+- Los comandos se ejecutan siempre en el home del usuario SSH; el directorio ya no se arrastra entre comandos. `ExecCommandDto` deja de aceptar `cwd` (con `forbidNonWhitelisted` una petición que lo mande da 400) y `CommandResult` deja de devolver `nextCwd`. La auditoría guarda el home como directorio
+
+### Eliminado
+- `GET /agent-data/storage-stats` y `POST /agent-data/cleanup` (con `AgentDataService.getStorageStats` y `cleanOldMetrics`): la retención de datos no se aplicaba y la app ya no los usa. La purga pasa a ser automática (ver Añadido)
+- `monitoring.retentionDays` de las preferencias (`UpdatePreferencesDto` lo rechaza). `mergePreferences` descarta las claves que ya no existen en los valores por defecto, así que el valor guardado deja de devolverse y no vuelve como 400 al guardar
+
+### Corregido
+- Sesiones activas: la app de escritorio se identifica con `X-StartCode-Client: desktop/<versión>` y el backend lo añade al user-agent (`StartCodePanel/<versión>`), porque el webview no se distingue de un navegador. La IP se toma de `X-Forwarded-For`, `X-Real-IP` o el socket y se guarda normalizada (`::ffff:1.2.3.4` → `1.2.3.4`, `::1` → `127.0.0.1`)
+- Un `sudo ` escrito al inicio del comando se quita y el comando va por la escalera de sudo del panel con `sudo: true`, en vez de duplicarse o quedarse pidiendo contraseña sin TTY. `sudo` con opciones se respeta tal cual
+
+---
+
+## [App de escritorio 0.2.0] — 2026-10-08
+
+Versión **menor** sobre 0.1.1: trae funciones nuevas (actualizaciones automáticas, línea de comandos flotante y su validador) además de cambios y correcciones.
+
+### Añadido
+- Actualizaciones automáticas reales: `UpdaterProvider` (`contexts/UpdaterContext.tsx`) busca versión nueva 15 s después de abrir la app y cada 6 h. Con **Actualizaciones automáticas** la descarga en segundo plano (en Linux y macOS además la instala y se aplica al reiniciar; en Windows espera a «Reiniciar ahora», porque instalar cierra la app). Con **Notificar nuevas versiones** muestra un aviso con «Instalar» o «Reiniciar ahora», uno por versión. Las dos preferencias se guardan en el store local de Tauri (`startcode:updates`); antes los switches eran estado de la pantalla y no hacían nada
+- `notify.action` para avisos con botón de acción
+- El código 2FA se pide una vez cada 7 días por equipo: el token de dispositivo de confianza se guarda por cuenta en el store local de Tauri (`startcode:2fa-trusted`, `lib/trustedDevice.ts`) y se envía en el login; no se borra al cerrar sesión. Configuración → Seguridad lo indica
+
+### Cambiado
+- Indicadores del dashboard: quedan **Servidores Online**, **Bases de Datos** (conexiones activas) y **Cloud** (estado en línea). Se retiran las tarjetas de Servicios, Sitios Web y Bases de Datos detectadas, cuyo detalle sigue en cada servidor
+- Bases de Datos y Cloud se muestran como «Próximamente» (valor `—` atenuado) hasta que existan el tab de bases de datos y el módulo cloud; `Kpi` acepta `pending` para ello
+- Nuevo diseño del icono de StartCode Panel
+- La línea de comandos pasa a ser una barra flotante (`CommandBar`) fija en la parte inferior del detalle del servidor, visible en cualquier tab. La salida, la confirmación de comandos peligrosos y la contraseña de sudo se abren encima de la barra; el botón `sudo` va al final de la línea
+- Configuración → Monitoreo: los umbrales de alerta ya no se comparan con un valor «actual» (era el promedio de los servidores en línea y no representaba a ninguno); se indica que aplican a cada servidor por separado. Se retira la sección **Retención de datos** (selector de días, estadísticas del historial y «Purgar ahora»), porque el selector no se aplicaba; en su lugar, **Historial de métricas** informa que se conservan 30 días, la limpieza diaria a las 03:30 y que el dashboard grafica 24 h
+- Configuración → Sistema: se quitan las filas **Uptime backend** (no daba un dato real) y **ORM**, la línea de uptime del registro de estado y el botón de refrescar junto al título de Información del Sistema
+- Tarjeta de servidor: se retiran **Sitios** y **BBDD** (el agente ya no los recolecta) y la segunda fila pasa a **Servicios**, **Procesos** y **Tiempo activo**. El pie muestra la antigüedad del último reporte (en ámbar si está desfasado) y cuántos servicios están activos de los instalados. `ServerRuntime` deja de exponer `websites` y `databases`
+- Recursos detallados: el disco se muestra por disco físico, con el uso total arriba y sus particiones debajo (agrupadas por dispositivo: `sda1`/`sda2` → `sda`, `nvme0n1p2` → `nvme0n1`), en vez de una barra por partición como si fueran discos distintos. Un dispositivo montado varias veces se cuenta una sola vez
+- La línea de comandos es para comandos puntuales, no una terminal: todos se ejecutan en el home del usuario SSH y el directorio ya no se arrastra entre comandos. Un validador en el backend (`command-policy.ts`, error `BLOCKED_COMMAND`) rechaza antes de conectar los que cambian de directorio (`cd`, `pushd`, `popd`), muestran la ruta (`pwd`, `dirs`, `$PWD`), inspeccionan discos (`df`, `du`, `lsblk`, `fdisk`, `mount`, `findmnt`, LVM, ZFS…) o abren un shell (`bash`, `sh`, `su`, `tmux`…); revisa cada tramo del comando (`;`, `&&`, `|`, `$( )`…) y salta envoltorios como `sudo`, `env` o `timeout`. El aviso aparece encima de la barra y el comando se queda para corregirlo. `ExecCommandDto` deja de aceptar `cwd`
+- El tab **Comandos** solo muestra el registro de comandos ejecutados; pulsar uno lo carga en la barra
+- Nueva superficie `.glass-float` con fondo casi opaco (`--glass-float-alpha` en los tres temas) para que la barra y su salida no se confundan con el contenido que pasa por debajo
+
+### Corregido
+- Sesiones activas: las de la app se muestran como «App de escritorio vX» con su sistema operativo (antes salían como un navegador web) y las del navegador llevan «(web)»; la IP aparece como «IP x.x.x.x» y normalizada. iOS y Android ya no se confunden con macOS y Linux
+- Notificaciones del sistema: las alertas de seguridad (y su prueba) salían solo como toast dentro de la app. `@tauri-apps/plugin-notification` envía por `window.Notification`, y cuando el script del plugin no lo sustituye acaba en la API web del webview (el permiso se pedía con un aviso dentro de la app). Ahora se llama a los comandos del plugin con `invoke` (`is_permission_granted`, `request_permission`, `notify`); el toast interno queda solo como respaldo si el sistema no la entrega
+- Seguridad → estado de la contraseña: tras cambiarla, el conteo de días seguía con la fecha anterior hasta recargar la app (`useChangePassword` no refrescaba el usuario). El texto dice «hoy» o «hace 1 día» y cuántos días faltan para que expire
+- Línea de comandos: con `sudo` marcado, la barra muestra el prefijo `sudo` y la salida y el registro indican que el comando se ejecutó con sudo (antes se veía sin él)
+- Un `sudo ` escrito a mano al inicio ya no se duplica ni falla por falta de TTY: el backend lo quita y ejecuta con la escalera de sudo del panel, que sabe pasar la contraseña. `sudo` con opciones (`sudo -u postgres …`) se respeta tal cual
+- La ruta de la línea de comandos se muestra como un prompt de bash: el home del usuario SSH es `~` antes y después del primer comando (antes pasaba de `~` a `/home/<usuario>`). El backend devuelve `home` en el resultado, resuelto desde `$SUDO_USER` para que con sudo `~` no salte a `/root`
+
+---
+
 ## [App de escritorio 0.1.1] — 2026-10-07
 
 ### Corregido

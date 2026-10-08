@@ -8,6 +8,7 @@ import { AuthProvider } from './AuthProvider';
 import { RealtimeMetricsProvider } from '@contexts/RealtimeMetricsContext';
 import { NotificationProvider } from '@contexts/NotificationContext';
 import { PreferencesProvider } from '@contexts/PreferencesContext';
+import { UpdaterProvider } from '@contexts/UpdaterContext';
 import { PreferencesSync } from '@components/PreferencesSync';
 import { queryClient } from '@lib/queryClient';
 import { API_CONFIG } from '@utils/constants';
@@ -42,7 +43,9 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
           <InactivityWatcher />
           <RealtimeMetricsProvider backendUrl={backendUrl}>
             <NotificationProvider>
-              {children}
+              <UpdaterProvider>
+                {children}
+              </UpdaterProvider>
             </NotificationProvider>
           </RealtimeMetricsProvider>
         </AuthProvider>

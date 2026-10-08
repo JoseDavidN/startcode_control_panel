@@ -3,6 +3,41 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.2.0",
+      "type": "minor",
+      "date": "2026-10-08",
+      "title": "Actualizaciones automáticas y nueva línea de comandos",
+      "changes": {
+        "added": [
+          "Actualizaciones automáticas: la app busca versiones nuevas al abrirse y cada 6 horas, las descarga en segundo plano y se aplican al reiniciar",
+          "Aviso cuando hay una versión nueva o está lista para aplicar, con botón para instalar o reiniciar",
+          "Las preferencias de actualización se guardan en este equipo",
+          "La verificación en dos pasos se recuerda 7 días en cada equipo: el código no se pide en cada inicio de sesión"
+        ],
+        "changed": [
+          "El dashboard muestra tres indicadores: servidores en línea, bases de datos conectadas y estado de Cloud",
+          "Se retiran del dashboard los indicadores de servicios, sitios web y bases de datos detectadas; ese detalle sigue en cada servidor",
+          "Bases de datos y Cloud aparecen como «Próximamente» hasta que sus módulos estén disponibles",
+          "Nuevo diseño del icono de StartCode Panel",
+          "La línea de comandos queda siempre visible en la parte inferior del detalle del servidor; el resultado aparece encima de la barra y el botón sudo va al final de la línea",
+          "En Configuración → Monitoreo los umbrales de alerta aplican a cada servidor y ya no se comparan con un promedio; la sección de retención de datos se sustituye por Historial de métricas, que indica que los datos se conservan 30 días y se limpian a diario",
+          "Configuración → Sistema deja de mostrar el tiempo activo del backend y el ORM, y se quita el botón de refrescar de Información del Sistema",
+          "La tarjeta de cada servidor muestra servicios, procesos, tiempo activo y la hora del último reporte, en lugar de sitios y bases de datos",
+          "En Recursos detallados cada disco muestra su uso total y debajo sus particiones, en lugar de mostrar cada partición como un disco distinto",
+          "La línea de comandos es para comandos puntuales: todos se ejecutan en la carpeta del usuario y no permite cambiar de carpeta, ver la ruta actual, consultar los discos ni abrir un shell; para eso está la terminal",
+          "El tab Comandos solo muestra el registro de comandos ejecutados; pulsar uno lo carga en la línea de comandos"
+        ],
+        "fixed": [
+          "Las sesiones activas distinguen la app de escritorio del navegador y muestran la IP del equipo",
+          "Las alertas de seguridad se muestran como notificación del sistema operativo y no solo dentro de la app",
+          "El estado de la contraseña en Seguridad cuenta bien los días después de cambiarla",
+          "Al marcar sudo, la línea de comandos y el resultado muestran que el comando se ejecuta con sudo",
+          "Escribir sudo al inicio del comando ya no lo duplica ni da error: se ejecuta con sudo y pide la contraseña si hace falta",
+          "La ruta de la línea de comandos muestra ~ para la carpeta del usuario, también después del primer comando, y con sudo ya no salta a la carpeta de root"
+        ]
+      }
+    },
+    {
       "version": "0.1.1",
       "type": "patch",
       "date": "2026-10-07",

@@ -70,6 +70,12 @@ export class AuthResponseDto {
     description: 'true si la sesión se emitió con "Mantener sesión iniciada"',
   })
   rememberMe?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: 'Tras un 2FA correcto: el cliente lo guarda y lo envía en el login para no pedir el código durante 7 días',
+  })
+  trustedDeviceToken?: string;
 }
 
 export class TwoFactorPendingDto {
@@ -87,4 +93,7 @@ export class PasswordChangeRequiredDto {
 
   @ApiProperty({ description: 'Token temporal que solo permite cambiar la contraseña' })
   tempToken: string;
+
+  @ApiProperty({ required: false, description: 'Igual que en AuthResponseDto, si se llegó aquí tras el 2FA' })
+  trustedDeviceToken?: string;
 }

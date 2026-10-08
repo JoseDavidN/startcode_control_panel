@@ -4,6 +4,7 @@ import { apiService } from '@services/api.service';
 import { TokenManager } from '@utils/tokenManager';
 import { API_CONFIG } from '@utils/constants';
 import { normalizeAuthResponse } from '@services/auth.adapter';
+import { getTrustedDeviceToken } from '@lib/trustedDevice';
 import type {
 	LoginCredentials,
 	AuthResponse,
@@ -18,9 +19,12 @@ export function useLoginMutation() {
 		): Promise<
 			AuthResponse | TwoFactorPendingResponse | PasswordChangeRequiredResponse
 		> => {
+			/* Dispositivo de confianza: si el 2FA se verificó aquí hace menos de
+			   7 días, el backend no vuelve a pedir el código. */
+			const trustedDeviceToken = await getTrustedDeviceToken(credentials.email);
 			const response = await apiService.post<any>(
 				API_CONFIG.ENDPOINTS.LOGIN,
-				credentials
+				trustedDeviceToken ? { ...credentials, trustedDeviceToken } : credentials
 			);
 
 			const backendData = response && response.data ? response.data : response;

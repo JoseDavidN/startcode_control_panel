@@ -43,7 +43,6 @@ export interface MonitoringPrefs {
 	cpuThreshold: number; // %
 	memoryThreshold: number; // %
 	diskThreshold: number; // %
-	retentionDays: number;
 }
 
 export interface UserPreferences {
@@ -79,7 +78,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 		cpuThreshold: 80,
 		memoryThreshold: 85,
 		diskThreshold: 90,
-		retentionDays: 30,
 	},
 };
 
@@ -134,7 +132,6 @@ const RANGES: Record<string, [number, number]> = {
 	cpuThreshold: [1, 100],
 	memoryThreshold: [1, 100],
 	diskThreshold: [1, 100],
-	retentionDays: [1, 3650],
 };
 
 function clamp(key: string, value: number): number | null {

@@ -1,7 +1,7 @@
 // src/monitoring/services/agent-data.service.ts
 import { Inject, Injectable, NotFoundException, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThan } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { AgentMetrics } from '../entities/agent-metrics.entity';
 import { AgentMetricsHistory } from '../entities/agent-metrics-history.entity';
 import { Server } from '@servers/entities/server.entity';
@@ -389,26 +389,6 @@ export class AgentDataService {
   }
 
   /**
-   * Elimina entradas de la serie temporal más antiguas que N días.
-   * El snapshot actual (tbl_agent_metrics) no se toca — siempre tiene 1 fila por servidor.
-   */
-  async cleanOldMetrics(days: number = 30): Promise<number> {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-
-    const result = await this.metricsHistoryRepository.delete({
-      timestamp: LessThan(cutoffDate),
-    });
-
-    const deletedCount = result.affected || 0;
-    this.logger.log(
-      `Limpieza de historial: ${deletedCount} registros eliminados (más de ${days} días)`,
-    );
-
-    return deletedCount;
-  }
-
-  /**
    * Actualiza el estado de **un** servicio dentro del inventario guardado.
    *
    * El agente manda el inventario completo cada 5 minutos y además deduplica:
@@ -469,41 +449,5 @@ export class AgentDataService {
     );
 
     return services;
-  }
-
-  /**
-   * Obtiene estadísticas de almacenamiento de métricas
-   *
-   * @returns Información sobre el almacenamiento
-   */
-  async getStorageStats(): Promise<{
-    snapshotCount: number;
-    historyCount: number;
-    oldestHistoryEntry: Date | null;
-    newestHistoryEntry: Date | null;
-    serversWithHistory: number;
-  }> {
-    const [snapshotCount, historyCount] = await Promise.all([
-      this.metricsRepository.count(),
-      this.metricsHistoryRepository.count(),
-    ]);
-
-    const [oldest, newest] = await Promise.all([
-      this.metricsHistoryRepository.findOne({ order: { timestamp: 'ASC' }, select: ['timestamp'] }),
-      this.metricsHistoryRepository.findOne({ order: { timestamp: 'DESC' }, select: ['timestamp'] }),
-    ]);
-
-    const raw = await this.metricsHistoryRepository
-      .createQueryBuilder('h')
-      .select('COUNT(DISTINCT h.server_id)', 'count')
-      .getRawOne();
-
-    return {
-      snapshotCount,
-      historyCount,
-      oldestHistoryEntry: oldest?.timestamp || null,
-      newestHistoryEntry: newest?.timestamp || null,
-      serversWithHistory: parseInt(raw?.count || '0'),
-    };
   }
 }

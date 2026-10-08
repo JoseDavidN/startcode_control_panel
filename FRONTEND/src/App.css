@@ -125,6 +125,19 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
     -webkit-backdrop-filter: none;
   }
 
+  /* Excepción: una superficie que flota sobre contenido que se desplaza por
+     debajo (la línea de comandos del detalle de servidor) sí tiene algo
+     distinto detrás y necesita borronearlo. Misma especificidad que la regla
+     anterior y declarada después, así que gana. Va casi opaca
+     (--glass-float-alpha) para que no se confunda con lo que pasa debajo. */
+  .glass-float {
+    background-color: rgb(var(--surface-rgb) / var(--glass-float-alpha));
+  }
+  :is(.glass, .glass-soft) .glass-float {
+    backdrop-filter: blur(28px) saturate(200%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+  }
+
   /* Los campos van al revés que los paneles: hundidos. */
   .glass-input {
     background-color: rgb(var(--surface-rgb) / var(--glass-input-alpha));

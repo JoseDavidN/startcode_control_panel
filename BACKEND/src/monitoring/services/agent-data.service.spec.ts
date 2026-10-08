@@ -159,25 +159,6 @@ describe('AgentDataService', () => {
     });
   });
 
-  describe('cleanOldMetrics', () => {
-    it('retorna la cantidad de registros eliminados del historial', async () => {
-      historyRepo.delete.mockResolvedValue({ affected: 12 });
-
-      const deleted = await service.cleanOldMetrics(30);
-
-      expect(deleted).toBe(12);
-      expect(historyRepo.delete).toHaveBeenCalledTimes(1);
-    });
-
-    it('retorna 0 cuando no hay registros que eliminar', async () => {
-      historyRepo.delete.mockResolvedValue({ affected: 0 });
-
-      const deleted = await service.cleanOldMetrics(30);
-
-      expect(deleted).toBe(0);
-    });
-  });
-
   describe('getMetricsLastHours', () => {
     it('llama a getHistoricalMetrics con el rango de tiempo correcto', async () => {
       const spy = jest

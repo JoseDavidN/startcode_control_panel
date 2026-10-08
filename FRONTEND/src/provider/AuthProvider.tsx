@@ -1,5 +1,5 @@
 // src/providers/AuthProvider.tsx
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { AuthContext } from '@contexts/AuthContext';
 import { useLoginMutation, useLogoutMutation } from '@hooks/useAuthMutation';
@@ -10,6 +10,7 @@ import { twoFactorService } from '@services/twoFactor.service';
 import { normalizeAuthResponse } from '@services/auth.adapter';
 import { TokenManager } from '@utils/tokenManager';
 import { authApi } from '@services/auth.api';
+import { saveTrustedDeviceToken } from '@lib/trustedDevice';
 import type {
   AuthResponse,
   LoginCredentials,
@@ -28,6 +29,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const { data: user, isLoading, refetch } = useCurrentUser();
   const loginMutation = useLoginMutation();
   const logoutMutation = useLogoutMutation();
+  /* Cuenta del login a medio hacer: el token de confianza se guarda por email. */
+  const pendingEmailRef = useRef<string | null>(null);
 
   // Login con TanStack Query
   const login = useCallback(
@@ -38,6 +41,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const result = await loginMutation.mutateAsync(credentials);
 
         if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
+          pendingEmailRef.current = credentials.email;
           return result as TwoFactorPendingResponse;
         }
 
@@ -71,6 +75,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       payload: { code?: string; backupCode?: string },
     ): Promise<PasswordChangeRequiredResponse | void> => {
       const backendData = await twoFactorService.verifyLogin(tempToken, payload);
+
+      /* Recordar este dispositivo 7 días, también si sigue la contraseña caducada. */
+      const email = pendingEmailRef.current;
+      if (email && typeof backendData?.trustedDeviceToken === 'string') {
+        await saveTrustedDeviceToken(email, backendData.trustedDeviceToken);
+      }
 
       /* Puede encadenar con la contraseña caducada: aún no hay sesión. */
       if (backendData?.requiresPasswordChange) {

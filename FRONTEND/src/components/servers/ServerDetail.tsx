@@ -1,8 +1,9 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useRef, useState } from 'react';
 import { type ServerData } from '@typings/DashboardTypes';
 import { Modal } from '@components/common/Modal';
 import { SftpIcon } from '@components/servers/sftp/icons';
 import { AgentCard } from '@components/servers/AgentCard';
+import { CommandBar, type CommandBarHandle } from '@components/servers/CommandBar';
 import { useServerDetail, type TopProcess } from '@hooks/useServerDetail';
 import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
 import { useServiceAction, usePinnedServices, useKillProcess } from '@hooks/useServiceAction';
@@ -15,7 +16,7 @@ import { unitName } from '@utils/services';
 import { notify } from '@services/notification.service';
 import type { ServiceAction } from '@services/service-control.service';
 import { MetricBar } from '@components/common/MetricBar';
-import { barGradient, formatBytes } from '@utils/metrics';
+import { barGradient, formatBytes, groupDisks } from '@utils/metrics';
 import { formatUptime } from '@utils/time';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
@@ -124,6 +125,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const [installOpen, setInstallOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [sftpOpen, setSftpOpen] = useState(false);
+  const commandBarRef = useRef<CommandBarHandle>(null);
 
   /* Datos reales del agente. El WebSocket manda para cpu/memoria/disco por ser
      instantáneo; el resto (kernel, IPs, procesos, discos por montaje) solo llega
@@ -581,12 +583,28 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                 }
                 value={live.memory}
               />
-              {(detail?.disk ?? []).map(fs => (
-                <MetricBar
-                  key={fs.mountPoint}
-                  label={`Disco ${fs.mountPoint} (${fs.used.toFixed(1)} / ${fs.total.toFixed(1)} GB)`}
-                  value={fs.usagePercent}
-                />
+              {/* Un bloque por disco físico: el total arriba y sus particiones debajo */}
+              {groupDisks(detail?.disk ?? []).map(group => (
+                <div key={group.disk}>
+                  <MetricBar
+                    label={group.partitions.length === 1
+                      ? `Disco ${group.disk} · ${group.partitions[0].mountPoint} (${group.used.toFixed(1)} / ${group.total.toFixed(1)} GB)`
+                      : `Disco ${group.disk} (${group.used.toFixed(1)} / ${group.total.toFixed(1)} GB)`}
+                    value={group.usagePercent}
+                  />
+                  {group.partitions.length > 1 && (
+                    <div className="mt-3 ml-3 pl-3 border-l border-line space-y-2.5">
+                      {group.partitions.map(p => (
+                        <MetricBar
+                          key={p.device || p.mountPoint}
+                          compact
+                          label={`${p.device.replace(/^\/dev\//, '') || p.mountPoint} · ${p.mountPoint} (${p.used.toFixed(1)} / ${p.total.toFixed(1)} GB)`}
+                          value={p.usagePercent}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
               {!detail && <MetricBar label="Disco" value={live.disk} />}
             </div>
@@ -718,10 +736,13 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         />
       )}
 
-      {/* ── Línea de comandos ───────────────────────────────────────── */}
+      {/* ── Comandos ejecutados ─────────────────────────────────────── */}
       {activeTab === 'commands' && (
         <Suspense fallback={<div className="glass rounded-2xl grain p-5 text-sm text-white/45">Cargando…</div>}>
-          <CommandsTab serverId={server.id} serverName={server.name} />
+          <CommandsTab
+            serverId={server.id}
+            onReuse={command => commandBarRef.current?.load(command)}
+          />
         </Suspense>
       )}
 
@@ -802,6 +823,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           ))}
         </div>
       </Modal>
+
+      {/* ── Línea de comandos flotante: visible en cualquier tab ─────── */}
+      <CommandBar ref={commandBarRef} serverId={server.id} serverName={server.name} />
     </div>
   );
 };

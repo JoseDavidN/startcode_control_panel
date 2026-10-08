@@ -45,8 +45,6 @@ const I = ({ d, className = 'w-5 h-5' }: { d: string; className?: string }) => (
 
 const icons = {
   server:   <I d="M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01" className="w-7 h-7" />,
-  globe:    <I d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" className="w-6 h-6" />,
-  database: <I d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" className="w-6 h-6" />,
   search:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>,
   filter:   <I d="M3 5h18l-7 9v6l-4-2v-4L3 5z" className="w-4 h-4" />,
   refresh:  <I d="M3 12a9 9 0 0115-6.7L21 8M21 3v5h-5M21 12a9 9 0 01-15 6.7L3 16M3 21v-5h5" className="w-4 h-4" />,
@@ -56,6 +54,8 @@ const icons = {
   cpu:      <I d="M6 6h12v12H6zM9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" className="w-5 h-5" />,
   ram:      <I d="M2.5 7h19v10H2.5zM7 11v2M11 11v2M15 11v2M19 11v2M5 17v2M9 17v2M13 17v2M17 17v2" className="w-5 h-5" />,
   disk:     <I d="M3 4h18v16H3zM3 14h18" className="w-5 h-5" />,
+  activity: <I d="M3 12h4l3-8 4 16 3-8h4" className="w-5 h-5" />,
+  uptime:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
   wrench:   <I d="M14.7 6.3a4 4 0 015.7 5.1l-1.4-1.5-2.1 2.1 1.4 1.4a4 4 0 01-5.1-5.7L4.4 17.6a2 2 0 102.8 2.8l8.2-8.2" className="w-5 h-5" />,
   clock:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
   chevron:  <I d="M9 6l6 6-6 6" className="w-5 h-5" />,
@@ -156,27 +156,29 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
           <Tile icon={icons.disk}   label="Disco" value={pct(rt.disk)}   tone="violet" />
         </div>
 
-        {/* Metric tiles row 2 */}
-        <div className="grid grid-cols-3 gap-4 mt-4">
+        {/* Metric tiles row 2: lo que el agente sí reporta */}
+        <div className={`grid grid-cols-3 gap-4 mt-4 ${rt.stale ? 'opacity-60' : ''}`}>
           <Tile icon={icons.wrench}   label="Servicios" value={count(rt.services)}  tone="fuchsia" />
-          <Tile icon={icons.globe}    label="Sitios"    value={count(rt.websites)}  tone="emerald" />
-          <Tile icon={icons.database} label="BBDD"      value={count(rt.databases)} tone="amber" />
+          <Tile icon={icons.activity} label="Procesos"  value={count(rt.processes)} tone="amber" />
+          <Tile icon={icons.uptime}   label="Activo"    value={rt.uptime === null ? dash : formatUptime(rt.uptime)} tone="sky" />
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-line mt-5 pt-4 flex items-center justify-between text-sm">
-          <span className="text-white/55">
-            {rt.hasMetrics
-              ? <>Servicios activos: <span className="text-white/75 font-mono">{count(rt.services)}</span></>
-              : <span className="text-white/40">Instala el agente para ver métricas</span>}
-          </span>
-          <div className="flex items-center gap-2 text-white/55">
-            {icons.clock}
-            <span className="text-xs">Tiempo activo</span>
-            <span className="font-mono text-xs text-white/75">
-              {rt.uptime === null ? dash : formatUptime(rt.uptime)}
+        {/* Footer: frescura del dato */}
+        <div className="border-t border-line mt-5 pt-4 flex items-center justify-between gap-3 text-sm">
+          {rt.hasMetrics ? (
+            <span className={`flex items-center gap-2 ${rt.stale ? 'text-amber-300' : 'text-white/55'}`}>
+              {icons.clock}
+              <span className="text-xs">Último reporte</span>
+              <span className="text-xs font-mono">{timeAgo(rt.lastMetricAt)}</span>
             </span>
-          </div>
+          ) : (
+            <span className="text-white/40">Instala el agente para ver métricas</span>
+          )}
+          {rt.servicesTotal !== null && (
+            <span className="text-xs text-white/45 tabular-nums">
+              {count(rt.services)} de {rt.servicesTotal} servicios activos
+            </span>
+          )}
         </div>
       </Card>
     </div>

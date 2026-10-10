@@ -108,6 +108,8 @@ function routeToChrome(pathname: string): string {
   if (pathname.startsWith(ROUTES.SETTINGS)) return 'settings';
   if (pathname.startsWith('/servers/')) return `servers/${pathname.split('/')[2] ?? ''}`;
   if (pathname.startsWith(ROUTES.SERVERS)) return 'servers';
+  if (pathname.startsWith('/databases/')) return `databases/${pathname.split('/')[2] ?? ''}`;
+  if (pathname.startsWith(ROUTES.DATABASES)) return 'databases';
   return 'dashboard';
 }
 
@@ -128,7 +130,7 @@ export const AppLayout = () => {
   const nav: { path: string; label: string; icon: IconName; soon?: boolean }[] = [
     { path: ROUTES.DASHBOARD, label: 'Panel',          icon: 'chart' },
     { path: '/servers',       label: 'Servidores',     icon: 'server' },
-    { path: '/databases',     label: 'Bases de Datos', icon: 'database', soon: true },
+    { path: ROUTES.DATABASES, label: 'Bases de Datos', icon: 'database' },
     { path: '/cloud',         label: 'Cloud',          icon: 'cloud',    soon: true },
   ];
   const meta: [string, string, IconName, string?][] = [

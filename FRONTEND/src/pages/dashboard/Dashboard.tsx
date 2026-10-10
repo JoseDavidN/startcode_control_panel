@@ -14,6 +14,8 @@ import { useServers } from '@hooks/useServers';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { useOverview, useHistorical } from '@hooks/useMonitoring';
 import { useServersLive } from '@hooks/useServersLive';
+import { useDatabaseConnections } from '@hooks/useDatabases';
+import { DATABASE_ENGINES, DATABASE_ENGINE_LABELS } from '@typings/database.types';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { MetricBar } from '@components/common/MetricBar';
 import { barGradient } from '@utils/metrics';
@@ -224,6 +226,17 @@ export const Dashboard: React.FC = () => {
   const { data: servers = [], isLoading: serversLoading } = useServers();
   const { data: overview } = useOverview();
   const { runtime, onlineCount: liveOnlineCount } = useServersLive();
+  const { data: dbConnections } = useDatabaseConnections();
+  /* «2 MySQL · 1 PostgreSQL»: cuántas conexiones hay de cada motor. */
+  const dbSummary = useMemo(() => {
+    if (!dbConnections) return undefined;
+    if (dbConnections.length === 0) return 'Ninguna conexión agregada';
+    return DATABASE_ENGINES
+      .map(engine => [engine, dbConnections.filter(c => c.engine === engine).length] as const)
+      .filter(([, n]) => n > 0)
+      .map(([engine, n]) => `${n} ${DATABASE_ENGINE_LABELS[engine]}`)
+      .join(' · ');
+  }, [dbConnections]);
   const { settings: monitoring } = useMonitoringSettings();
 
   const [selected, setSelected] = useState<string | undefined>();
@@ -306,9 +319,10 @@ export const Dashboard: React.FC = () => {
             accent="text-emerald-300" tone="emerald"
             sub={overview ? `${overview.reporting} con métricas` : undefined}
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-emerald-300"><circle cx="12" cy="12" r="9" /><path d="M8 12l2.5 2.5L16 9.5" /></svg>} />
-          {/* Pendiente: conexiones activas cuando exista el tab de Bases de Datos */}
-          <Kpi label="Bases de Datos" value="—" tone="amber" pending
-            sub="Conexiones activas · con el módulo de bases de datos"
+          {/* Conexiones guardadas: solo lee la lista, no conecta a ninguna base. */}
+          <Kpi label="Bases de Datos" value={dbConnections ? dbConnections.length : '—'}
+            accent="text-amber-300" tone="amber"
+            sub={dbSummary}
             icon={icons.database} />
           {/* Pendiente: estado del servicio cloud */}
           <Kpi label="Cloud" value="—" tone="sky" pending

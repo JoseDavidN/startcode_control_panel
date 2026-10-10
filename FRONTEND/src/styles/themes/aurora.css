@@ -84,6 +84,20 @@ html[data-theme="aurora"] {
   --focus-ring: #67e8f9;
   --focus-halo: rgba(5,13,26,0.95);
 
+  /* Resaltado del editor SQL */
+  --sql-keyword: #67e8f9;
+  --sql-function: #93c5fd;
+  --sql-type: #c4b5fd;
+  --sql-string: #86efac;
+  --sql-number: #fcd34d;
+  --sql-identifier: #f9a8d4;
+  --sql-comment: rgba(255,255,255,0.35);
+  --sql-operator: rgba(255,255,255,0.55);
+
+  /* Filas alternas de las tablas de datos: clara / oscura */
+  --row-stripe-1: rgba(34,211,238,0.06);
+  --row-stripe-2: rgba(0,0,0,0.18);
+
   /* ── Remapeo de la paleta de Tailwind ───────────────────────────
      La familia de marca (violet/purple/fuchsia/pink/indigo) pasa a cian y
      azul. Los semánticos se quedan como en Nocturno: ya contrastan bien.

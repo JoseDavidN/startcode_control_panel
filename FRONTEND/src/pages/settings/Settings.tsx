@@ -27,6 +27,7 @@ import { queryClient } from '@lib/queryClient';
 import { notify } from '@services/notification.service';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
+import { copyText } from '@lib/clipboard';
 
 type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'monitoring' | 'system';
 
@@ -667,7 +668,7 @@ const SecurityPane = () => {
     return fallback;
   };
 
-  const copyCodes = (codes: string[]) => navigator.clipboard.writeText(codes.join('\n'));
+  const copyCodes = (codes: string[]) => copyText(codes.join('\n'));
 
   const downloadCodes = (codes: string[]) => {
     const blob = new Blob(
@@ -800,7 +801,7 @@ const SecurityPane = () => {
             </div>
             <div className="flex items-center gap-2 p-3 rounded-xl bg-black/30 border border-hairline">
               <code className="text-xs text-violet-300 font-mono flex-1 break-all">{setupData.secret}</code>
-              <button onClick={() => navigator.clipboard.writeText(setupData.secret)}
+              <button onClick={() => void copyText(setupData.secret).catch(() => undefined)}
                 className="text-white/45 hover:text-white shrink-0"><Icon name="copy" className="w-4 h-4" /></button>
             </div>
             <p className="text-sm text-white/70"><strong className="text-white">Paso 2:</strong> Ingresa el código de 6 dígitos que muestra la app.</p>

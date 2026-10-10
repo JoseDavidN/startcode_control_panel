@@ -6,6 +6,7 @@ import { ConnectionLoading } from './ConectionLoading';
 import type { ConnectionStatus } from './ConectionLoading';
 import { INSTALL_ACTIVITIES, resolveActivities } from '@lib/agentSteps';
 import type { AgentInstallError } from '@typings/agent.types';
+import { copyText } from '@lib/clipboard';
 
 interface AddServerModalProps {
   isOpen: boolean;
@@ -400,7 +401,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
                     ssh-keygen -t ed25519 -N "" -f ~/.ssh/startcode_key
                   </code>
                   <button type="button"
-                    onClick={() => navigator.clipboard.writeText('ssh-keygen -t ed25519 -N "" -f ~/.ssh/startcode_key')}
+                    onClick={() => void copyText('ssh-keygen -t ed25519 -N "" -f ~/.ssh/startcode_key').catch(() => undefined)}
                     className="absolute top-1.5 right-1.5 p-1 rounded glass-soft opacity-0 group-hover:opacity-100 transition">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
                       strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 text-white/60">

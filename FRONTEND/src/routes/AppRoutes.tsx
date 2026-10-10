@@ -21,6 +21,9 @@ const Settings = lazy(() => import('@pages/settings/Settings').then(m => ({ defa
 const Notifications = lazy(() =>
   import('@pages/notifications/Notifications').then(m => ({ default: m.Notifications })));
 const Servers = lazy(() => import('@pages/servers/Servers').then(m => ({ default: m.Servers })));
+const Databases = lazy(() => import('@pages/databases/Databases').then(m => ({ default: m.Databases })));
+const DatabaseDetail = lazy(() =>
+  import('@pages/databases/DatabaseDetail').then(m => ({ default: m.DatabaseDetail })));
 
 /* El Suspense va por página y no alrededor de <Routes>: así el layout (barra
    lateral, cabecera) se queda en pantalla mientras llega el chunk. */
@@ -61,6 +64,8 @@ export const AppRoutes = () => {
         <Route element={<AppLayout />}>
           <Route path={ROUTES.DASHBOARD} element={<Page><Dashboard /></Page>} />
           <Route path={ROUTES.SERVERS} element={<Page><Servers /></Page>} />
+          <Route path={ROUTES.DATABASES} element={<Page><Databases /></Page>} />
+          <Route path={ROUTES.DATABASE_DETAIL} element={<Page><DatabaseDetail /></Page>} />
           <Route path={ROUTES.NOTIFICATIONS} element={<Page><Notifications /></Page>} />
           <Route path={ROUTES.SETTINGS} element={<Page><Settings /></Page>} />
         </Route>

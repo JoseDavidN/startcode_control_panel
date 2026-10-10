@@ -1,0 +1,295 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
+import { DatabasesService } from './databases.service';
+import { CreateDatabaseConnectionDto } from './dto/create-database-connection.dto';
+import { UpdateDatabaseConnectionDto } from './dto/update-database-connection.dto';
+import { TestDatabaseConnectionDto } from './dto/test-database-connection.dto';
+import { RunQueryDto } from './dto/run-query.dto';
+import { UpdateRowDto } from './dto/update-row.dto';
+import type {
+  QueryResult,
+  SchemaIndex,
+  SchemaProcedure,
+  SchemaTable,
+  SchemaTrigger,
+} from './services/database-explorer.service';
+import {
+  DatabaseConnectionPasswordResponseDto,
+  DatabaseConnectionResponseDto,
+  DatabaseConnectionTestResponseDto,
+} from './dto/database-connection-response.dto';
+
+/** Lo que deja `JwtAuthGuard` en la petición. */
+interface AuthedRequest {
+  user: { id: string };
+}
+
+/* Todas las rutas trabajan sobre las conexiones del usuario autenticado:
+   una conexión de otro usuario responde 404, como si no existiera. */
+@ApiTags('Databases')
+@Controller('databases')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
+export class DatabasesController {
+  constructor(private readonly databasesService: DatabasesService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Listar las conexiones del usuario' })
+  @ApiResponse({ status: 200, type: [DatabaseConnectionResponseDto] })
+  findAll(@Request() req: AuthedRequest): Promise<DatabaseConnectionResponseDto[]> {
+    return this.databasesService.findAll(req.user.id);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Crear una conexión',
+    description: 'Guarda la contraseña cifrada. No conecta: el estado queda `unknown` hasta comprobarla (`POST /:id/check`) o probarla antes con `POST /test`.',
+  })
+  @ApiResponse({ status: 201, type: DatabaseConnectionResponseDto })
+  create(@Request() req: AuthedRequest, @Body() dto: CreateDatabaseConnectionDto): Promise<DatabaseConnectionResponseDto> {
+    return this.databasesService.create(req.user.id, dto);
+  }
+
+  /* Antes que `:id`: `test` y `schemas` no son ids. */
+  @Post('schemas')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiOperation({
+    summary: 'Bases disponibles con datos de conexión sin guardar',
+    description: 'Para el selector de base del formulario. MySQL, MariaDB y PostgreSQL. Con `connectionId` y sin `password` usa la contraseña guardada.',
+  })
+  previewDatabases(
+    @Request() req: AuthedRequest,
+    @Body() dto: TestDatabaseConnectionDto,
+  ): Promise<{ name: string; system: boolean }[]> {
+    return this.databasesService.previewDatabases(req.user.id, dto);
+  }
+
+  @Post('test')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiOperation({ summary: 'Probar datos de conexión sin guardarlos' })
+  @ApiResponse({ status: 200, type: DatabaseConnectionTestResponseDto })
+  test(@Request() req: AuthedRequest, @Body() dto: TestDatabaseConnectionDto): Promise<DatabaseConnectionTestResponseDto> {
+    return this.databasesService.test(req.user.id, dto);
+  }
+
+  @Post(':id/sessions')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiOperation({
+    summary: 'Abrir la conexión de la vista de consultas',
+    description: 'Conecta y devuelve `sessionId` y la versión del motor. El árbol y el editor la reutilizan pasando el `sessionId`; se cierra con `DELETE` al salir de la vista o tras 30 min sin uso. Es la única conexión que el panel mantiene abierta.',
+  })
+  @ApiParam({ name: 'id' })
+  openSession(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ sessionId: string; version: string | null }> {
+    return this.databasesService.openSession(req.user.id, id);
+  }
+
+  @Delete(':id/sessions/:sessionId')
+  @ApiOperation({ summary: 'Cerrar la conexión de la vista de consultas' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'sessionId' })
+  async closeSession(
+    @Request() req: AuthedRequest,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+  ): Promise<{ closed: true }> {
+    await this.databasesService.closeSession(req.user.id, sessionId);
+    return { closed: true };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Una conexión' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: DatabaseConnectionResponseDto })
+  findOne(@Request() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string): Promise<DatabaseConnectionResponseDto> {
+    return this.databasesService.findOne(req.user.id, id);
+  }
+
+  @Get(':id/schemas')
+  @ApiOperation({
+    summary: 'Bases de la conexión',
+    description: 'Si la conexión apunta a una base, solo esa; si no, todas las que ve el usuario. Por ahora MySQL y MariaDB.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiQuery({ name: 'session', required: false, description: 'Sesión de la vista de consultas' })
+  listSchemas(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('session') session?: string,
+  ): Promise<{ name: string; system: boolean }[]> {
+    return this.databasesService.listSchemas(req.user.id, id, session);
+  }
+
+  @Get(':id/schemas/:schema/tables')
+  @ApiOperation({ summary: 'Tablas de una base, con sus columnas y filas estimadas' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'schema' })
+  listTables(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schema') schema: string,
+    @Query('session') session?: string,
+  ): Promise<SchemaTable[]> {
+    return this.databasesService.listTables(req.user.id, id, schema, 'table', session);
+  }
+
+  @Get(':id/schemas/:schema/views')
+  @ApiOperation({ summary: 'Vistas de una base, con sus columnas' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'schema' })
+  listViews(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schema') schema: string,
+    @Query('session') session?: string,
+  ): Promise<SchemaTable[]> {
+    return this.databasesService.listTables(req.user.id, id, schema, 'view', session);
+  }
+
+  @Get(':id/schemas/:schema/triggers')
+  @ApiOperation({ summary: 'Triggers de una base: momento, evento y tabla' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'schema' })
+  listTriggers(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schema') schema: string,
+    @Query('session') session?: string,
+  ): Promise<SchemaTrigger[]> {
+    return this.databasesService.listTriggers(req.user.id, id, schema, session);
+  }
+
+  @Get(':id/schemas/:schema/indexes')
+  @ApiOperation({ summary: 'Índices de una base: tabla, unicidad, tipo y columnas' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'schema' })
+  listIndexes(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schema') schema: string,
+    @Query('session') session?: string,
+  ): Promise<SchemaIndex[]> {
+    return this.databasesService.listIndexes(req.user.id, id, schema, session);
+  }
+
+  @Get(':id/schemas/:schema/procedures')
+  @ApiOperation({ summary: 'Procedimientos almacenados de una base, con sus parámetros' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'schema' })
+  listProcedures(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schema') schema: string,
+    @Query('session') session?: string,
+  ): Promise<SchemaProcedure[]> {
+    return this.databasesService.listProcedures(req.user.id, id, schema, session);
+  }
+
+  @Post(':id/query')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiOperation({
+    summary: 'Ejecutar una sentencia SQL',
+    description: 'Una sentencia por petición, 30 s como máximo. Devuelve hasta 1000 filas; `truncated` indica si había más. Un error de SQL responde 400 con el mensaje del motor. Las sentencias peligrosas responden 400 `DANGEROUS_QUERY` hasta que llegan con `confirm: true`, y entonces quedan auditadas.',
+  })
+  @ApiParam({ name: 'id' })
+  runQuery(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RunQueryDto,
+  ): Promise<QueryResult> {
+    return this.databasesService.runQuery(req.user.id, id, dto.sql, dto.schema, dto.confirm, dto.sessionId);
+  }
+
+  @Post(':id/rows/update')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiOperation({
+    summary: 'Editar una fila del resultado',
+    description: 'UPDATE de una sola fila identificada por su clave primaria completa (`key`). Las columnas se validan contra la tabla y los valores van parametrizados.',
+  })
+  @ApiParam({ name: 'id' })
+  updateRow(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRowDto,
+  ): Promise<{ affectedRows: number }> {
+    const { sessionId, ...input } = dto;
+    return this.databasesService.updateRow(req.user.id, id, input, sessionId);
+  }
+
+  @Get(':id/audit')
+  @ApiOperation({ summary: 'Consultas peligrosas confirmadas sobre la conexión (últimas 50)' })
+  @ApiParam({ name: 'id' })
+  async audit(@Request() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    const rows = await this.databasesService.listAudit(req.user.id, id);
+    return rows.map(({ id: auditId, schema, query, reason, status, affectedRows, error, durationMs, createdAt }) => ({
+      id: auditId, schema, query, reason, status, affectedRows, error, durationMs, createdAt,
+    }));
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Editar una conexión',
+    description: '`password` omitida conserva la actual; cadena vacía la borra. No conecta; si cambian los datos de conexión, el estado vuelve a `unknown`.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: DatabaseConnectionResponseDto })
+  update(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateDatabaseConnectionDto,
+  ): Promise<DatabaseConnectionResponseDto> {
+    return this.databasesService.update(req.user.id, id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Borrar una conexión' })
+  @ApiParam({ name: 'id' })
+  async remove(@Request() req: AuthedRequest, @Param('id', ParseUUIDPipe) id: string): Promise<{ deleted: true }> {
+    await this.databasesService.remove(req.user.id, id);
+    return { deleted: true };
+  }
+
+  @Get(':id/password')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Ver la contraseña guardada',
+    description: 'Solo para el campo de contraseña del formulario de edición.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: DatabaseConnectionPasswordResponseDto })
+  async password(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<DatabaseConnectionPasswordResponseDto> {
+    return { password: await this.databasesService.revealPassword(req.user.id, id) };
+  }
+}

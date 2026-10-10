@@ -10,6 +10,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { SftpModule } from './sftp/sftp.module';
 import { CacheModule } from './cache/cache.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DatabasesModule } from './databases/databases.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -52,6 +53,7 @@ import { APP_GUARD } from '@nestjs/core';
     MonitoringModule,
     SftpModule,
     NotificationsModule,
+    DatabasesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

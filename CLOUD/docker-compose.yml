@@ -1,0 +1,24 @@
+# StartCode Cloud — despliegue con docker compose (ver README.md).
+#   cp .env.example .env.production   # y completa CLOUD_JWT_SECRET y CLOUD_ADMIN_PASSWORD
+#   docker compose up -d --build
+services:
+  cloud:
+    build: .
+    image: startcode-cloud:latest
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      CLOUD_DATA_DIR: /data
+      CLOUD_ALLOWED_ROOTS: /storage
+    ports:
+      - "${CLOUD_PORT:-3100}:3100"
+    volumes:
+      # Estado interno (usuarios y sesiones).
+      - cloud-data:/data
+      # Archivos de Home y Backups. Cambia la carpeta del host por la del
+      # disco de almacenamiento; debe ser escribible por el uid 1000 (node).
+      - ${CLOUD_STORAGE_DIR:-./storage}:/storage
+
+volumes:
+  cloud-data:

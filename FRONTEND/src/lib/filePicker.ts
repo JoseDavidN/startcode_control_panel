@@ -6,8 +6,14 @@
  * eventos HTML no reciben archivos; por eso la ventana declara
  * `dragDropEnabled: false` en `tauri.conf.json`. Con eso, el mismo camino web
  * —objetos `File`, que el navegador transmite desde disco sin cargarlos en
- * memoria— funciona en los dos sitios y no hace falta el plugin `fs`.
+ * memoria— funciona en los dos sitios para soltar.
+ *
+ * Para *elegir*, la app de escritorio usa el diálogo nativo del sistema
+ * (`filePicker.tauri.ts`, plugins `dialog` y `fs`); el navegador, el
+ * `<input type="file">`.
  */
+
+import { IS_TAURI } from '@lib/tauriStore';
 
 export interface PickedFile {
 	/** Ruta POSIX relativa a la raíz de la selección: "dist/assets/app.js" */
@@ -30,8 +36,13 @@ let provider: FilePickerProvider | null = null;
 export async function getFilePicker(): Promise<FilePickerProvider> {
 	if (provider) return provider;
 
-	const { webFilePicker } = await import('./filePicker.web');
-	provider = webFilePicker;
+	if (IS_TAURI) {
+		const { tauriFilePicker } = await import('./filePicker.tauri');
+		provider = tauriFilePicker;
+	} else {
+		const { webFilePicker } = await import('./filePicker.web');
+		provider = webFilePicker;
+	}
 	return provider;
 }
 

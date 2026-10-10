@@ -9,6 +9,11 @@ import { API_CONFIG } from '@utils/constants';
 import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { AssistantLauncher } from '@components/assistant/AssistantPanel';
 import { toSingleLine } from '@utils/commands';
+import { useContextMenu } from '@hooks/useContextMenu';
+import { MenuIcon } from '@components/common/ContextMenu';
+import { copyText } from '@lib/clipboard';
+import { readClipboard } from '@lib/textEditing';
+import { notify } from '@services/notification.service';
 
 /* La terminal se pinta con su propia paleta —la de una consola— y no con los
    tokens del tema: un fondo claro con texto de color de marca no es legible
@@ -69,6 +74,30 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
     socketRef.current.emit('terminal:input', line);
     termRef.current?.focus();
   }, status === 'ready');
+
+  /* Clic derecho: la selección de xterm no es la del documento, así que la
+     terminal da su propio menú. Pegar hace lo mismo que Ctrl + V. */
+  const { openContextMenu } = useContextMenu();
+  const onContextMenu = (e: React.MouseEvent) => {
+    const term = termRef.current;
+    if (!term) return;
+    const selection = term.getSelection();
+    openContextMenu(e, [
+      ...(selection ? [{
+        id: 'copy', label: 'Copiar', icon: <MenuIcon name="copy" />,
+        onSelect: () => { copyText(selection).then(() => term.focus(), () => notify.error('No se pudo copiar')); },
+      }] : []),
+      ...(status === 'ready' ? [{
+        id: 'paste', label: 'Pegar', shortcut: 'Ctrl+V', icon: <MenuIcon name="paste" />,
+        onSelect: () => {
+          readClipboard().then(
+            text => { if (text) term.paste(text); term.focus(); },
+            () => notify.error('No se pudo pegar', 'Usa Ctrl + V.'),
+          );
+        },
+      }] : []),
+    ]);
+  };
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -209,7 +238,7 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
         </div>
 
         <div className="flex-1 min-h-0 p-3" style={{ background: THEME.background }}>
-          <div ref={hostRef} className="w-full h-full" />
+          <div ref={hostRef} onContextMenu={onContextMenu} className="w-full h-full" />
         </div>
       </div>
     </div>,

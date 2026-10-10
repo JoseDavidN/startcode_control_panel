@@ -22,6 +22,10 @@ import { barGradient } from '@utils/metrics';
 import { ROUTES } from '@utils/constants';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
+import { useCloudConnection } from '@hooks/useCloudConnection';
+import { useCloudStorage } from '@hooks/useCloudData';
+import { formatBytes } from '@utils/cloud';
+import { Select } from '@components/common/Select';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
 
@@ -29,7 +33,7 @@ import { Card } from '@components/common/Card';
 /* `pending`: la tarjeta ya tiene su sitio pero el módulo que la alimenta
    todavía no existe; se marca en vez de enseñar un cero que parecería real. */
 const Kpi = ({ label, value, sub, icon, tone = 'violet', accent, pending }: {
-  label: string; value: string | number; sub?: string;
+  label: string; value: React.ReactNode; sub?: string;
   icon: React.ReactNode; tone?: 'violet' | 'emerald' | 'sky' | 'amber'; accent?: string;
   pending?: boolean;
 }) => {
@@ -237,6 +241,17 @@ export const Dashboard: React.FC = () => {
       .map(([engine, n]) => `${n} ${DATABASE_ENGINE_LABELS[engine]}`)
       .join(' · ');
   }, [dbConnections]);
+
+  /* Cloud: espacio usado/total del disco de la nube y estado de la conexión. */
+  const cloud = useCloudConnection();
+  const cloudConnected = cloud.status === 'connected';
+  const { data: storageData } = useCloudStorage(cloud.connection, cloudConnected);
+  const cloudStorage = cloudConnected ? storageData : undefined;
+  const cloudHost = cloud.connection ? cloud.connection.url.replace(/^https?:\/\//, '') : '';
+  const cloudSub = cloud.status === 'connected' ? `En línea · ${cloudHost}`
+    : cloud.status === 'connecting' ? 'Conectando con la nube…'
+      : cloud.connection ? `Sin respuesta · ${cloudHost}`
+        : 'Sin conectar · conéctala desde Cloud';
   const { settings: monitoring } = useMonitoringSettings();
 
   const [selected, setSelected] = useState<string | undefined>();
@@ -324,10 +339,11 @@ export const Dashboard: React.FC = () => {
             accent="text-amber-300" tone="amber"
             sub={dbSummary}
             icon={icons.database} />
-          {/* Pendiente: estado del servicio cloud */}
-          <Kpi label="Cloud" value="—" tone="sky" pending
-            sub="Estado en línea · con el módulo cloud"
-            icon={icons.cloud} />
+          <Kpi label="Cloud" tone="sky" accent="text-sky-300" icon={icons.cloud}
+            value={cloudStorage
+              ? <>{formatBytes(cloudStorage.used)}<span className="text-lg font-semibold text-white/40">/{formatBytes(cloudStorage.total)}</span></>
+              : '—'}
+            sub={cloudSub} />
         </div>
 
         {/* Gráfica 24 h */}
@@ -336,13 +352,13 @@ export const Dashboard: React.FC = () => {
             right={
               servers.length > 1 ? (
                 <div className="glass-input rounded-xl h-9 flex items-center px-3">
-                  <select
+                  <Select
                     value={chartServer ?? ''}
-                    onChange={e => setSelected(e.target.value)}
-                    className="bg-transparent outline-none text-sm text-white/90 pr-1"
-                  >
-                    {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                    options={servers.map(s => ({ value: s.id, label: s.name }))}
+                    onChange={setSelected}
+                    aria-label="Servidor de la gráfica"
+                    className="text-white/90"
+                  />
                 </div>
               ) : (
                 <span className="text-xs text-white/40">

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
+import { Select } from '@components/common/Select';
 import { useCreateServer } from '@hooks/useServers';
 import { useAgentInstallProgress, useInstallAgent } from '@hooks/useAgentInstall';
 import { ConnectionLoading } from './ConectionLoading';
@@ -306,12 +307,8 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
           <div>
             <Label>Sistema Operativo *</Label>
             <div className={`${wrapCls}`}>
-              <select name="os" value={formData.os} onChange={handleChange}
-                required className="flex-1 bg-transparent outline-none text-sm text-white/90">
-                {OS_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <Select className="flex-1 text-white/90" value={formData.os} options={OS_OPTIONS}
+                onChange={os => setFormData(prev => ({ ...prev, os }))} aria-label="Sistema operativo" />
             </div>
           </div>
         </div>

@@ -24,6 +24,7 @@ const Servers = lazy(() => import('@pages/servers/Servers').then(m => ({ default
 const Databases = lazy(() => import('@pages/databases/Databases').then(m => ({ default: m.Databases })));
 const DatabaseDetail = lazy(() =>
   import('@pages/databases/DatabaseDetail').then(m => ({ default: m.DatabaseDetail })));
+const Cloud = lazy(() => import('@pages/cloud/Cloud').then(m => ({ default: m.Cloud })));
 
 /* El Suspense va por página y no alrededor de <Routes>: así el layout (barra
    lateral, cabecera) se queda en pantalla mientras llega el chunk. */
@@ -66,6 +67,7 @@ export const AppRoutes = () => {
           <Route path={ROUTES.SERVERS} element={<Page><Servers /></Page>} />
           <Route path={ROUTES.DATABASES} element={<Page><Databases /></Page>} />
           <Route path={ROUTES.DATABASE_DETAIL} element={<Page><DatabaseDetail /></Page>} />
+          <Route path={ROUTES.CLOUD} element={<Page><Cloud /></Page>} />
           <Route path={ROUTES.NOTIFICATIONS} element={<Page><Notifications /></Page>} />
           <Route path={ROUTES.SETTINGS} element={<Page><Settings /></Page>} />
         </Route>

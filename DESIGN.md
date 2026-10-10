@@ -271,6 +271,26 @@ El selector compuesto es necesario: `.sb-row` declara `border: 1px solid transpa
 </div>
 ```
 
+### Select (desplegable)
+**Siempre usar el componente `Select`** de `components/common/Select.tsx`, nunca `<select>` nativo: su lista la dibuja el sistema operativo y no sigue el tema. El componente es solo el disparador; el campo lo pone quien lo usa y la lista se alinea con el `.glass-input` que lo rodea.
+
+```tsx
+<div className="glass-input rounded-xl h-11 flex items-center gap-2 px-3.5">
+  <Select value={os} options={[{ value: 'ubuntu', label: 'Ubuntu' }]} onChange={setOs}
+    aria-label="Sistema operativo" className="flex-1 text-white/90" />
+</div>
+```
+- La lista va en un portal al `body` (como el `Modal`) con `glass-float elev-float border border-hairline rounded-xl` y `z-[70]`, por encima de modales y del asistente. Se abre hacia arriba si abajo no cabe y se cierra al hacer scroll fuera de ella.
+- Opción resaltada con `bg-tint-hover`; la elegida, en `text-white` con un check `text-violet-300`. `hint` muestra un texto secundario monoespaciado a la derecha.
+- Teclado: flechas, Inicio/Fin, Enter/Espacio, Escape (dentro de un modal cierra solo la lista) y una letra salta a la opción que empieza por ella.
+
+### Menú contextual (clic derecho)
+El menú del sistema **no se muestra nunca**: `ContextMenuProvider` (`contexts/ContextMenuContext.tsx`, montado en `AppProviders`) lo cancela en toda la app y abre el propio (`components/common/ContextMenu.tsx`). Mismo aspecto que la lista del `Select`: portal al `body`, `glass-float elev-float border border-hairline rounded-xl`, `z-[80]`; cada opción con icono, texto y atajo opcional.
+
+- Un componente da sus opciones desde `onContextMenu` con `useContextMenu().openContextMenu(e, items)`, que tiene prioridad.
+- Si no registró nada, salen las de texto: en un campo, Cortar y Copiar si hay selección (nunca en contraseñas) y Pegar si es editable; fuera de los campos, Copiar si hay texto seleccionado.
+- Sin opciones no aparece nada. En desarrollo, Mayús + clic derecho deja el menú del navegador para inspeccionar.
+
 ### Toggle (switch)
 Usar el componente `Toggle` existente en `Settings.tsx`. Clases clave:
 - Track on: `.grad-brand border-transparent elev-brand-sm`
@@ -325,10 +345,12 @@ Siempre `rounded-2xl`. Nunca `rounded-md` ni `rounded-lg` en paneles principales
 Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 - **Se monta en el `body` con un portal**, no donde se use. Es obligatorio: `.glass` lleva `backdrop-filter` y `.mo-view` anima `transform`, y cualquiera de los dos convierte al ancestro en bloque contenedor, así que un `position: fixed` dentro de una tarjeta deja de medirse contra la ventana y el modal queda encerrado en ella. Cualquier overlay a pantalla completa que no use este componente (la terminal) tiene que portarse igual.
 - Backdrop: `bg-black/60 backdrop-blur-md`
-- Contenedor: `glass elev-modal rounded-2xl grain` con `max-h-[88vh] flex flex-col`
+- Contenedor: `glass elev-modal rounded-2xl grain` con `max-h-full flex flex-col`, dentro de un overlay con `py-12`: nunca supera la ventana y siempre deja 48 px arriba y abajo. `tall` lo estira a todo ese alto (lector de archivos)
 - Header: `shrink-0`
 - Body: `overflow-y-auto modal-scroll flex-1 min-h-0`
 - Tamaños: `sm=max-w-md`, `md=max-w-2xl`, `lg=max-w-3xl`, `xl=max-w-5xl`
+- `dismissable={false}`: para un paso obligatorio (la conexión de Cloud). Sin botón de cerrar ni cierre con Escape o el fondo; el contenido debe ofrecer siempre una salida (p. ej. volver a otra vista).
+- `actions`: botones de la cabecera, a la izquierda del de cerrar (p. ej. Descargar en el lector de Cloud). Van con `glass-soft row-hit` y `h-8`, la altura del botón de cerrar
 
 ### Zona de arrastrar y soltar
 ```tsx
@@ -493,7 +515,7 @@ diff <(grep -oE '^  --[a-z0-9-]+' dark.css) <(grep -oE '^  --[a-z0-9-]+' <id>.cs
 3. **No escribir color literal.** Ni en CSS ni en `style={{…}}`: siempre `var(--token)` o clases Tailwind de las familias ya remapeadas (violet, purple, fuchsia, pink para la marca; emerald, sky, rose, amber para lo semántico). Un `#hex` nuevo en un componente es un bug de tema.
 4. **No usar fondos opacos** en paneles de interfaz. Todo panel de UI lleva `.glass` o `.glass-soft`.
 5. **No usar `border-radius` menor a `rounded-xl`** en paneles y tarjetas. Elementos inline (badges, pills) pueden usar `rounded-full` o `rounded-md`.
-6. **No crear sliders nativos.** Siempre usar el componente `RangeSlider`.
+6. **No crear sliders ni selects nativos.** Siempre usar los componentes `RangeSlider` y `Select`.
 7. **No crear modales custom.** Siempre usar el componente `Modal` existente.
 8. **No aplicar fondos opacos propios.** El fondo claro es cosa del tema Solar, que llega por `--surface-rgb` y los tokens: un componente nunca decide por su cuenta que su fondo es claro u oscuro.
 9. **Todo componente debe funcionar en los tres temas.** El tema es una preferencia del usuario (Configuración → Aspecto, persistida en la cuenta). Antes de dar por terminado un componente, revisarlo en Nocturno, Aurora y Solar: contraste del texto, badges de estado y tinta sobre botones de marca.

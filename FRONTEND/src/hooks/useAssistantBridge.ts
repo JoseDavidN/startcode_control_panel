@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef } from 'react';
 import { AssistantContext, type AssistantContextValue } from '@contexts/assistant-context';
-import type { AssistantSourceType, AssistantTargetKind } from '@typings/assistant.types';
+import type { AssistantDatabaseRef, AssistantSourceType, AssistantTargetKind } from '@typings/assistant.types';
 
 /** Estado y registro del asistente global (`AssistantProvider`). */
 export function useAssistant(): AssistantContextValue {
@@ -20,15 +20,18 @@ export function useAssistantSource(
 	title: string,
 	read: () => string,
 	enabled = true,
+	database?: () => AssistantDatabaseRef | null,
 ) {
 	const ctx = useContext(AssistantContext);
 	const readRef = useRef(read);
 	readRef.current = read;
+	const databaseRef = useRef(database);
+	databaseRef.current = database;
 	const register = ctx?.registerSource;
 
 	useEffect(() => {
 		if (!register || !enabled) return;
-		return register({ id, type, title, read: () => readRef.current() });
+		return register({ id, type, title, read: () => readRef.current(), database: () => databaseRef.current?.() ?? null });
 	}, [register, id, type, title, enabled]);
 }
 

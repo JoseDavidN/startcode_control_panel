@@ -128,13 +128,13 @@ export const databasesApi = {
 
 
 	/** Bases que ve el usuario con datos sin guardar (selector del formulario). */
-	async previewDatabases(form: Omit<DatabaseConnectionForm, 'name'> & { connectionId?: string }): Promise<DatabaseSchema[]> {
+	async previewDatabases(form: Omit<DatabaseConnectionForm, 'name' | 'tag'> & { connectionId?: string }): Promise<DatabaseSchema[]> {
 		const data = unwrap<DatabaseSchema[]>(await apiService.post<DatabaseSchema[]>(`${BASE}/schemas`, form));
 		return Array.isArray(data) ? data : [];
 	},
 
 	/** Prueba datos sin guardarlos; con `connectionId` y sin `password` usa la guardada. */
-	async test(form: Omit<DatabaseConnectionForm, 'name'> & { connectionId?: string }): Promise<DatabaseTestResult> {
+	async test(form: Omit<DatabaseConnectionForm, 'name' | 'tag'> & { connectionId?: string }): Promise<DatabaseTestResult> {
 		return unwrap<DatabaseTestResult>(await apiService.post<DatabaseTestResult>(`${BASE}/test`, form));
 	},
 };

@@ -57,6 +57,7 @@ export class ServersService {
       username: createServerDto.username,
       privateKey: createServerDto.privateKey,
       os: createServerDto.os,
+      tag: createServerDto.tag ?? null,
       description: createServerDto.description,
       ownerId: user.id,
       /* PENDING, no OFFLINE: el servidor todavía no está caído, es que aún no
@@ -115,6 +116,7 @@ export class ServersService {
         'privateKey',
         'status',
         'os',
+        'tag',
         'description',
         'metadata',
         'ownerId',
@@ -176,6 +178,7 @@ export class ServersService {
     if (updateServerDto.username !== undefined)
       server.username = updateServerDto.username;
     if (updateServerDto.os !== undefined) server.os = updateServerDto.os;
+    if (updateServerDto.tag !== undefined) server.tag = updateServerDto.tag;
     if (updateServerDto.description !== undefined)
       server.description = updateServerDto.description;
     if (updateServerDto.status !== undefined)

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ServerDetail } from '@components/servers/ServerDetail';
 import { AddServerModal, EditServerModal, DeleteServerModal } from '@components/common';
 import { type ServerData } from '@typings/DashboardTypes';
@@ -10,6 +10,10 @@ import { formatUptime, timeAgo } from '@utils/time';
 import { useAppearance } from '@contexts/AppearanceContext';
 import type { ServersView } from '@contexts/AppearanceContext';
 import { Card } from '@components/common/Card';
+import { FilterMenu } from '@components/common/FilterMenu';
+import { TagBadge } from '@components/common/TagBadge';
+import { osLabel } from '@utils/servers';
+import { TAG_OPTIONS, type ResourceTag } from '@utils/tags';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
 
@@ -24,13 +28,16 @@ const Tile = ({ icon, label, value, tone = 'violet' }: {
     amber:   'from-amber-500/25 to-amber-500/5 text-amber-300 ring-amber-400/20',
     fuchsia: 'from-fuchsia-500/25 to-fuchsia-500/5 text-fuchsia-300 ring-fuchsia-400/20',
   };
+  /* Ícono a la izquierda y dato al lado: la tarjeta no crece en alto por cada métrica. */
   return (
-    <div className="flex flex-col items-center text-center gap-2">
-      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tones[tone] ?? tones.violet} ring-1 flex items-center justify-center backdrop-blur-md`}>
+    <div className="flex items-center gap-2.5 min-w-0">
+      <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${tones[tone] ?? tones.violet} ring-1 flex items-center justify-center backdrop-blur-md shrink-0 [&_svg]:w-4 [&_svg]:h-4`}>
         {icon}
       </div>
-      <div className="text-[11px] uppercase tracking-wider text-white/45 font-medium">{label}</div>
-      <div className="text-lg font-bold tracking-tight">{value}</div>
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-wider text-white/45 font-medium leading-tight">{label}</div>
+        <div className="text-sm font-bold tracking-tight tabular-nums truncate">{value}</div>
+      </div>
     </div>
   );
 };
@@ -46,11 +53,8 @@ const I = ({ d, className = 'w-5 h-5' }: { d: string; className?: string }) => (
 const icons = {
   server:   <I d="M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01" className="w-7 h-7" />,
   search:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>,
-  filter:   <I d="M3 5h18l-7 9v6l-4-2v-4L3 5z" className="w-4 h-4" />,
-  refresh:  <I d="M3 12a9 9 0 0115-6.7L21 8M21 3v5h-5M21 12a9 9 0 01-15 6.7L3 16M3 21v-5h5" className="w-4 h-4" />,
   monitor:  <I d="M3 4h18v12H3zM8 20h8M12 16v4" className="w-6 h-6" />,
-  plus:     <I d="M12 5v14M5 12h14" className="w-7 h-7" />,
-  plusSm:   <I d="M12 5v14M5 12h14" className="w-5 h-5" />,
+  plus:     <I d="M12 5v14M5 12h14" className="w-4 h-4" />,
   cpu:      <I d="M6 6h12v12H6zM9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" className="w-5 h-5" />,
   ram:      <I d="M2.5 7h19v10H2.5zM7 11v2M11 11v2M15 11v2M19 11v2M5 17v2M9 17v2M13 17v2M17 17v2" className="w-5 h-5" />,
   disk:     <I d="M3 4h18v16H3zM3 14h18" className="w-5 h-5" />,
@@ -73,14 +77,14 @@ const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
     <button
       onClick={e => { e.stopPropagation(); onEdit(); }}
       title="Editar servidor" aria-label="Editar servidor"
-      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/55 hover:text-white row-hit flex items-center justify-center"
+      className="mo-tab w-8 h-8 rounded-lg glass-soft text-white/55 hover:text-white row-hit flex items-center justify-center"
     >
       {icons.edit}
     </button>
     <button
       onClick={e => { e.stopPropagation(); onDelete(); }}
       title="Eliminar servidor" aria-label="Eliminar servidor"
-      className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/50 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center"
+      className="mo-tab w-8 h-8 rounded-lg glass-soft text-white/50 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center"
     >
       {icons.trash}
     </button>
@@ -105,8 +109,9 @@ const StatusBadge = ({ status }: { status: ServerRuntime['state'] }) => {
 };
 
 /* ── Server card (glassmorphism) ──────────────────────────────────── */
-const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
+const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
   server: ServerData;
+  tag: ResourceTag | null;
   rt: ServerRuntime;
   onClick: (s: ServerData) => void;
   onEdit: () => void;
@@ -122,25 +127,26 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
       className="text-left group w-full cursor-pointer"
     >
-      <Card className="p-5 row-hit relative">
+      <Card className="p-4 row-hit relative">
         {/* Header */}
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-violet-200">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-violet-200 shrink-0 [&_svg]:w-5 [&_svg]:h-5">
             {icons.monitor}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <div className="font-semibold text-lg">{server.name}</div>
+              <div className="font-semibold truncate">{server.name}</div>
               <StatusBadge status={rt.state} />
+              <TagBadge tag={tag} />
               {rt.live && rt.state === 'online' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse" />
               )}
             </div>
-            <div className="text-sm text-white/55 mt-0.5 font-mono">
+            <div className="text-xs text-white/55 mt-0.5 font-mono truncate">
               {server.ip} · {server.os}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <RowActions onEdit={onEdit} onDelete={onDelete} />
             <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition">
               {icons.chevron}
@@ -149,7 +155,7 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
         </div>
 
         {/* Metric tiles row 1 */}
-        <div className={`grid grid-cols-3 gap-4 mt-5 ${rt.stale ? 'opacity-60' : ''}`}
+        <div className={`grid grid-cols-3 gap-x-3 gap-y-3 mt-4 ${rt.stale ? 'opacity-60' : ''}`}
           title={rt.stale ? `Último reporte ${timeAgo(rt.lastMetricAt)}` : undefined}>
           <Tile icon={icons.cpu}    label="CPU"   value={pct(rt.cpu)}    tone="emerald" />
           <Tile icon={icons.ram}    label="RAM"   value={pct(rt.memory)} tone="sky" />
@@ -157,14 +163,14 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
         </div>
 
         {/* Metric tiles row 2: lo que el agente sí reporta */}
-        <div className={`grid grid-cols-3 gap-4 mt-4 ${rt.stale ? 'opacity-60' : ''}`}>
+        <div className={`grid grid-cols-3 gap-x-3 gap-y-3 mt-3 ${rt.stale ? 'opacity-60' : ''}`}>
           <Tile icon={icons.wrench}   label="Servicios" value={count(rt.services)}  tone="fuchsia" />
           <Tile icon={icons.activity} label="Procesos"  value={count(rt.processes)} tone="amber" />
           <Tile icon={icons.uptime}   label="Activo"    value={rt.uptime === null ? dash : formatUptime(rt.uptime)} tone="sky" />
         </div>
 
         {/* Footer: frescura del dato */}
-        <div className="border-t border-line mt-5 pt-4 flex items-center justify-between gap-3 text-sm">
+        <div className="border-t border-line mt-4 pt-3 flex items-center justify-between gap-3 text-sm">
           {rt.hasMetrics ? (
             <span className={`flex items-center gap-2 ${rt.stale ? 'text-amber-300' : 'text-white/55'}`}>
               {icons.clock}
@@ -172,7 +178,7 @@ const GlassServerCard = ({ server, rt, onClick, onEdit, onDelete }: {
               <span className="text-xs font-mono">{timeAgo(rt.lastMetricAt)}</span>
             </span>
           ) : (
-            <span className="text-white/40">Instala el agente para ver métricas</span>
+            <span className="text-xs text-white/40">Instala el agente para ver métricas</span>
           )}
           {rt.servicesTotal !== null && (
             <span className="text-xs text-white/45 tabular-nums">
@@ -205,8 +211,9 @@ const MiniMetric = ({ label, value, gradient }: { label: string; value: number |
 );
 
 /* ── Fila (vista de lista) ────────────────────────────────────────── */
-const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
+const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
   server: ServerData;
+  tag: ResourceTag | null;
   rt: ServerRuntime;
   onClick: (s: ServerData) => void;
   onEdit: () => void;
@@ -228,6 +235,7 @@ const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
         <div className="flex items-center gap-2">
           <span className="font-semibold truncate">{server.name}</span>
           <StatusBadge status={rt.state} />
+          <TagBadge tag={tag} />
           {rt.live && rt.state === 'online' && (
             <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse shrink-0" />
           )}
@@ -262,6 +270,11 @@ const ServerRow = ({ server, rt, onClick, onEdit, onDelete }: {
     </div>
   );
 };
+
+/* ── Filtros ──────────────────────────────────────────────────────── */
+/* '' = sin filtro; 'none' en la etiqueta = servidores sin etiqueta. */
+interface ServerFilters { os: string; tag: ResourceTag | 'none' | '' }
+const NO_FILTERS: ServerFilters = { os: '', tag: '' };
 
 /* ── Selector de vista ────────────────────────────────────────────── */
 const ViewToggle = ({ value, onChange }: { value: ServersView; onChange: (v: ServersView) => void }) => {
@@ -304,12 +317,13 @@ export const Servers: React.FC = () => {
   const [editing, setEditing] = useState<Server | null>(null);
   const [deleting, setDeleting] = useState<Server | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<ServerFilters>(NO_FILTERS);
 
   /* Preferencia persistida en la cuenta del usuario */
   const { serversView, setServersView } = useAppearance();
 
   const { data: servers = [], isLoading, isError } = useServers();
-  const refreshMutation = useRefreshAllServers();
+  const { mutate: refreshServers } = useRefreshAllServers();
   /* Los números vienen de aquí, no de `GET /servers`: `metadata.cpu` y compañía
      no los escribe nadie en el backend. */
   const { runtime, onlineCount } = useServersLive();
@@ -330,14 +344,22 @@ export const Servers: React.FC = () => {
     };
   };
 
-  const filteredServers = useMemo(
-    () => servers.filter(s =>
-      !searchTerm ||
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.host.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
-    [servers, searchTerm]
-  );
+  const osList = useMemo(() => [...new Set(servers.map(s => s.os))].sort((a, b) => osLabel(a).localeCompare(osLabel(b))), [servers]);
+
+  const filteredServers = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return servers.filter(s =>
+      (!term || s.name.toLowerCase().includes(term) || s.host.toLowerCase().includes(term)) &&
+      (!filters.os || s.os === filters.os) &&
+      (!filters.tag || (filters.tag === 'none' ? !s.tag : s.tag === filters.tag))
+    );
+  }, [servers, searchTerm, filters]);
+
+  /* Al entrar en la vista (y al volver del detalle) los datos se piden de nuevo. */
+  const showingList = selectedServer === null;
+  useEffect(() => {
+    if (showingList) refreshServers();
+  }, [showingList, refreshServers]);
 
   if (selectedServer) {
     return <ServerDetail server={selectedServer} onBack={() => setSelectedServer(null)} />;
@@ -361,7 +383,8 @@ export const Servers: React.FC = () => {
       </Card>
 
       {/* Search + vista + filtros */}
-      <Card className="p-3 flex items-center gap-3 shrink-0">
+      {/* Encima de la rejilla: el menú de filtros cae sobre las tarjetas. */}
+      <Card className="p-3 flex items-center gap-3 shrink-0 relative z-20">
         <div className="flex-1 flex items-center gap-2 px-3 min-w-0">
           {icons.search}
           <input
@@ -374,15 +397,26 @@ export const Servers: React.FC = () => {
 
         <ViewToggle value={serversView} onChange={setServersView} />
 
-        <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium transition shrink-0">
-          {icons.filter} Filtros
-        </button>
+        <FilterMenu
+          onClear={() => setFilters(NO_FILTERS)}
+          groups={[
+            {
+              id: 'os', label: 'Sistema operativo', allLabel: 'Todos', value: filters.os,
+              options: osList.map(os => ({ value: os, label: osLabel(os) })),
+              onChange: os => setFilters(f => ({ ...f, os })),
+            },
+            {
+              id: 'tag', label: 'Etiqueta', allLabel: 'Todas', value: filters.tag,
+              options: [...TAG_OPTIONS, { value: 'none', label: 'Sin etiqueta' }],
+              onChange: tag => setFilters(f => ({ ...f, tag: tag as ServerFilters['tag'] })),
+            },
+          ]}
+        />
         <button
-          onClick={() => refreshMutation.mutate()}
-          disabled={refreshMutation.isPending}
-          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white elev-brand hover:elev-brand-hi text-sm font-medium transition disabled:opacity-60 shrink-0"
+          onClick={() => setIsAddModalOpen(true)}
+          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white elev-brand hover:elev-brand-hi text-sm font-medium transition shrink-0"
         >
-          {icons.refresh} Actualizar
+          {icons.plus} Agregar servidor
         </button>
       </Card>
 
@@ -400,34 +434,25 @@ export const Servers: React.FC = () => {
           </Card>
         )}
 
+        {!isLoading && !isError && servers.length > 0 && filteredServers.length === 0 && (
+          <Card className="p-8 text-center">
+            <p className="text-white/55">Ningún servidor coincide con la búsqueda o los filtros</p>
+          </Card>
+        )}
+
         {!isLoading && !isError && serversView === 'cards' && (
-          <div className="mo-panel grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="mo-panel grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
             {filteredServers.map(server => (
               <GlassServerCard
                 key={server.id}
                 server={transformServer(server)}
+                tag={server.tag ?? null}
                 rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
                 onClick={setSelectedServer}
                 onEdit={() => setEditing(server)}
                 onDelete={() => setDeleting(server)}
               />
             ))}
-
-            {/* Add new server tile */}
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="glass edge-dashed elev-flat rounded-2xl transition group flex items-center justify-center min-h-[280px] grain relative cursor-pointer"
-            >
-              <div className="flex flex-col items-center gap-3 text-white/40 group-hover:text-white/70 transition">
-                <div className="w-14 h-14 rounded-2xl grad-brand-soft border border-hairline flex items-center justify-center">
-                  {icons.plus}
-                </div>
-                <div className="text-sm font-medium">Agregar nuevo servidor</div>
-                <div className="text-xs text-white/35 max-w-[260px] text-center">
-                  Conecta una máquina nueva para empezar a monitorearla en tiempo real.
-                </div>
-              </div>
-            </button>
           </div>
         )}
 
@@ -439,6 +464,7 @@ export const Servers: React.FC = () => {
                   <ServerRow
                     key={server.id}
                     server={transformServer(server)}
+                    tag={server.tag ?? null}
                     rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
                     onClick={setSelectedServer}
                     onEdit={() => setEditing(server)}
@@ -448,21 +474,6 @@ export const Servers: React.FC = () => {
               </Card>
             )}
 
-            {/* Add new server row */}
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="w-full glass edge-dashed elev-flat rounded-2xl grain relative group flex items-center gap-4 px-5 py-4 transition cursor-pointer"
-            >
-              <div className="w-10 h-10 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-white/50 group-hover:text-white/80 transition shrink-0">
-                {icons.plusSm}
-              </div>
-              <div className="text-left text-white/40 group-hover:text-white/70 transition">
-                <div className="text-sm font-medium">Agregar nuevo servidor</div>
-                <div className="text-xs text-white/35">
-                  Conecta una máquina nueva para empezar a monitorearla en tiempo real.
-                </div>
-              </div>
-            </button>
           </div>
         )}
       </div>

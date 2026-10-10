@@ -35,7 +35,10 @@ export class NotificationPrefsDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() highCpuUsage?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() highMemoryUsage?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() highDiskUsage?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() securityAlerts?: boolean;
+  /* Obsoleto: la notificación del sistema se configura en cada equipo. Se
+     acepta para no romper versiones anteriores de la app, pero no se guarda
+     (`mergePreferences` solo conserva las claves conocidas). */
+  @ApiPropertyOptional({ deprecated: true }) @IsOptional() @IsBoolean() securityAlerts?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() weeklyReport?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() productNews?: boolean;
 }

@@ -200,6 +200,7 @@ export class DatabasesService {
       username: dto.username?.trim() ?? '',
       database: normalizeDatabase(dto.engine, dto.database),
       passwordEnc: dto.password ? this.cipher.encrypt(dto.password) : null,
+      tag: dto.tag ?? null,
     });
     /* Guardar no conecta: el estado queda «sin comprobar» hasta que se pruebe
        o se entre a la vista de consultas. */
@@ -219,6 +220,8 @@ export class DatabasesService {
     if (dto.host !== undefined) conn.host = dto.host.trim();
     if (dto.port !== undefined) conn.port = dto.port;
     if (dto.username !== undefined) conn.username = dto.username.trim();
+    /* La etiqueta no toca la conexión: queda fuera de la huella y no cierra sesiones. */
+    if (dto.tag !== undefined) conn.tag = dto.tag;
     /* Cambiar de motor revalida la base: un índice de Redis no es un nombre SQL. */
     if (dto.database !== undefined || dto.engine !== undefined) {
       conn.database = normalizeDatabase(engine, dto.database ?? conn.database ?? undefined);
@@ -342,6 +345,7 @@ function toResponse(c: DatabaseConnection): DatabaseConnectionResponseDto {
     port: c.port,
     username: c.username,
     database: c.database,
+    tag: c.tag,
     hasPassword: Boolean(c.passwordEnc),
     status: c.status,
     version: c.version,

@@ -12,15 +12,74 @@ import { IS_TAURI } from '@lib/tauriStore';
    El gate es IS_TAURI, no un try/catch alrededor del import: Vite resuelve el
    módulo también en el navegador. Los permisos están en
    src-tauri/capabilities/default.json. */
-async function sendNativeTauri(title: string, body: string): Promise<boolean> {
+
+/* macOS: el plugin usa NSUserNotificationCenter, que nunca pide permiso,
+   dice que está concedido y el sistema descarta la notificación sin avisar.
+   Ahí van los comandos propios (src-tauri/src/macos_notify.rs), con
+   UNUserNotificationCenter. Fallan sin bundle (`tauri dev`): entonces, el plugin. */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
+
+/** `granted`, `denied` o `default` (aún no se preguntó). */
+export type NativePermission = 'granted' | 'denied' | 'default';
+
+async function invokeTauri<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(cmd, args);
+}
+
+async function macPermission(request: boolean): Promise<NativePermission | null> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    let granted = await invoke<boolean | null>('plugin:notification|is_permission_granted');
+    return await invokeTauri<NativePermission>('macos_notification_permission', { request });
+  } catch (error) {
+    console.warn('Permiso de notificaciones de macOS no disponible:', error);
+    return null;
+  }
+}
+
+/** Estado del permiso del sistema; con `request` se pide si aún no se preguntó. */
+export async function nativePermission(request = false): Promise<NativePermission> {
+  if (IS_TAURI) {
+    if (IS_MAC) {
+      const mac = await macPermission(request);
+      if (mac) return mac;
+    }
+    try {
+      let granted = await invokeTauri<boolean | null>('plugin:notification|is_permission_granted');
+      if (!granted && request) {
+        granted = (await invokeTauri<string>('plugin:notification|request_permission')) === 'granted';
+      }
+      return granted ? 'granted' : request ? 'denied' : 'default';
+    } catch {
+      return 'denied';
+    }
+  }
+  if (typeof Notification === 'undefined') return 'denied';
+  if (request && Notification.permission === 'default') return Notification.requestPermission();
+  return Notification.permission;
+}
+
+async function sendNativeTauri(title: string, body: string): Promise<boolean> {
+  if (IS_MAC) {
+    const permission = await macPermission(true);
+    if (permission === 'denied') return false;
+    if (permission === 'granted') {
+      try {
+        await invokeTauri('macos_notify', { title, body });
+        return true;
+      } catch (error) {
+        console.warn('Notificación de macOS no entregada:', error);
+        return false;
+      }
+    }
+    /* null: sin bundle (desarrollo); se intenta con el plugin. */
+  }
+  try {
+    let granted = await invokeTauri<boolean | null>('plugin:notification|is_permission_granted');
     if (!granted) {
-      granted = (await invoke<string>('plugin:notification|request_permission')) === 'granted';
+      granted = (await invokeTauri<string>('plugin:notification|request_permission')) === 'granted';
     }
     if (!granted) return false;
-    await invoke('plugin:notification|notify', { options: { title, body } });
+    await invokeTauri('plugin:notification|notify', { options: { title, body } });
     return true;
   } catch (error) {
     console.warn('Notificación del sistema no disponible:', error);

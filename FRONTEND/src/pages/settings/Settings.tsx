@@ -527,7 +527,7 @@ const NotifRowFull = ({
 
 /* ── Pane: Notificaciones ─────────────────────────────────────────── */
 const NotifPane = () => {
-  const { prefs, setPrefs, testToast, testNative } = useNotifications();
+  const { prefs, setPrefs, testToast, testNative, securityAlerts, setSecurityAlerts, permission, requestPermission } = useNotifications();
   const set = (key: keyof NotifPrefs) => (v: boolean) => setPrefs({ ...prefs, [key]: v });
 
   return (
@@ -578,15 +578,26 @@ const NotifPane = () => {
           icon={<span className="text-emerald-300"><Icon name="shieldCheck" /></span>}
           title="Alertas de seguridad"
           desc="Intentos de acceso sospechosos y eventos críticos de seguridad. Se envían como notificación nativa del SO para garantizar visibilidad incluso fuera de la app."
-          on={prefs.securityAlerts} onChange={set('securityAlerts')}
+          on={securityAlerts} onChange={setSecurityAlerts}
           channel="native" onTest={testNative}
         />
-        {prefs.securityAlerts && (
+        {securityAlerts && (
           <div className="glass-soft rounded-xl p-3 mt-2 flex items-center gap-3 border border-amber-400/15">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-300 shrink-0"><path d="M12 9v4M12 17v.01"/><path d="M10.3 3.3L2 19a2 2 0 001.7 3h16.6A2 2 0 0022 19L13.7 3.3a2 2 0 00-3.4 0z"/></svg>
-            <p className="text-xs text-amber-200/80">
-              Activo. El SO deberá otorgar permiso de notificaciones a StartCode Panel la primera vez.
+            <p className="flex-1 text-xs text-amber-200/80">
+              {permission === 'granted'
+                ? 'Activo en este equipo. El sistema tiene permiso para mostrar las alertas.'
+                : permission === 'denied'
+                  ? 'El sistema no permite notificaciones de StartCode Panel. Actívalas en los ajustes de notificaciones del sistema operativo; mientras tanto, las alertas salen dentro de la app.'
+                  : 'Activo en este equipo. El sistema operativo pedirá permiso para mostrar notificaciones.'}
+              {' '}Este ajuste se guarda solo en este equipo.
             </p>
+            {permission === 'default' && (
+              <button onClick={() => void requestPermission()}
+                className="h-7 px-3 rounded-lg glass-soft text-xs text-white/75 hover:text-white row-hit transition shrink-0">
+                Pedir permiso
+              </button>
+            )}
           </div>
         )}
       </Group>

@@ -184,7 +184,7 @@ export const AssistantPanel: React.FC = () => {
     if (!question || chat.isPending || !ready) return;
     /* Se lee justo al enviar: es lo que se ve ahora en la terminal o el editor. */
     const context = activeSources
-      .map(s => ({ type: s.type, title: s.title, content: s.read().slice(-MAX_SOURCE_CHARS) }))
+      .map(s => ({ type: s.type, title: s.title, content: s.read().slice(-MAX_SOURCE_CHARS), database: s.database?.() ?? undefined }))
       .filter(c => c.content.trim());
     setInput('');
     chat.mutate({ message: question, context });
@@ -198,7 +198,7 @@ export const AssistantPanel: React.FC = () => {
 
   const panel = open && (
     <aside aria-label="Asistente IA"
-      className="fixed top-5 right-5 bottom-5 z-[60] w-[440px] max-w-[calc(100vw-40px)] glass elev-modal grain rounded-2xl flex flex-col overflow-hidden animate-slideUp">
+      className="fixed top-5 right-5 bottom-5 z-[60] w-[440px] max-w-[calc(100vw-40px)] glass glass-float elev-modal rounded-2xl flex flex-col overflow-hidden animate-slideUp">
       {/* Cabecera */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-line shrink-0">
         <span className="w-9 h-9 rounded-xl grad-brand flex items-center justify-center elev-brand-sm text-white shrink-0">

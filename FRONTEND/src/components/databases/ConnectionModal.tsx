@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from '@components/common/Modal';
+import { Select } from '@components/common/Select';
+import { TAG_FIELD_OPTIONS } from '@utils/tags';
 import { EngineBadge } from '@components/databases/EngineIcon';
 import { DatabasePicker } from '@components/databases/DatabasePicker';
 import { databasesApi } from '@services/databases.api';
@@ -28,12 +30,12 @@ interface ConnectionModalProps {
 
 const EMPTY_FORM: DatabaseConnectionForm = {
   engine: 'mysql', name: '', host: '', port: DATABASE_DEFAULT_PORTS.mysql,
-  username: '', password: '', database: '',
+  username: '', password: '', database: '', tag: null,
 };
 
 const toForm = (c: DatabaseConnection): DatabaseConnectionForm => ({
   engine: c.engine, name: c.name, host: c.host, port: c.port,
-  username: c.username, password: '', database: c.database ?? '',
+  username: c.username, password: '', database: c.database ?? '', tag: c.tag,
 });
 
 /* Lo que cambia de un motor a otro en el formulario. */
@@ -234,6 +236,15 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ connection, on
           <div className={wrapCls}>
             <input name="name" type="text" value={form.name} onChange={handleChange}
               required maxLength={100} placeholder="Ej: StartCode producción" className={inputCls} />
+          </div>
+        </div>
+
+        {/* Etiqueta (opcional): una sola, de la lista */}
+        <div>
+          <Label>Etiqueta (opcional)</Label>
+          <div className={wrapCls}>
+            <Select className="flex-1 text-white/90" value={form.tag ?? ''} options={TAG_FIELD_OPTIONS}
+              onChange={tag => setForm(prev => ({ ...prev, tag: tag || null }))} aria-label="Etiqueta" />
           </div>
         </div>
 

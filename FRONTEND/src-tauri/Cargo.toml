@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.5.0"
+version = "0.5.1"
 description = "StartCode Panel: panel de control de servidores"
 authors = ["StartCode"]
 license = ""
@@ -29,3 +29,22 @@ tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+
+# Notificaciones del sistema en macOS (src/macos_notify.rs): el plugin usa
+# NSUserNotificationCenter, que no pide permiso y el sistema descarta.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSBundle", "NSError", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+  "std",
+  "bitflags",
+  "block2",
+  "UNNotification",
+  "UNNotificationContent",
+  "UNNotificationRequest",
+  "UNNotificationSettings",
+  "UNNotificationSound",
+  "UNNotificationTrigger",
+  "UNUserNotificationCenter",
+] }

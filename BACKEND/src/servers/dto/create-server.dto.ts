@@ -1,6 +1,6 @@
-import { IsString, IsNumber, IsEnum, IsOptional, IsNotEmpty, MinLength, MaxLength, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsOptional, ValidateIf, IsNotEmpty, MinLength, MaxLength, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { ServerOs } from '../entities/server.entity';
+import { ServerOs, ServerTag } from '../entities/server.entity';
 
 export class CreateServerDto {
   @ApiProperty({
@@ -45,6 +45,16 @@ export class CreateServerDto {
   })
   @IsEnum(ServerOs, { message: 'El sistema operativo debe ser un valor válido' })
   os: ServerOs;
+
+  @ApiProperty({
+    description: 'Etiqueta del servidor (una sola, opcional). null la quita',
+    enum: ServerTag,
+    required: false,
+    nullable: true,
+  })
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsEnum(ServerTag, { message: 'La etiqueta debe ser un valor válido' })
+  tag?: ServerTag | null;
 
   @ApiProperty({
     description: 'Descripción del servidor',

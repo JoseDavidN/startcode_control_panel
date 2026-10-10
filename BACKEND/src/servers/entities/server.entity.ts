@@ -43,6 +43,15 @@ export enum ServerOs {
   OTHER = 'other',
 }
 
+/** Clasificación del servidor. Lista cerrada: el usuario elige una, no la escribe. */
+export enum ServerTag {
+  PRODUCTION = 'production',
+  STAGING = 'staging',
+  TESTING = 'testing',
+  DEVELOPMENT = 'development',
+  BACKUP = 'backup',
+}
+
 @Entity('tbl_servers')
 export class Server {
   @PrimaryGeneratedColumn('uuid')
@@ -68,6 +77,10 @@ export class Server {
 
   @Column({ type: 'enum', enum: ServerOs, name: 'enu_os' })
   os: ServerOs;
+
+  /** Una sola etiqueta por servidor, opcional. */
+  @Column({ type: 'enum', enum: ServerTag, nullable: true, name: 'enu_tag' })
+  tag: ServerTag | null;
 
   @Column({ type: 'text', nullable: true, name: 'str_description' })
   description: string;

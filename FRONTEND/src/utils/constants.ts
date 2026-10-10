@@ -40,6 +40,8 @@ export const STORAGE_KEYS = {
 	REMEMBER_ME: 'remember_me',
 	CLOUD_PINNED: 'cloud_pinned_folders',
 	CLOUD_CONNECTION: 'cloud_connection',
+	/** Notificación del sistema para alertas de seguridad: depende del equipo, no de la cuenta. */
+	NATIVE_SECURITY_ALERTS: 'native_security_alerts',
 };
 
 export const ROUTES = {

@@ -3,9 +3,36 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.5.1",
+      "type": "patch",
+      "date": "2026-10-10",
+      "title": "El asistente valida la estructura de la base",
+      "changes": {
+        "fixed": [
+          "Antes de escribir una consulta SQL, el asistente de IA lee la estructura real de la base abierta (tablas, vistas y columnas) y usa los nombres que existen: si pides «students total» la consulta sale con tbl_students_total y sus columnas reales",
+          "El asistente ya no inventa tablas ni columnas: si no las encuentra en la base, lo dice y te propone primero una consulta para comprobarlas",
+          "La estructura que lee el asistente ya no depende de haber desplegado las tablas en el árbol",
+          "Las notificaciones del sistema funcionan en macOS: la primera vez se pide el permiso con el aviso del sistema y la alerta aparece aunque la app esté en primer plano"
+        ],
+        "added": [
+          "Filtros en Servidores: por sistema operativo y por etiqueta, con el número de filtros activos en el botón",
+          "Etiqueta opcional para cada servidor al agregarlo o editarlo: Producción, Preproducción, Pruebas, Desarrollo o Respaldo. Una por servidor y se muestra junto a su estado",
+          "Etiquetas también para las conexiones de Bases de Datos, con la misma lista que los servidores. Se muestran en la tarjeta, en la fila del usuario",
+          "Filtros en Bases de Datos: por motor y por etiqueta"
+        ],
+        "changed": [
+          "Tarjetas de Servidores más compactas: la misma información con las métricas en línea junto a su icono",
+          "El botón Agregar servidor pasa a la barra del buscador y sustituye a la tarjeta de agregar servidor",
+          "Los datos de los servidores se actualizan solos al entrar en la vista, sin el botón Actualizar",
+          "El panel del asistente de IA es casi opaco: el contenido de fondo ya no se confunde con el chat",
+          "Las alertas de seguridad como notificación del sistema se activan en cada equipo y ya no se guardan en tu cuenta. Configuración → Notificaciones muestra si el sistema dio permiso y permite pedirlo"
+        ]
+      }
+    },
+    {
       "version": "0.5.0",
       "type": "minor",
-      "date": "2026-10-09",
+      "date": "2026-10-10",
       "title": "Tab de Cloud",
       "changes": {
         "added": [

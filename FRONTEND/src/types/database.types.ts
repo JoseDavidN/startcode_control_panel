@@ -1,6 +1,8 @@
 /* Conexiones a bases de datos del tab Bases de Datos (módulo `databases`
    del backend). */
 
+import type { ResourceTag } from '@utils/tags';
+
 export type DatabaseEngine = 'mysql' | 'mariadb' | 'postgresql' | 'redis';
 
 /** `unknown`: recién creada o editada, todavía sin comprobar. */
@@ -17,6 +19,8 @@ export interface DatabaseConnection {
   username: string;
   /** Base a la que apunta la conexión; null conecta al servidor completo. En Redis, el índice. */
   database: string | null;
+  /** Una sola etiqueta, opcional. */
+  tag: ResourceTag | null;
   hasPassword: boolean;
   status: DatabaseConnectionStatus;
   /** Versión que reportó el motor en la última comprobación correcta. */
@@ -62,6 +66,8 @@ export interface DatabaseConnectionForm {
   password?: string;
   /** En Redis es el índice de la base (0–15). Vacío: servidor completo. */
   database: string;
+  /** null: sin etiqueta. */
+  tag: ResourceTag | null;
 }
 
 /* ── Gestión (vista de una conexión) ─────────────────────────────── */

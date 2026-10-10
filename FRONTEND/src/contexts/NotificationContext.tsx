@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { notify } from '@services/notification.service';
+import { notify, nativePermission, type NativePermission } from '@services/notification.service';
+import { storeGet, storeSet } from '@lib/tauriStore';
+import { STORAGE_KEYS } from '@utils/constants';
 import { notificationsApi } from '@services/notifications.api';
 import { useRealtimeSocket } from '@contexts/RealtimeMetricsContext';
 import { useAuth } from '@hooks/useAuth';
@@ -14,7 +16,6 @@ export interface NotifPrefs {
   highCpuUsage: boolean;
   highMemoryUsage: boolean;
   highDiskUsage: boolean;
-  securityAlerts: boolean;
   weeklyReport: boolean;
   productNews: boolean;
 }
@@ -32,6 +33,13 @@ interface NotificationContextType {
   setThresholds: (t: NotifThresholds) => void;
   testToast: (type: keyof NotifPrefs) => void;
   testNative: () => void;
+  /** Alertas de seguridad como notificación del sistema. Se guarda en este
+      equipo, no en la cuenta: el permiso y el soporte cambian con el sistema. */
+  securityAlerts: boolean;
+  setSecurityAlerts: (on: boolean) => void;
+  /** Permiso del sistema operativo para notificar; null mientras se consulta. */
+  permission: NativePermission | null;
+  requestPermission: () => Promise<NativePermission>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -123,6 +131,28 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   }), [all.monitoring]);
 
   const setPrefs      = useCallback((p: NotifPrefs)      => patch('notifications', p), [patch]);
+
+  /* Locales del equipo: activado por defecto hasta que se guarde otra cosa. */
+  const [securityAlerts, setSecurityAlertsState] = useState(true);
+  const [permission, setPermission] = useState<NativePermission | null>(null);
+
+  useEffect(() => {
+    void storeGet<boolean>(STORAGE_KEYS.NATIVE_SECURITY_ALERTS)
+      .then(saved => { if (typeof saved === 'boolean') setSecurityAlertsState(saved); })
+      .catch(() => undefined);
+    void nativePermission(false).then(setPermission);
+  }, []);
+
+  const setSecurityAlerts = useCallback((on: boolean) => {
+    setSecurityAlertsState(on);
+    void storeSet(STORAGE_KEYS.NATIVE_SECURITY_ALERTS, on).catch(() => undefined);
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    const next = await nativePermission(true);
+    setPermission(next);
+    return next;
+  }, []);
   const setThresholds = useCallback((t: NotifThresholds) => patch('monitoring', t),    [patch]);
 
   const testToast = (type: keyof NotifPrefs) => {
@@ -151,16 +181,20 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  /* Primero el permiso (la primera vez abre el diálogo del sistema) y luego la prueba. */
   const testNative = () => {
-    notify.native(
+    void requestPermission().then(() => notify.native(
       'Alerta de seguridad — StartCode',
       'Se detectó un intento de acceso no autorizado en prod-server-01 desde 203.0.113.45.',
-    );
+    ));
   };
 
   return (
-    <NotificationContext.Provider value={{ prefs, setPrefs, thresholds, setThresholds, testToast, testNative }}>
-      <ServerAlertBridge securityAlerts={prefs.securityAlerts} />
+    <NotificationContext.Provider value={{
+      prefs, setPrefs, thresholds, setThresholds, testToast, testNative,
+      securityAlerts, setSecurityAlerts, permission, requestPermission,
+    }}>
+      <ServerAlertBridge securityAlerts={securityAlerts} />
       {children}
     </NotificationContext.Provider>
   );

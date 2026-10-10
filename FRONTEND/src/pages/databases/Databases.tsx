@@ -1,14 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@components/common/Card';
-import { DATABASE_ENGINE_LABELS } from '@typings/database.types';
-import type { DatabaseConnection } from '@typings/database.types';
+import { FilterMenu } from '@components/common/FilterMenu';
+import { TagBadge } from '@components/common/TagBadge';
+import { DATABASE_ENGINES, DATABASE_ENGINE_LABELS } from '@typings/database.types';
+import type { DatabaseConnection, DatabaseEngine } from '@typings/database.types';
+import { TAG_OPTIONS, type ResourceTag } from '@utils/tags';
 import { EngineBadge } from '@components/databases/EngineIcon';
 import { ConnectionModal } from '@components/databases/ConnectionModal';
 import { useDatabaseConnections } from '@hooks/useDatabases';
 
 /* 3 columnas × 3 filas: con muchas conexiones se pagina en vez de alargar la rejilla. */
 const PAGE_SIZE = 9;
+
+/* '' = sin filtro; 'none' en la etiqueta = conexiones sin etiqueta. */
+interface ConnectionFilters { engine: DatabaseEngine | ''; tag: ResourceTag | 'none' | '' }
+const NO_FILTERS: ConnectionFilters = { engine: '', tag: '' };
 
 /* ── Primitivos locales (mismo patrón que Servers/Notifications) ───── */
 
@@ -97,10 +104,11 @@ const ConnectionCard = ({ conn, onOpen, onEdit }: {
         </div>
       </div>
 
-      {/* Pie: usuario */}
+      {/* Pie: usuario y, al otro extremo de la fila, la etiqueta */}
       <div className="border-t border-line mt-5 pt-4 flex items-center gap-2 text-xs text-white/55 min-w-0">
         <Icon name="user" />
-        <span className="font-mono truncate">{conn.username || '—'}</span>
+        <span className="font-mono truncate flex-1 min-w-0">{conn.username || '—'}</span>
+        <TagBadge tag={conn.tag} />
       </div>
     </Card>
     </div>
@@ -156,21 +164,32 @@ const Pagination = ({ page, pages, total, onChange }: {
 export const Databases: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<ConnectionFilters>(NO_FILTERS);
   /* null: cerrado; { conn: null }: nueva; { conn }: edición. */
   const [modal, setModal] = useState<{ conn: DatabaseConnection | null } | null>(null);
   const { data: connections = [], isLoading, isError } = useDatabaseConnections();
   const navigate = useNavigate();
 
 
+  /* Solo los motores que tienen las conexiones de la cuenta. */
+  const engines = useMemo(
+    () => DATABASE_ENGINES.filter(e => connections.some(c => c.engine === e)),
+    [connections],
+  );
+
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return connections;
     return connections.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.host.toLowerCase().includes(q) ||
-      (c.database ?? '').toLowerCase().includes(q) ||
-      DATABASE_ENGINE_LABELS[c.engine].toLowerCase().includes(q));
-  }, [connections, searchTerm]);
+      (!q ||
+        c.name.toLowerCase().includes(q) ||
+        c.host.toLowerCase().includes(q) ||
+        (c.database ?? '').toLowerCase().includes(q) ||
+        DATABASE_ENGINE_LABELS[c.engine].toLowerCase().includes(q)) &&
+      (!filters.engine || c.engine === filters.engine) &&
+      (!filters.tag || (filters.tag === 'none' ? !c.tag : c.tag === filters.tag)));
+  }, [connections, searchTerm, filters]);
+
+  const changeFilters = (next: ConnectionFilters) => { setFilters(next); setPage(1); };
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pages);
@@ -193,8 +212,8 @@ export const Databases: React.FC = () => {
         </div>
       </Card>
 
-      {/* Buscador */}
-      <Card className="p-3 flex items-center gap-3 shrink-0">
+      {/* Buscador; encima de la rejilla para que el menú de filtros caiga sobre las tarjetas */}
+      <Card className="p-3 flex items-center gap-3 shrink-0 relative z-20">
         <div className="flex-1 flex items-center gap-2 px-3 min-w-0 text-white/45">
           <Icon name="search" />
           <input
@@ -204,6 +223,22 @@ export const Databases: React.FC = () => {
             onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
           />
         </div>
+
+        <FilterMenu
+          onClear={() => changeFilters(NO_FILTERS)}
+          groups={[
+            {
+              id: 'engine', label: 'Motor', allLabel: 'Todos', value: filters.engine,
+              options: engines.map(e => ({ value: e, label: DATABASE_ENGINE_LABELS[e] })),
+              onChange: engine => changeFilters({ ...filters, engine: engine as ConnectionFilters['engine'] }),
+            },
+            {
+              id: 'tag', label: 'Etiqueta', allLabel: 'Todas', value: filters.tag,
+              options: [...TAG_OPTIONS, { value: 'none', label: 'Sin etiqueta' }],
+              onChange: tag => changeFilters({ ...filters, tag: tag as ConnectionFilters['tag'] }),
+            },
+          ]}
+        />
 
         <button
           type="button"
@@ -235,7 +270,7 @@ export const Databases: React.FC = () => {
         ) : filtered.length === 0 ? (
           <div className="glass edge-dashed elev-flat rounded-2xl grain relative flex flex-col items-center justify-center text-center gap-3 py-16 px-6">
             <span className="text-white/20"><Icon name="database" className="w-10 h-10" /></span>
-            <div className="text-sm font-medium text-white/60">Ninguna conexión coincide con la búsqueda</div>
+            <div className="text-sm font-medium text-white/60">Ninguna conexión coincide con la búsqueda o los filtros</div>
           </div>
         ) : (
           /* key por página ⇒ cada cambio de página entra con .mo-panel */

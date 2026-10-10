@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { Select } from '@components/common/Select';
+import { SERVER_OS_OPTIONS } from '@utils/servers';
+import { TAG_FIELD_OPTIONS, type ResourceTag } from '@utils/tags';
 import { useCreateServer } from '@hooks/useServers';
 import { useAgentInstallProgress, useInstallAgent } from '@hooks/useAgentInstall';
 import { ConnectionLoading } from './ConectionLoading';
@@ -22,23 +24,12 @@ interface ServerFormData {
   username: string;
   privateKey: string;
   os: string;
+  /** '' es «sin etiqueta»; al backend llega como null. */
+  tag: ResourceTag | '';
   description: string;
   /** Solo se usa durante la instalación; no se guarda en ninguna parte. */
   sudoPassword: string;
 }
-
-const OS_OPTIONS = [
-  { value: 'ubuntu',  label: 'Ubuntu' },
-  { value: 'centos',  label: 'CentOS' },
-  { value: 'debian',  label: 'Debian' },
-  { value: 'fedora',  label: 'Fedora' },
-  { value: 'arch',    label: 'Arch Linux' },
-  { value: 'solaris', label: 'Solaris' },
-  { value: 'openbsd', label: 'OpenBSD' },
-  { value: 'netbsd',  label: 'NetBSD' },
-  { value: 'freebsd', label: 'FreeBSD' },
-  { value: 'other',   label: 'Otro' },
-];
 
 /* ── Reusable field label ─────────────────────────────────────────── */
 const Label = ({ children }: { children: React.ReactNode }) => (
@@ -52,7 +43,7 @@ const wrapCls  = 'glass-input rounded-xl h-11 flex items-center px-3.5 transitio
 export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState<ServerFormData>({
     name: '', host: '', port: 22, username: 'root',
-    privateKey: '', os: 'ubuntu', description: '', sudoPassword: '',
+    privateKey: '', os: 'ubuntu', tag: '', description: '', sudoPassword: '',
   });
   const [error, setError]             = useState<string | null>(null);
   const [isConnecting, setConnecting] = useState(false);
@@ -106,7 +97,8 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     install.reset();
     setConnecting(true);
 
-    const { sudoPassword, ...serverData } = formData;
+    const { sudoPassword, tag, ...rest } = formData;
+    const serverData = { ...rest, tag: tag || null };
 
     let serverId = createdId;
     if (!serverId) {
@@ -166,7 +158,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
 
   /** Cerrar tras un fallo NO borra el servidor: queda en pendiente. */
   const closeAfterInstall = () => {
-    setFormData({ name: '', host: '', port: 22, username: 'root', privateKey: '', os: 'ubuntu', description: '', sudoPassword: '' });
+    setFormData({ name: '', host: '', port: 22, username: 'root', privateKey: '', os: 'ubuntu', tag: '', description: '', sudoPassword: '' });
     setConnecting(false);
     setConnStatus('running');
     setCreatedId(null);
@@ -307,10 +299,22 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
           <div>
             <Label>Sistema Operativo *</Label>
             <div className={`${wrapCls}`}>
-              <Select className="flex-1 text-white/90" value={formData.os} options={OS_OPTIONS}
+              <Select className="flex-1 text-white/90" value={formData.os} options={SERVER_OS_OPTIONS}
                 onChange={os => setFormData(prev => ({ ...prev, os }))} aria-label="Sistema operativo" />
             </div>
           </div>
+        </div>
+
+        {/* Etiqueta (opcional): una sola, de la lista */}
+        <div>
+          <Label>Etiqueta (opcional)</Label>
+          <div className={wrapCls}>
+            <Select className="flex-1 text-white/90" value={formData.tag} options={TAG_FIELD_OPTIONS}
+              onChange={tag => setFormData(prev => ({ ...prev, tag }))} aria-label="Etiqueta" />
+          </div>
+          <p className="text-[11px] text-white/40 mt-1.5">
+            Clasifica el servidor para encontrarlo luego con los filtros.
+          </p>
         </div>
 
         {/* Contraseña de sudo (opcional) */}

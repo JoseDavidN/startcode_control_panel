@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ServerStatus, ServerOs, type Server } from '../entities/server.entity';
+import { ServerStatus, ServerOs, ServerTag, type Server } from '../entities/server.entity';
 
 /** El mismo jsonb que la entidad: sin `any`, para que el compilador avise. */
 export type ServerMetadata = Server['metadata'];
@@ -34,6 +34,10 @@ export class ServerResponseDto {
   @Expose({ name: 'os' })
   @ApiProperty({ enum: ServerOs })
   os: ServerOs;
+
+  @Expose({ name: 'tag' })
+  @ApiPropertyOptional({ enum: ServerTag, nullable: true })
+  tag: ServerTag | null;
 
   @Expose({ name: 'description' })
   @ApiProperty({ required: false })

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   DatabaseConnectionStatus,
   DatabaseEngine,
+  DatabaseTag,
 } from '../entities/database-connection.entity';
 
 /** Una conexión tal como la ve la app: nunca lleva la contraseña. */
@@ -26,6 +27,9 @@ export class DatabaseConnectionResponseDto {
 
   @ApiPropertyOptional({ example: 'db_startcode', nullable: true })
   database: string | null;
+
+  @ApiPropertyOptional({ enum: DatabaseTag, nullable: true })
+  tag: DatabaseTag | null;
 
   @ApiProperty({ description: 'Si hay una contraseña guardada' })
   hasPassword: boolean;

@@ -16,6 +16,7 @@ import { AiAssistantMemory } from './entities/ai-assistant-memory.entity';
 import { AiProviderService } from './services/ai-provider.service';
 import { AssistantContextService } from './services/assistant-context.service';
 import { AssistantMemoryService } from './services/assistant-memory.service';
+import { AssistantSchemaService } from './services/assistant-schema.service';
 
 @Module({
   imports: [
@@ -31,10 +32,11 @@ import { AssistantMemoryService } from './services/assistant-memory.service';
       Notification,
     ]),
     AuthModule,
-    /* Por `CredentialsCipherService`: la clave de API se cifra igual que las contraseñas de las bases. */
+    /* Por `CredentialsCipherService` (la clave de API se cifra igual que las contraseñas
+       de las bases) y `DatabasesService` (estructura real de la base abierta). */
     DatabasesModule,
   ],
   controllers: [AssistantController],
-  providers: [AssistantService, AiProviderService, AssistantContextService, AssistantMemoryService],
+  providers: [AssistantService, AiProviderService, AssistantContextService, AssistantMemoryService, AssistantSchemaService],
 })
 export class AssistantModule {}

@@ -2,7 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import { useCommandHistory, useExecCommand } from '@hooks/useServerCommands';
 import type { CommandResult } from '@services/command.service';
 import { notify } from '@services/notification.service';
-import { STATUS_TONE, fmtMs, statusLabel } from '@utils/commands';
+import { STATUS_TONE, fmtMs, statusLabel, toSingleLine } from '@utils/commands';
+import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
 
@@ -71,6 +72,22 @@ export const CommandBar = forwardRef<CommandBarHandle, Props>(({ serverId, serve
 
   const inputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+
+  /* El asistente lee los últimos resultados y puede dejar un comando en la
+     línea; nunca lo ejecuta (eso solo pasa con Enter o el botón). */
+  useAssistantSource(`commands:${serverId}`, 'command_output', `Línea de comandos · ${serverName}`, () =>
+    entries.slice(-10).map(e =>
+      `${e.sudo ? '#' : '$'} ${withSudo(e.command, e.sudo)}\n${e.output ?? ''}\n[${statusLabel(e.status, e.exitCode)} · ${fmtMs(e.durationMs)}${e.truncated ? ' · salida recortada' : ''}]`,
+    ).join('\n\n'),
+  );
+  useAssistantTarget(`commands:${serverId}`, 'command', 'la línea de comandos', text => {
+    const line = toSingleLine(text);
+    if (!line) return;
+    setInput(line);
+    setPending(null);
+    setRecallIndex(-1);
+    inputRef.current?.focus();
+  });
 
   useImperativeHandle(ref, () => ({
     load: command => {

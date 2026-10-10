@@ -28,6 +28,7 @@ export const API_CONFIG = {
 		HEALTH: '/health',
 		NOTIFICATIONS: '/notifications',
 		DATABASES: '/databases',
+		ASSISTANT: '/assistant',
 		NOTIFICATIONS_UNREAD: '/notifications/unread-count',
 	},
 };

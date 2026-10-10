@@ -6,6 +6,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { TokenManager } from '@utils/tokenManager';
 import { API_CONFIG } from '@utils/constants';
+import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
+import { AssistantLauncher } from '@components/assistant/AssistantPanel';
+import { toSingleLine } from '@utils/commands';
 
 /* La terminal se pinta con su propia paleta —la de una consola— y no con los
    tokens del tema: un fondo claro con texto de color de marca no es legible
@@ -29,6 +32,21 @@ const NERD_SAMPLE = '\ue0b0\u{f0001}';
 
 type Status = 'connecting' | 'ready' | 'closed' | 'error';
 
+/** Líneas del final del búfer que lee el asistente. */
+const ASSISTANT_LINES = 300;
+
+/** Texto visible de la terminal: las últimas líneas del búfer, sin las vacías del final. */
+function readBuffer(term: Terminal | null): string {
+  if (!term) return '';
+  const buf = term.buffer.active;
+  const end = buf.length;
+  const lines: string[] = [];
+  for (let i = Math.max(0, end - ASSISTANT_LINES); i < end; i++) {
+    lines.push(buf.getLine(i)?.translateToString(true) ?? '');
+  }
+  return lines.join('\n').replace(/\s+$/, '');
+}
+
 interface Props {
   serverId: string;
   serverName: string;
@@ -42,6 +60,15 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
 
   const [status, setStatus] = useState<Status>('connecting');
   const [message, setMessage] = useState('Conectando por SSH…');
+
+  useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => readBuffer(termRef.current));
+  useAssistantTarget(`terminal:${serverId}`, 'terminal', 'la terminal', text => {
+    const line = toSingleLine(text);
+    if (!line || !socketRef.current?.connected) return;
+    /* Se escribe como si se tecleara, sin Enter: ejecutar lo decide el usuario. */
+    socketRef.current.emit('terminal:input', line);
+    termRef.current?.focus();
+  }, status === 'ready');
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -163,9 +190,10 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
             <div className="text-xs text-white/45 font-mono truncate">{message}</div>
           </div>
 
+          <div className="ml-auto"><AssistantLauncher compact /></div>
           <button
             onClick={() => termRef.current?.clear()}
-            className="mo-tab ml-auto h-9 px-3 rounded-xl glass-soft text-white/70 hover:text-white row-hit text-xs font-medium"
+            className="mo-tab h-9 px-3 rounded-xl glass-soft text-white/70 hover:text-white row-hit text-xs font-medium"
           >
             Limpiar
           </button>

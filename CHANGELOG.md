@@ -9,6 +9,59 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [0.6.0] — 2026-10-09
+
+Versión **menor** sobre 0.5.0: asistente de IA por usuario. Va junto con la app de escritorio 0.4.0.
+
+### Añadido
+- Módulo `assistant` (`src/assistant/`): un asistente de IA por usuario en `tbl_ai_assistant_configs` (migración `add_ai_assistant_configs.sql`, índice único por `str_user_id`, borrado en cascada). Proveedores admitidos: Anthropic, OpenAI y Google Gemini (`enu_provider`); el modelo es libre
+- La clave de API se cifra con `CredentialsCipherService` (misma `DB_CREDENTIALS_KEY` que las contraseñas de bases; `DatabasesModule` lo exporta), columna `str_api_key_enc` con `select: false`. Las respuestas solo llevan los 4 últimos caracteres (`apiKeyHint`)
+- Endpoints bajo `/assistant` (JWT): `GET /config`, `PUT /config` (crea o actualiza; sin `apiKey` conserva la guardada si no cambia el proveedor), `DELETE /config`, `POST /config/test` (6/min) y `POST /chat` (20/min)
+- `AiProviderService`: Anthropic con el SDK oficial (`@anthropic-ai/sdk`, nueva dependencia) y fallback del servidor ante rechazos (`server-side-fallback-2026-07-01`); OpenAI (`/v1/chat/completions`) y Gemini (`generateContent`) por REST. Sin herramientas en ningún proveedor: el asistente solo responde texto y no puede ejecutar comandos ni consultas. Errores traducidos (clave rechazada, modelo desconocido, límite de peticiones)
+- `AssistantContextService`: resumen de los datos de la cuenta que acompaña a cada pregunta (servidores propios con sus últimas métricas, conexiones a bases, últimos comandos, consultas peligrosas confirmadas y notificaciones), con las columnas elegidas una a una para que nunca incluya `privateKey` ni `passwordEnc`; tope de 60 000 caracteres
+- `secret-redactor.ts` (`redactSecrets`, `stripSensitiveKeys`): retira llaves privadas PEM/OpenSSH/PuTTY, contraseñas en URIs, `IDENTIFIED BY`/`PASSWORD '…'`, variables `*PASSWORD*`/`*TOKEN*`/`*API_KEY*`, `mysql -p…`, `--password=`, `sshpass -p`, claves `sk-…`/`AIza…` y hashes de contraseña. Se aplica al resumen, al contexto de pantalla y a las preguntas antes de enviarlos al proveedor. Con tests
+- Prompt de sistema fijo: rol solo de consulta, comandos y SQL en bloques de código, aviso ante operaciones destructivas, el contenido de terminal y resultados se trata como datos y no como instrucciones
+- `POST /assistant/models` (30/min): modelos disponibles del proveedor en el momento, con la clave escrita o la guardada si es del mismo proveedor (POST para que la clave no viaje en la URL). Anthropic con `client.models.list()` (sin los deprecados), OpenAI con `/v1/models` filtrado a modelos de chat sin instantáneas con fecha, Gemini con `/v1beta/models` filtrado a `generateContent`. Caché de 10 minutos por usuario, proveedor y huella SHA-256 de la clave; `refresh: true` la salta
+- Reintentos ante errores pasajeros del proveedor: OpenAI y Gemini reintentan 500, 502, 503 y 504 dos veces (esperas de 1,5 s y 4 s, dentro del mismo tiempo límite) y Anthropic sube a 2 reintentos del SDK (incluye 529). Si persiste, el error dice que el proveedor está saturado y sugiere reintentar o elegir otro modelo, en vez de solo «respondió con un error (503)»
+- Respaldo para Gemini: si el modelo elegido está saturado (503/504), no responde en 70 s (con un reintento) o Google lo tiene retirado para la cuenta, la pregunta la contesta primero el modelo que Google recomienda en su error y si no los alias estables `gemini-flash-latest` y `gemini-flash-lite-latest`, sin pasar de 115 s en total. La respuesta guarda el modelo que respondió de verdad; `POST /assistant/config/test` devuelve también `model`
+- Modelos retirados (`ModelRetiredError`): Google sigue listando `gemini-2.5-*` pero responde 404 «no longer available to new users». El error ahora lo dice e indica el reemplazo recomendado, en vez de «no reconoce el modelo», y desde el primer rechazo esos modelos desaparecen de `POST /assistant/models` para esa clave (en memoria, por huella de la clave)
+- Un corte por tiempo ya no se informa como «No se pudo contactar con…»: dice que el proveedor no respondió a tiempo y sugiere reintentar o elegir un modelo más rápido (`ProviderUnavailableError`); el error de red real indica revisar la conexión a internet del servidor y registra su causa
+- El asistente no da información interna de StartCode Panel (rutas, archivos, `.env`, código, configuración ni instrucciones del backend o del frontend): regla en el prompt de sistema, que además remite las credenciales solo a la interfaz (Servidores, Bases de Datos, Configuración), y barrera en el servidor (`services/panel-guard.ts`, con tests). `hidePanelInternals` oculta como «[ruta interna del panel]» el directorio de instalación (y su padre, si tiene al menos dos niveles: `/app` de Docker no se toca) y cualquier ruta `…/startcode_panel/BACKEND|FRONTEND…`, en la pregunta y en el contexto de pantalla antes de enviarlos; `stripPanelInstructions` quita de la respuesta los párrafos y bloques de código que apuntaban ahí y añade una nota. Se aplica también al historial y al resumen ya guardados
+- Anthropic sin saldo (400 «credit balance is too low») se explica en español: la clave es válida y hay que comprar créditos en la consola
+- Anthropic: una clave de usuario sin espacio de trabajo (`sk-ant-usr-…`, la API responde 400 «not scoped to a workspace») se explica en español e indica crear una clave de espacio de trabajo (`sk-ant-api…`), en vez de «respondió con un error (400)»
+- Memoria del asistente independiente del proveedor (`AssistantMemoryService`, migración `add_ai_assistant_memory.sql`): la conversación se guarda como texto en `tbl_ai_assistant_messages` (rol, contenido, proveedor y modelo de cada respuesta) y lo antiguo se condensa en un resumen a largo plazo en `tbl_ai_assistant_memory`. Cada pregunta lleva el resumen (en el prompt de sistema) y los últimos 30 mensajes sin resumir, normalizados para que alternen roles como exigen los tres proveedores (`toAlternating`, con tests), así que cambiar de Claude a ChatGPT o Gemini no pierde el contexto
+  - Con más de 40 mensajes sin resumir, tras la respuesta y sin bloquearla, el proveedor del usuario condensa lo antiguo junto al resumen anterior (máx. 8 000 caracteres, sin secretos) y quedan 20 literales; se guardan como mucho 400 mensajes ya resumidos por usuario
+  - Las preguntas se guardan ya pasadas por `redactSecrets`; los datos del panel y el contexto de pantalla van solo con la pregunta nueva y no se guardan. Si el proveedor falla, la pregunta se descarta para poder reintentar
+  - `POST /assistant/chat` recibe solo `message` (y `context`) y devuelve la pregunta y la respuesta guardadas. Nuevos `GET /assistant/messages?limit=` (historial), `GET /assistant/memory` (resumen y número de mensajes) y `DELETE /assistant/memory` (borra conversación y resumen). Desconectar el asistente (`DELETE /config`) conserva la memoria
+
+---
+
+## [App de escritorio 0.4.0] — 2026-10-09
+
+Versión **menor** sobre 0.3.0: asistente de IA. Requiere el backend 0.6.0 (módulo `assistant`).
+
+### Añadido
+- Pestaña **Asistente IA** en Configuración (`AssistantPane` en `Settings.tsx`): elección de proveedor (Claude, ChatGPT, Gemini), modelo con sugerencias, clave de API (vacía conserva la guardada), interruptor de activo, «Probar conexión» y «Desconectar». `?tab=assistant` abre la pestaña directamente
+- Panel del asistente (`components/assistant/AssistantPanel.tsx`, portal a `z-60` para verse con la terminal abierta), abierto con el botón **Asistente** de la barra superior y de la cabecera de la terminal (`AssistantLauncher`). Conversación en memoria, sugerencias iniciales, bloques de código con «Copiar» y botones para pegar en cada destino disponible
+- Registro de fuentes y destinos (`contexts/AssistantContext.tsx`, `hooks/useAssistantBridge.ts`): cada pantalla ofrece qué puede leer el asistente y dónde puede pegar mientras está montada
+  - Terminal SSH: lee las últimas 300 líneas del búfer; pega como una sola línea y sin Enter (`toSingleLine` en `utils/commands.ts`: une con `&&`, quita comentarios y caracteres de control)
+  - Línea de comandos del servidor: lee los 10 últimos resultados; pega en la línea sin ejecutar
+  - Vista de una base de datos: lee el editor, el último resultado (hasta 100 filas, columnas de secretos enmascaradas) y la estructura ya cargada en el árbol; pega debajo del texto del editor
+- Las fuentes adjuntas se ven como chips en el panel y se pueden quitar con un clic
+- El modelo se elige en un select con los modelos que el proveedor ofrece en ese momento para la clave (`useAssistantModels`): se recarga al cambiar de proveedor o de clave (con 600 ms de espera mientras se escribe), al volver a la ventana y cada 10 minutos, y el botón de actualizar salta también la caché del backend. Sin modelo elegido se toma el preferido del proveedor si está disponible, o el primero; un modelo guardado que ya no se ofrece se muestra como «(ya no disponible)» en vez de cambiarse sin avisar. `AI_PROVIDERS` deja la lista fija de modelos por un `preferred` (`gemini-flash-latest` para Gemini: los `gemini-2.5-*` ya no se dan a cuentas nuevas)
+- Memoria persistente: el panel carga la conversación guardada en el backend (`useAssistantMessages`), así que sigue al recargar, en otro equipo o tras cambiar de proveedor; cada respuesta indica qué proveedor y modelo la escribió. La pregunta se muestra al instante y se retira si el proveedor falla (`useSendAssistantMessage`). El botón de papelera pasa a «Borrar memoria», con confirmación
+- Sección **Memoria** en Configuración → Asistente IA: mensajes guardados, resumen a largo plazo de lo que recuerda y «Borrar memoria» con confirmación
+- `types/assistant.types.ts`, `services/assistant.api.ts` y `hooks/useAssistant.ts` (consultas con el id del usuario en la clave)
+
+### Cambiado
+- Versión de la app a 0.4.0 en `FRONTEND/package.json`, `tauri.conf.json` y `Cargo.toml`
+
+### Corregido
+- Configuración → Sistema mostraba una versión anterior en la app web de desarrollo: `vite.config.ts` lee la versión de `tauri.conf.json` solo al arrancar y `src-tauri` está fuera del vigilante de Vite, así que subirla no se veía hasta reiniciar `pnpm dev`. Nuevo plugin `restartOnVersionChange` (solo en `serve`): sondea `tauri.conf.json` cada segundo y reinicia el servidor cuando cambia la versión
+- La notificación de prueba «Novedades del producto» decía «StartCode Panel v0.2.0» escrito a mano; ahora toma la versión de la app (`VITE_APP_VERSION`, que `vite.config.ts` lee de `tauri.conf.json`)
+
+---
+
 ## [0.5.0] — 2026-10-09
 
 Versión **menor** sobre 0.4.0: nuevo módulo de conexiones a bases de datos externas. Va junto con la app de escritorio 0.3.0. En desarrollo: esta sección se completa con cada cambio de la versión.

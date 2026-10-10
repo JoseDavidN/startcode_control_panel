@@ -4,6 +4,7 @@ import { ROUTES } from '@utils/constants';
 import { useAuth } from '@hooks/useAuth';
 import { useAppearance } from '@contexts/AppearanceContext';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
+import { AssistantLauncher, AssistantPanel } from '@components/assistant/AssistantPanel';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
@@ -253,6 +254,8 @@ export const AppLayout = () => {
         <main className="flex-1 min-w-0 flex flex-col gap-0 overflow-hidden">
           <div className="glass panel-head rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative shrink-0">
             <div className="text-xs text-white/45 font-mono">startcode://{chromeSegment}</div>
+            {/* -my: el botón no debe agrandar la barra */}
+            <div className="ml-auto -my-1.5"><AssistantLauncher /></div>
           </div>
 
           <div className="flex-1 min-h-0 glass rounded-2xl rounded-t-none border-t-0 overflow-hidden grain relative">
@@ -266,6 +269,8 @@ export const AppLayout = () => {
         </main>
 
       </div>
+
+      <AssistantPanel />
     </>
   );
 };

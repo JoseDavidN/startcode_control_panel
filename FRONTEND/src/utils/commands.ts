@@ -15,3 +15,19 @@ export const statusLabel = (status: CommandStatus, exitCode: number | null) =>
 			: `exit ${exitCode ?? '?'}`;
 
 export const fmtMs = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+
+/**
+ * Lo que el asistente pega en la shell: una sola línea y sin salto final,
+ * para que nunca se ejecute sin que el usuario pulse Enter. Las líneas de un
+ * bloque se encadenan con `&&` y las continuaciones con `\` se juntan.
+ */
+export function toSingleLine(text: string): string {
+	const line = text
+		.replace(/\\\r?\n\s*/g, ' ')
+		.split(/\r?\n/)
+		.map(l => l.trim())
+		.filter(l => l && !l.startsWith('#'))
+		.join(' && ');
+	/* Sin caracteres de control: un ^C o un ESC pegados actuarían en la shell. */
+	return Array.from(line).filter(ch => ch >= ' ' && ch !== '\x7f').join('');
+}

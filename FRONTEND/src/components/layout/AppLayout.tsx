@@ -5,6 +5,7 @@ import { useAuth } from '@hooks/useAuth';
 import { useAppearance } from '@contexts/AppearanceContext';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { AssistantLauncher, AssistantPanel } from '@components/assistant/AssistantPanel';
+import { useAssistant } from '@hooks/useAssistantBridge';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
@@ -111,6 +112,7 @@ function routeToChrome(pathname: string): string {
   if (pathname.startsWith(ROUTES.SERVERS)) return 'servers';
   if (pathname.startsWith('/databases/')) return `databases/${pathname.split('/')[2] ?? ''}`;
   if (pathname.startsWith(ROUTES.DATABASES)) return 'databases';
+  if (pathname.startsWith(ROUTES.CLOUD)) return 'cloud';
   return 'dashboard';
 }
 
@@ -124,6 +126,14 @@ export const AppLayout = () => {
   const { data: unreadCount = 0 } = useUnreadCount();
   const ready = useFirstFrameReady();
 
+  /* El asistente todavía no está permitido en la nube: sin botón ni panel, y
+     si venía abierto se cierra para que no reaparezca solo al salir. */
+  const { setOpen: setAssistantOpen } = useAssistant();
+  const assistantAllowed = !location.pathname.startsWith(ROUTES.CLOUD);
+  useEffect(() => {
+    if (!assistantAllowed) setAssistantOpen(false);
+  }, [assistantAllowed, setAssistantOpen]);
+
 
   /* `soon` marca lo que todavía no tiene página: el ítem se ve, pero no
      navega. Antes los cuatro apuntaban a rutas inexistentes y acababan en el
@@ -132,7 +142,7 @@ export const AppLayout = () => {
     { path: ROUTES.DASHBOARD, label: 'Panel',          icon: 'chart' },
     { path: '/servers',       label: 'Servidores',     icon: 'server' },
     { path: ROUTES.DATABASES, label: 'Bases de Datos', icon: 'database' },
-    { path: '/cloud',         label: 'Cloud',          icon: 'cloud',    soon: true },
+    { path: ROUTES.CLOUD,     label: 'Cloud',          icon: 'cloud' },
   ];
   const meta: [string, string, IconName, string?][] = [
     [ROUTES.NOTIFICATIONS, 'Notificaciones', 'bell', unreadCount > 0 ? String(unreadCount) : undefined],
@@ -255,7 +265,7 @@ export const AppLayout = () => {
           <div className="glass panel-head rounded-2xl rounded-b-none border-b-0 px-5 py-3 flex items-center gap-4 grain relative shrink-0">
             <div className="text-xs text-white/45 font-mono">startcode://{chromeSegment}</div>
             {/* -my: el botón no debe agrandar la barra */}
-            <div className="ml-auto -my-1.5"><AssistantLauncher /></div>
+            {assistantAllowed && <div className="ml-auto -my-1.5"><AssistantLauncher /></div>}
           </div>
 
           <div className="flex-1 min-h-0 glass rounded-2xl rounded-t-none border-t-0 overflow-hidden grain relative">
@@ -270,7 +280,7 @@ export const AppLayout = () => {
 
       </div>
 
-      <AssistantPanel />
+      {assistantAllowed && <AssistantPanel />}
     </>
   );
 };

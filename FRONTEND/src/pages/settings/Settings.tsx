@@ -27,6 +27,7 @@ import { queryClient } from '@lib/queryClient';
 import { notify } from '@services/notification.service';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
+import { Select, type SelectOption } from '@components/common/Select';
 import { copyText } from '@lib/clipboard';
 import { useAssistantConfig, useSaveAssistantConfig, useDeleteAssistantConfig, useTestAssistant, useAssistantMemory, useClearAssistantMemory, useAssistantModels } from '@hooks/useAssistant';
 import { AI_PROVIDERS, type AiProvider } from '@typings/assistant.types';
@@ -1106,6 +1107,14 @@ const SecurityPane = () => {
 /* Espejo de METRICS_RETENTION_DAYS en el backend (metrics-retention.service.ts): si cambia uno, cambia el otro. */
 const METRICS_RETENTION_DAYS = 30;
 
+const REFRESH_OPTIONS: SelectOption<number>[] = [
+  { value: 5,   label: '5 segundos' },
+  { value: 15,  label: '15 segundos' },
+  { value: 30,  label: '30 segundos' },
+  { value: 60,  label: '1 minuto' },
+  { value: 300, label: '5 minutos' },
+];
+
 const MonitoringPane = () => {
   const { settings, update } = useMonitoringSettings();
   const { setThresholds } = useNotifications();
@@ -1169,17 +1178,13 @@ const MonitoringPane = () => {
         <div className="mt-4 flex items-center gap-3">
           <div className="glass-input rounded-xl h-11 flex items-center gap-2 px-3.5">
             <span className="text-white/45"><Icon name="refresh" /></span>
-            <select
+            <Select
               value={settings.refreshInterval}
-              onChange={e => update({ refreshInterval: +e.target.value })}
-              className="bg-transparent outline-none text-sm text-white/90 pr-2"
-            >
-              <option value={5}>5 segundos</option>
-              <option value={15}>15 segundos</option>
-              <option value={30}>30 segundos</option>
-              <option value={60}>1 minuto</option>
-              <option value={300}>5 minutos</option>
-            </select>
+              options={REFRESH_OPTIONS}
+              onChange={refreshInterval => update({ refreshInterval })}
+              aria-label="Intervalo de actualización"
+              className="min-w-[120px] text-white/90"
+            />
           </div>
           <div className="text-xs text-white/45 leading-relaxed">
             Intervalo de polling HTTP. El WebSocket entrega métricas en tiempo real independientemente.
@@ -1917,19 +1922,19 @@ const AssistantPane = () => {
             <div className="flex items-center gap-2">
               <div className="glass-input rounded-xl h-11 flex-1 min-w-0 flex items-center gap-2 px-3.5">
                 <span className="text-white/45 shrink-0"><Icon name="cpu" /></span>
-                <select
+                <Select
                   value={model}
-                  onChange={e => setModel(e.target.value)}
+                  options={[
+                    ...(savedMissing ? [{ value: model, label: `${model} (ya no disponible)` }] : []),
+                    ...(!models && model ? [{ value: model, label: model }] : []),
+                    ...(models ?? []).map(m => ({ value: m.id, label: m.name, hint: m.name !== m.id ? m.id : undefined })),
+                  ]}
+                  onChange={setModel}
                   disabled={!models?.length && !model}
-                  className="flex-1 min-w-0 bg-transparent outline-none text-sm text-white/90 pr-2 disabled:opacity-50"
-                >
-                  {!models?.length && !model && <option value="">{modelsQuery.isFetching ? 'Cargando modelos…' : 'Sin modelos'}</option>}
-                  {savedMissing && <option value={model}>{model} (ya no disponible)</option>}
-                  {!models && model && <option value={model}>{model}</option>}
-                  {models?.map(m => (
-                    <option key={m.id} value={m.id}>{m.name !== m.id ? `${m.name} — ${m.id}` : m.id}</option>
-                  ))}
-                </select>
+                  placeholder={modelsQuery.isFetching ? 'Cargando modelos…' : 'Sin modelos'}
+                  aria-label="Modelo"
+                  className="flex-1 text-white/90"
+                />
               </div>
               <button type="button" onClick={() => void handleRefreshModels()}
                 disabled={!canListModels || refreshingModels || modelsQuery.isFetching}

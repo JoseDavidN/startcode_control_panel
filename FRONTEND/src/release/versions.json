@@ -3,6 +3,47 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.5.0",
+      "type": "minor",
+      "date": "2026-10-09",
+      "title": "Tab de Cloud",
+      "changes": {
+        "added": [
+          "Nuevo tab Cloud en la barra lateral, que abre la vista de gestión de StartCode Cloud",
+          "Columna de navegación de la nube con la marca StartCode Cloud, tu cuenta y el tab Home",
+          "Explorador de archivos con migas de pan que siguen la carpeta abierta: un clic en cualquier tramo de la ruta te devuelve a esa carpeta",
+          "Filtros por tipo, por fecha y por tiempo desde la última modificación",
+          "Buscador por nombre en la carpeta abierta y botón Nueva carpeta en la barra de filtros",
+          "Vista en mosaico (por defecto) o en lista, con las carpetas primero y luego los archivos",
+          "En la vista de lista el contenido se separa en grupos que se pueden plegar: carpetas, archivos Word, archivos Excel, PDF, imágenes, etc. Los elementos de cada grupo se muestran sangrados, en forma de árbol",
+          "La vista en mosaico también se separa por tipo: carpetas, archivos Word, archivos Excel, etc.",
+          "Cada archivo se muestra con el icono de su tipo: Word, Excel, PowerPoint, PDF, imágenes, videos, audio, comprimidos, código y texto",
+          "Etiqueta al pie de la columna que indica si estás conectado a la nube",
+          "Almacenamiento al pie de la columna: espacio disponible, total y una barra con lo ocupado",
+          "Cloud trabaja con tus archivos reales en StartCode Cloud, un servidor aparte donde se guardan Home y Backups",
+          "La primera vez que entras a Cloud se pide conectar el panel con la dirección de tu nube, tu usuario y tu contraseña (también desde el engranaje → Conexión); la sesión queda guardada en el equipo y puedes desconectarla cuando quieras",
+          "El asistente de IA no está disponible en la vista Cloud por el momento",
+          "Arrastra carpetas o archivos a la vista Cloud para cargarlos en la carpeta abierta: aparece «Suelta para cargar», un aviso muestra el progreso de la carga y, al terminar, la confirmación se queda 10 segundos",
+          "Los avisos de Cloud aparecen abajo, dentro de la zona de contenido",
+          "Lector de archivos: doble clic en un documento Word, una hoja de Excel, un PDF, un texto o un archivo de código para verlo sin salir de la app, con el botón Descargar en la barra del lector. También se abre con clic derecho → Abrir",
+          "Los archivos Markdown (.md) se ven con formato en el lector: títulos, listas, tablas y código, con la opción de ver el texto original",
+          "Fija hasta 5 carpetas por sección en el menú de Cloud con clic derecho → Fijar en el menú: aparecen debajo de Home o de Backups para abrirlas con un clic",
+          "Nuevo tab Backups en Cloud, con el mismo funcionamiento que Home para tus respaldos",
+          "Configuración de Cloud desde el engranaje junto al título: conexión con la nube y rutas de las carpetas de Home y de Backups en el servidor",
+          "Mueve, cambia el nombre o elimina carpetas y archivos con clic derecho; se pueden mover entre Home y Backups",
+          "Detalles de carpetas y archivos con clic derecho: tamaño, contenido, fechas de carga y modificación, y ubicación",
+          "Botones Cargar archivos y Cargar carpeta en Cloud, que abren el explorador de archivos de tu sistema",
+          "Menú propio con el clic derecho en toda la app: en Cloud, Descargar sobre carpetas y archivos; sobre texto, Cortar, Copiar y Pegar; en la terminal, Copiar y Pegar"
+        ],
+        "changed": [
+          "Las ventanas emergentes nunca son más altas que la app y dejan espacio arriba y abajo",
+          "Elegir archivos o carpetas (en Cloud y en la transferencia SFTP de los servidores) abre el explorador de archivos de tu sistema",
+          "El indicador Cloud del Panel muestra el espacio usado y el total de tu nube y si está conectada",
+          "Los desplegables de toda la app (filtros de Cloud, servidor de la gráfica del Panel, intervalo de actualización, modelo del asistente y sistema operativo de los servidores) tienen ahora el diseño de la app en lugar del desplegable del sistema, y se pueden manejar con el teclado"
+        ]
+      }
+    },
+    {
       "version": "0.4.0",
       "type": "minor",
       "date": "2026-10-09",

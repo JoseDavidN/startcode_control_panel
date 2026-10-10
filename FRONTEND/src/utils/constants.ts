@@ -38,6 +38,8 @@ export const STORAGE_KEYS = {
 	REFRESH_TOKEN: 'refresh_token',
 	USER_DATA: 'user_data',
 	REMEMBER_ME: 'remember_me',
+	CLOUD_PINNED: 'cloud_pinned_folders',
+	CLOUD_CONNECTION: 'cloud_connection',
 };
 
 export const ROUTES = {
@@ -58,6 +60,8 @@ export const ROUTES = {
 	// Databases
 	DATABASES: '/databases',
 	DATABASE_DETAIL: '/databases/:id',
+	// Cloud
+	CLOUD: '/cloud',
 	// Notifications
 	NOTIFICATIONS: '/notifications',
 	// Settings

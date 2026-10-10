@@ -10,6 +10,7 @@ import { NotificationProvider } from '@contexts/NotificationContext';
 import { PreferencesProvider } from '@contexts/PreferencesContext';
 import { UpdaterProvider } from '@contexts/UpdaterContext';
 import { AssistantProvider } from '@contexts/AssistantContext';
+import { ContextMenuProvider } from '@contexts/ContextMenuContext';
 import { PreferencesSync } from '@components/PreferencesSync';
 import { queryClient } from '@lib/queryClient';
 import { API_CONFIG } from '@utils/constants';
@@ -38,6 +39,7 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ContextMenuProvider>
       <PreferencesProvider>
         <AuthProvider>
           <PreferencesSync />
@@ -53,6 +55,7 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
           </RealtimeMetricsProvider>
         </AuthProvider>
       </PreferencesProvider>
+      </ContextMenuProvider>
       <Toaster
         position="bottom-right"
         expand

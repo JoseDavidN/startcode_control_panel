@@ -1,0 +1,51 @@
+import { mkdtemp, mkdir, rm, symlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { assertNoSymlinks, nameError, parseRelative } from './path-guard';
+
+describe('path-guard', () => {
+  describe('nameError', () => {
+    it('acepta nombres normales con tildes y espacios internos', () => {
+      expect(nameError('Facturación septiembre.xlsx')).toBeNull();
+    });
+    it.each(['', ' ', '.', '..', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', ' lead', 'trail '])('rechaza %p', name => {
+      expect(nameError(name)).not.toBeNull();
+    });
+    it('rechaza nombres de más de 120 caracteres', () => {
+      expect(nameError('a'.repeat(121))).not.toBeNull();
+    });
+  });
+
+  describe('parseRelative', () => {
+    it('la raíz son cero segmentos', () => {
+      expect(parseRelative('')).toEqual([]);
+      expect(parseRelative(undefined)).toEqual([]);
+    });
+    it('parte una ruta relativa', () => {
+      expect(parseRelative('Documentos/Contratos')).toEqual(['Documentos', 'Contratos']);
+    });
+    it.each(['/etc/passwd', '../secreto', 'a/../../b', 'a//b', 'a/./b', 'a\\b'])('rechaza %p', rel => {
+      expect(() => parseRelative(rel)).toThrow();
+    });
+  });
+
+  describe('assertNoSymlinks', () => {
+    let root: string;
+    beforeEach(async () => {
+      root = await mkdtemp(join(tmpdir(), 'cloud-guard-'));
+      await mkdir(join(root, 'real', 'sub'), { recursive: true });
+      await symlink(tmpdir(), join(root, 'escape'));
+    });
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true });
+    });
+
+    it('deja pasar rutas reales y las que aún no existen', async () => {
+      await expect(assertNoSymlinks(root, ['real', 'sub'])).resolves.toBeUndefined();
+      await expect(assertNoSymlinks(root, ['real', 'nueva', 'archivo.txt'])).resolves.toBeUndefined();
+    });
+    it('rechaza una ruta que atraviesa un enlace simbólico', async () => {
+      await expect(assertNoSymlinks(root, ['escape', 'algo'])).rejects.toThrow();
+    });
+  });
+});

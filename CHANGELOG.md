@@ -9,6 +9,82 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [Cloud 0.1.0] — 2026-10-10
+
+Primera versión del backend de StartCode Cloud, nuevo proyecto en `CLOUD/` (NestJS 11 + TypeScript), separado de `BACKEND/`. Va junto con la app de escritorio 0.5.0, que habla con él directamente.
+
+### Añadido
+- Archivos de **Home** y **Backups** tal cual en el disco del servidor; carpetas, fechas y tamaños se leen del sistema de archivos, sin base de datos. Estado interno (usuarios con hash bcrypt y sesiones) en JSON dentro de `CLOUD_DATA_DIR`, con escritura atómica (`state/state.store.ts`)
+- Autenticación propia: `POST /auth/login` (5/min) devuelve un JWT HS256 de larga duración (`CLOUD_TOKEN_TTL`, 180 días por defecto) con `jti`; `POST /auth/logout` revoca la sesión aunque el token no haya expirado; `GET /auth/me`. `CloudAuthGuard` exige `Authorization: Bearer` de una sesión activa. Primer usuario desde `CLOUD_ADMIN_USERNAME`/`CLOUD_ADMIN_PASSWORD`; más con `pnpm user:add <usuario>` (`src/cli/user-add.ts`)
+- `GET /health` público (`service: 'startcode-cloud'` y versión) para que el panel compruebe la URL
+- Rutas de Home y Backups por usuario (`GET`/`PUT /config/paths`): mismas reglas que el panel y, además, siempre dentro de `CLOUD_ALLOWED_ROOTS`; se crean si no existen y se vuelven a comprobar ya resueltas (`realpath`)
+- Archivos (`files/`): `GET /tree/:section` (árbol completo con ids relativos y tipo por extensión, tope `CLOUD_TREE_MAX_ENTRIES`), `GET /storage` (`statfs` del disco), `POST /folders`, `PUT /files` (subida en streaming con el cuerpo crudo a un temporal que se renombra al terminar; comprueba el tamaño declarado y `CLOUD_MAX_UPLOAD_BYTES`; reemplaza archivos del mismo nombre), `GET /files/content`, `GET /files/zip` (carpeta en .zip con `archiver`, en streaming), `PATCH /entries/rename`, `POST /entries/move` (también entre Home y Backups, con copia y borrado si están en discos distintos) y `DELETE /entries`
+- Seguridad de rutas (`files/path-guard.ts`): rutas relativas validadas segmento a segmento (sin absolutas, `.`, `..` ni `/ \ : * ? " < > |`) y rechazo de cualquier camino que atraviese un enlace simbólico; la raíz de una sección no se puede renombrar, mover ni borrar. Errores del sistema de archivos traducidos al español con `{ code, message, hint }`
+- CORS con `CORS_ORIGIN` más los orígenes de Tauri y la respuesta a la preflight de Private Network, como `BACKEND`; sin límite de tiempo por petición para subidas y descargas largas
+- Tests con Jest (`path-guard`, árbol y validación de rutas), `Dockerfile`, `docker-compose.yml` (volúmenes de datos y almacenamiento), `.env.example` y `README.md` con despliegue y API
+
+---
+
+## [App de escritorio 0.5.0] — 2026-10-09
+
+Versión **menor** sobre 0.4.0: tab Cloud. Trabaja con archivos reales en un backend de StartCode Cloud (`CLOUD/`, Cloud 0.1.0), al que el panel se conecta directamente.
+
+### Añadido
+- Vista **StartCode Cloud** (`pages/cloud/Cloud.tsx`, ruta `ROUTES.CLOUD` = `/cloud`): el ítem Cloud del sidebar deja de estar marcado como «Pronto» y abre la gestión de la nube en el mismo contenedor de la app, repartido en dos columnas 20/80 (`grid-cols-[minmax(0,1fr)_minmax(0,4fr)]`)
+- Columna de navegación (`components/cloud/CloudSidebar.tsx`): marca «StartCode Cloud» con icono de nube, chip de la cuenta con solo el nombre de usuario y un icono pequeño de usuario (`CloudAccount.username`), secciones de la nube como tabs (**Home** y **Backups**, `CLOUD_SECTIONS` en `utils/cloud.ts`; pulsar un tab lo abre en su raíz) y, al pie, el almacenamiento (espacio disponible y total, porcentaje y barra con el gradiente de marca del tema sobre `bg-track`; lo ocupado y el total del disco de la nube, `GET /storage`) y la etiqueta de estado de conexión con la nube (Conectado, Conectando…, Desconectado)
+- Explorador de archivos (`components/cloud/CloudExplorer.tsx`) en la columna de contenido:
+  - Migas de pan desde Home que siguen la carpeta abierta; cada tramo anterior vuelve a esa carpeta
+  - Barra de filtros: **Tipo** (carpetas o un tipo de archivo), **Fecha** de creación (hoy, esta semana, este mes, este año) y **Modificado** por lapso (última hora, 24 horas, 7 días, 30 días, más de 30 días), con «Limpiar» cuando hay alguno activo. Los filtros se conservan al cambiar de carpeta
+  - Al otro extremo, buscador por nombre en la carpeta abierta (sin distinguir mayúsculas ni tildes, `query` en `CloudFilters`; Escape lo vacía y «Limpiar» también) y botón **Nueva carpeta**, que abre un modal con el nombre validado (`folderNameError`: vacío, más de 120 caracteres, `/ \ : * ? " < > |` o repetido en la carpeta) y crea una carpeta vacía en la abierta, con un aviso de Cloud
+  - Junto a ellos, cambio entre **mosaico** (por defecto) y **lista** (nombre, tipo, tamaño y modificación relativa)
+  - La lista se separa en grupos colapsables, todos desplegados por defecto: carpetas y luego uno por tipo de archivo (Word, Excel, PowerPoint, PDF, imágenes…), cada uno con su número de elementos (`groupEntries` y `CLOUD_GROUP_LABELS` en `utils/cloud.ts`). Lo plegado se conserva al cambiar de carpeta o de vista. Los elementos de cada grupo van sangrados bajo su encabezado con guías de árbol (vertical y conector por fila, la última cortada a media altura)
+  - El mosaico se separa por los mismos grupos: cada bloque lleva como separador el icono y el nombre del tipo, su número de elementos y una línea que se desvanece hacia la derecha
+  - Orden por defecto: primero carpetas y luego archivos, cada grupo por nombre (`visibleEntries` en `utils/cloud.ts`). Las carpetas se abren con un clic (o Enter en la lista)
+  - Iconos por tipo (`FileGlyph`, `FolderGlyph` en `components/cloud/icons.tsx`): Word, Excel, PowerPoint y PDF con su letra y color; imágenes, video, audio, comprimidos, código y texto con su dibujo. Colores de las familias remapeadas por tema
+- Componente `Select` (`components/common/Select.tsx`): desplegable propio con el aspecto de la app en lugar del `<select>` nativo, cuya lista dibuja el sistema y no sigue el tema. Lista en portal con `glass-float`, que se abre hacia arriba si abajo no cabe, check en la opción elegida, texto secundario opcional (`hint`) y manejo con teclado (flechas, Inicio/Fin, Enter, Escape, salto por letra). Documentado en `DESIGN.md`
+- Menú contextual propio en toda la app (`ContextMenuProvider` en `AppProviders`, `components/common/ContextMenu.tsx`, `hooks/useContextMenu.ts`, `lib/textEditing.ts`): el clic derecho ya no abre el menú del sistema
+  - Cada componente puede dar sus opciones con `useContextMenu().openContextMenu`; si no, sobre texto aparecen Cortar, Copiar y Pegar según haya selección y el campo sea editable (las contraseñas no se copian ni se cortan), y en el resto no aparece nada
+  - Cortar y pegar usan `execCommand` para conservar el deshacer del campo y avisar a React; si el webview niega el portapapeles, un aviso sugiere el atajo de teclado
+  - Cloud: clic derecho en una carpeta o un archivo ofrece **Descargar**: los archivos se descargan tal cual y las carpetas comprimidas en .zip por la nube
+  - Terminal SSH: Copiar la selección de xterm y Pegar en la sesión
+  - En desarrollo, Mayús + clic derecho deja el menú del navegador para inspeccionar
+- Avisos propios de Cloud (`components/cloud/CloudToasts.tsx`, `hooks/useCloudNotices.ts`): se muestran abajo y centrados dentro de la columna de contenido (80 %), con `glass-float`, en lugar de en la esquina de la ventana. Los informativos duran 5 s
+- Cargar arrastrando: al arrastrar carpetas o archivos del sistema sobre la columna de contenido aparece «Suelta para cargar» con la carpeta de destino (solo con archivos, no con texto arrastrado). Al soltar, los archivos se suben a la nube (tres a la vez) y un aviso muestra el progreso real (archivos, bytes y porcentaje); al terminar queda 10 s con la confirmación y lo cargado aparece en la carpeta, combinando carpetas del mismo nombre y reemplazando archivos. Si algo falla, el aviso de progreso se cambia por el error. Soltar en la columna de navegación no hace nada, en vez de que el webview abra el archivo
+- Lector de archivos (`components/cloud/FileViewerModal.tsx`): doble clic en un archivo Word, Excel, PDF, texto o código abre un modal grande con el nombre en la cabecera y **Descargar** junto a Cerrar. Los demás tipos avisan que no tienen vista previa
+  - Word (.docx) y Excel (.xlsx) se leen en la app con `fflate` y `DOMParser` (`lib/fileViewer/office.ts`), sin librerías de ofimática: títulos, negritas, cursivas, listas y tablas del documento; hojas como pestañas con columnas por letra y filas numeradas (tope de 1000 filas y 60 columnas). Los formatos antiguos (.doc, .xls) muestran «Sin vista previa» con la opción de descargar
+  - PDF con `pdfjs-dist` (nueva dependencia, `lib/fileViewer/pdf.ts`), cargado solo al abrir un PDF; el worker va como archivo de la app, sin tocar la CSP. Cada página en un canvas al ancho del lector
+  - Texto y código en monoespaciada (tope de 500 000 caracteres)
+  - Markdown (`.md`, `.markdown`) interpretado (`components/cloud/MarkdownView.tsx`, con `react-markdown` y `remark-gfm`, nuevas dependencias): títulos, listas y listas de tareas, tablas, citas, bloques de código, tachado y enlaces (se abren fuera de la app), con las clases del sistema de diseño. El HTML incrustado se ignora y las imágenes se muestran como etiqueta (la CSP no carga imágenes externas). Selector «Vista / Código» para ver el texto original
+  - El contenido se pide a la nube (`GET /files/content`) al abrir el lector
+- `Modal` admite `actions` (botones en la cabecera, a la izquierda del de cerrar, que ahora tiene `aria-label`), `tall` (todo el alto disponible, lo usa el lector) y `dismissable={false}` (sin botón de cerrar y sin cerrarse con Escape ni con el fondo)
+  - Clic derecho en un archivo que el lector sabe mostrar ofrece **Abrir** antes de Descargar
+- Carpetas fijadas (`hooks/useCloudPinned.ts`): clic derecho en una carpeta → **Fijar en el menú** la pone en la columna de navegación como subcarpeta de su sección (Home o Backups), con guías de árbol; un clic la abre (con su ruta completa en las migas) y se marca activa en lugar de la sección. Máximo 5 por sección (`MAX_PINNED_FOLDERS`): con el tope lleno la opción aparece desactivada. Se quita con **Quitar del menú**, desde la carpeta o desde la propia entrada fijada. Son una preferencia de este equipo (`STORAGE_KEYS.CLOUD_PINNED`); las que dejan de existir en la nube se retiran solas
+- Tab **Backups**: mismo funcionamiento que Home (explorador, filtros, buscador, nueva carpeta, carga arrastrando, lector y carpetas fijadas) sobre su propio árbol. Cada sección recuerda su carpeta abierta al cambiar de tab y las migas empiezan con el icono de la sección. Las fijadas se guardan por sección; las guardadas antes como lista única se leen como de Home
+- Configuración de Cloud: icono de engranaje en la fila del título «StartCode Cloud» que abre un modal (`components/cloud/CloudSettingsModal.tsx`) con dos pestañas:
+  - **Conexión**: la primera vez se escribe la URL de la nube, el usuario y la contraseña (con un ojo para mostrarla u ocultarla); el panel comprueba `/health`, inicia sesión y guarda URL, usuario y token en el almacén del equipo (`hooks/useCloudConnection.ts`, `lib/tauriStore.ts`, `STORAGE_KEYS.CLOUD_CONNECTION`). Conectado muestra servidor, usuario y versión, y **Desconectar** cierra la sesión en la nube. Si la nube no responde, la conexión se conserva con «Reintentar» u «Olvidar conexión»; si rechaza el token, se olvida. Sin conexión (tras comprobar la guardada) lo primero que muestra Cloud es este modal, titulado «Conectar con StartCode Cloud», solo con la pestaña Conexión y sin poder cerrarse (ni con Escape, ni con el fondo, ni con un botón de cerrar) hasta conectar; «Volver al panel» lleva al Panel para no dejar la app bloqueada. Si se desconecta, vuelve a aparecer
+  - **Rutas**: las carpetas de Home y Backups guardadas en la nube (`GET`/`PUT /config/paths`), con las carpetas permitidas del servidor a la vista. Validación (`cloudPathErrors`): ruta absoluta, distinta de `/`, sin `.` ni `..` ni caracteres no permitidos, y ninguna igual ni dentro de la otra; la nube además exige que estén dentro de sus carpetas permitidas y muestra su error. «Restablecer» vuelve a lo guardado
+- Mover, cambiar nombre y eliminar carpetas y archivos desde el menú contextual (`components/cloud/EntryActionModals.tsx`), separados de las demás opciones; Eliminar en rojo
+  - **Mover**: árbol de carpetas de Home y Backups para elegir el destino (se puede mover entre secciones); una carpeta no puede ir dentro de sí misma, y avisa si ya está ahí o si en el destino hay algo con el mismo nombre
+  - **Cambiar nombre**: con el nombre seleccionado sin la extensión; un archivo con otra extensión cambia de tipo. Mismas reglas de nombre que Nueva carpeta (`entryNameError`)
+  - **Eliminar**: confirmación que indica cuántos elementos contiene una carpeta
+  - Cada acción se hace en la nube y muestra un aviso de Cloud con el resultado o el error
+- **Detalles** en el menú contextual de carpetas y archivos (`components/cloud/EntryDetailsModal.tsx`): icono grande del tipo centrado (`FileGlyph` admite `size="xl"`), nombre, tipo y extensión, tamaño (legible y en bytes), fechas de carga y de modificación, ubicación en la sección y ruta en el servidor. En carpetas, además, tamaño total y contenido contando subcarpetas, recuento por tipo de archivo, último cambio dentro y si está fijada; en archivos, si se abre en el lector
+- Menú contextual: las opciones admiten `separator` (línea encima) y `danger` (en rojo)
+- Botones **Cargar archivos** y **Cargar carpeta** al final de la fila de las migas de pan: abren el explorador de archivos del sistema y cargan lo elegido en la carpeta abierta, con el mismo aviso de progreso que al arrastrar
+  - En la app de escritorio el diálogo es el nativo de Tauri (`lib/filePicker.tauri.ts`): plugins `dialog` y `fs` (nuevas dependencias en `package.json` y `Cargo.toml`, registrados en `lib.rs`; permisos `dialog:allow-open`, `fs:allow-read-file`, `fs:allow-read-dir` y `fs:allow-stat` en `capabilities/default.json`). Lo elegido entra en el ámbito de `fs` (las carpetas con `recursive`), sin abrir lectura a todo el disco; el contenido se lee al subir cada archivo y los enlaces simbólicos se saltan. En el navegador sigue el `<input type="file">`
+  - `getFilePicker` elige el proveedor según `IS_TAURI`, así que «Elegir archivos» y «Elegir carpeta» del modal SFTP también usan ahora el diálogo nativo en la app de escritorio
+- Cliente de la nube (`services/cloud.api.ts`): instancia de axios propia con la URL y el token de la conexión guardada, errores `CloudApiError` con el formato de `ApiError` (también los que llegan como Blob en las descargas) y aviso a la conexión cuando la nube rechaza el token. Árboles, almacenamiento y rutas con React Query (`hooks/useCloudData.ts`, claves por servidor y usuario) que se refrescan tras cada cambio. Tipos en `types/cloud.types.ts`
+
+### Cambiado
+- Los modales nunca superan el alto de la ventana y dejan siempre 48 px arriba y abajo (`py-12` en el overlay y `max-h-full`, en vez de `max-h-[88vh]` con `p-4`/`p-6`)
+- Versión de la app a 0.5.0 en `FRONTEND/package.json`, `tauri.conf.json` y `Cargo.toml`
+- La barra superior muestra `startcode://cloud` en la vista Cloud
+- Dashboard: el indicador **Cloud** deja de estar en «Próximamente»: muestra el espacio usado sobre el total del disco de la nube («62,4 GB/100 GB», `GET /storage`) y debajo el estado de la conexión (en línea con el servidor, conectando, sin respuesta o sin conectar). `Kpi` acepta un valor con marcado
+- Todos los selects nativos pasan a `Select`: servidor de la gráfica del Panel, intervalo de actualización y modelo del asistente en Configuración (el id del modelo va como texto secundario), sistema operativo al agregar y editar un servidor, y los filtros de Cloud
+- El asistente de IA no está disponible en la vista Cloud: `AppLayout` oculta el botón **Asistente** y no monta `AssistantPanel` en `/cloud`, y si el panel venía abierto lo cierra al entrar
+
+---
+
 ## [0.6.0] — 2026-10-09
 
 Versión **menor** sobre 0.5.0: asistente de IA por usuario. Va junto con la app de escritorio 0.4.0.

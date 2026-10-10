@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
+import { Select } from '@components/common/Select';
 import { useUpdateServer } from '@hooks/useServers';
 import { notify } from '@services/notification.service';
 import type { Server } from '@services/server.service';
@@ -126,10 +127,8 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
           <div>
             <Label>Sistema operativo</Label>
             <div className={wrapCls}>
-              <select className={`${inputCls} cursor-pointer`} value={form.os}
-                onChange={e => set('os')(e.target.value)}>
-                {OS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <Select className="w-full text-white/90" value={form.os} options={OS_OPTIONS}
+                onChange={set('os')} aria-label="Sistema operativo" />
             </div>
           </div>
         </div>

@@ -13,6 +13,10 @@
     "notification:default",
     "notification:allow-notify",
     "notification:allow-request-permission",
-    "notification:allow-check-permissions"
+    "notification:allow-check-permissions",
+    "dialog:allow-open",
+    "fs:allow-read-file",
+    "fs:allow-read-dir",
+    "fs:allow-stat"
   ]
 }

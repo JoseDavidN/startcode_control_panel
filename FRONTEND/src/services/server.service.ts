@@ -7,6 +7,7 @@ import type {
 	AgentState,
 	AgentUninstallResult,
 } from '@typings/agent.types';
+import type { ResourceTag } from '@utils/tags';
 
 /* Instalar baja 7 MB y arranca un servicio: los 30 s del cliente se quedan
    cortos y el usuario vería un timeout mientras el trabajo sigue en marcha. */
@@ -25,6 +26,7 @@ interface CreateServerDto {
 	username: string;
 	privateKey: string;
 	os: string;
+	tag?: ResourceTag | null;
 	description?: string;
 }
 
@@ -35,6 +37,8 @@ export interface UpdateServerDto {
 	port?: number;
 	username?: string;
 	os?: string;
+	/** null quita la etiqueta. */
+	tag?: ResourceTag | null;
 	description?: string;
 }
 
@@ -49,6 +53,8 @@ export interface Server {
 	   y un servidor recién creado nace en `pending`. */
 	status: 'online' | 'offline' | 'error' | 'maintenance' | 'checking' | 'warning' | 'pending';
 	os: string;
+	/** Una sola etiqueta, opcional. */
+	tag: ResourceTag | null;
 	description?: string;
 	metadata?: {
 		osVersion?: string;

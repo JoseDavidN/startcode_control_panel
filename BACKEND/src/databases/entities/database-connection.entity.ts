@@ -24,6 +24,15 @@ export enum DatabaseConnectionStatus {
   DISCONNECTED = 'disconnected',
 }
 
+/** Clasificación de la conexión, la misma lista que en servidores. Cerrada: se elige, no se escribe. */
+export enum DatabaseTag {
+  PRODUCTION = 'production',
+  STAGING = 'staging',
+  TESTING = 'testing',
+  DEVELOPMENT = 'development',
+  BACKUP = 'backup',
+}
+
 @Entity('tbl_database_connections')
 @Index('idx_database_connections_user', ['userId'])
 export class DatabaseConnection {
@@ -58,6 +67,10 @@ export class DatabaseConnection {
      en el formulario y abrir la conexión). */
   @Column({ type: 'text', nullable: true, select: false, name: 'str_password_enc' })
   passwordEnc: string | null;
+
+  /** Una sola etiqueta por conexión, opcional. */
+  @Column({ type: 'enum', enum: DatabaseTag, nullable: true, name: 'enu_tag' })
+  tag: DatabaseTag | null;
 
   /** Base a la que apunta; null conecta al servidor completo. En Redis, el índice. */
   @Column({ type: 'varchar', nullable: true, name: 'str_database' })

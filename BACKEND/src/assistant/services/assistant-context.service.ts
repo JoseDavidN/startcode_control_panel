@@ -38,7 +38,7 @@ export class AssistantContextService {
     const servers = await this.servers.find({
       where: { ownerId: userId },
       select: {
-        id: true, name: true, host: true, port: true, username: true, status: true, os: true,
+        id: true, name: true, host: true, port: true, username: true, status: true, os: true, tag: true,
         description: true, lastSeen: true, hostname: true, osVersion: true, kernelVersion: true,
         metadata: true, createdAt: true,
       },
@@ -58,7 +58,7 @@ export class AssistantContextService {
       this.connections.find({
         where: { userId },
         select: {
-          id: true, name: true, engine: true, host: true, port: true, username: true, database: true,
+          id: true, name: true, engine: true, tag: true, host: true, port: true, username: true, database: true,
           status: true, version: true, lastError: true, lastCheckedAt: true,
         },
         order: { name: 'ASC' },
@@ -95,6 +95,7 @@ export class AssistantContextService {
           usuarioSsh: s.username,
           estado: s.status,
           so: s.os,
+          etiqueta: s.tag,
           descripcion: s.description,
           hostname: s.hostname,
           versionSo: s.osVersion,
@@ -126,6 +127,7 @@ export class AssistantContextService {
         id: c.id,
         nombre: c.name,
         motor: c.engine,
+        etiqueta: c.tag,
         host: c.host,
         puerto: c.port,
         usuario: c.username,

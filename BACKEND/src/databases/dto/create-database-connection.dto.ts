@@ -8,8 +8,9 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { DatabaseEngine } from '../entities/database-connection.entity';
+import { DatabaseEngine, DatabaseTag } from '../entities/database-connection.entity';
 
 export class CreateDatabaseConnectionDto {
   @ApiProperty({ enum: DatabaseEngine, example: DatabaseEngine.POSTGRESQL })
@@ -57,4 +58,9 @@ export class CreateDatabaseConnectionDto {
   @IsString()
   @MaxLength(128)
   database?: string;
+
+  @ApiPropertyOptional({ enum: DatabaseTag, nullable: true, description: 'Una sola, opcional. null la quita' })
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsEnum(DatabaseTag, { message: 'La etiqueta debe ser un valor válido' })
+  tag?: DatabaseTag | null;
 }

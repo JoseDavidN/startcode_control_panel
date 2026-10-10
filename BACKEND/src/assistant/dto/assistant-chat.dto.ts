@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -17,6 +18,25 @@ export type ChatRole = (typeof CHAT_ROLES)[number];
 /** Lo que el cliente puede adjuntar de la pantalla abierta. Solo lectura. */
 export const CONTEXT_TYPES = ['terminal', 'command_output', 'sql_editor', 'sql_result', 'schema', 'page'] as const;
 export type ContextType = (typeof CONTEXT_TYPES)[number];
+
+/** Base abierta en pantalla: el backend lee su estructura real antes de preguntar. */
+export class ChatDatabaseRefDto {
+  @ApiProperty()
+  @IsUUID()
+  connectionId: string;
+
+  @ApiPropertyOptional({ description: 'Sesión de la vista de consultas' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sessionId?: string;
+
+  @ApiPropertyOptional({ description: 'Base activa; sin ella, las de la conexión' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  schema?: string;
+}
 
 export class ChatContextItemDto {
   @ApiProperty({ enum: CONTEXT_TYPES })
@@ -32,6 +52,12 @@ export class ChatContextItemDto {
   @IsString()
   @MaxLength(40_000)
   content: string;
+
+  @ApiPropertyOptional({ type: ChatDatabaseRefDto, description: 'Solo en `schema`: de qué base leer la estructura real' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChatDatabaseRefDto)
+  database?: ChatDatabaseRefDto;
 }
 
 export class AssistantChatDto {

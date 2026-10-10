@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '@components/common/Card';
 import { EngineBadge } from '@components/databases/EngineIcon';
@@ -15,7 +14,6 @@ import {
   useDatabaseConnection,
   useDatabaseSchemas,
   useRunQuery,
-  DATABASE_KEYS,
 } from '@hooks/useDatabases';
 import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
@@ -24,7 +22,7 @@ import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES } from '@typings/database.ty
 import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
 import type { ApiError } from '@typings/api.types';
-import type { QueryResult, SchemaTable } from '@typings/database.types';
+import type { QueryResult } from '@typings/database.types';
 
 /** Mensaje del backend (los de validación llegan como lista). */
 function errorMessage(err: unknown): string | null {
@@ -117,9 +115,8 @@ export const DatabaseDetail: React.FC = () => {
   /* Con base fija en la conexión, el editor siempre corre sobre ella. */
   const activeSchema = conn?.database ?? selectedSchema;
 
-  /* ── Asistente: lee el editor, el último resultado y la estructura ya
-     cargada en el árbol; puede dejar SQL en el editor, nunca ejecutarlo. */
-  const queryClient = useQueryClient();
+  /* ── Asistente: lee el editor, el último resultado y la estructura, que el
+     backend saca del motor al preguntar; puede dejar SQL en el editor, nunca ejecutarlo. */
   const sessionId = session.sessionId;
   const assistantOn = Boolean(conn && manageable);
   const connLabel = conn?.name ?? 'Base de datos';
@@ -134,23 +131,8 @@ export const DatabaseDetail: React.FC = () => {
       `Bases: ${(schemasQuery.data ?? []).filter(s => !s.system).map(s => s.name).join(', ') || '—'}`,
       `Base activa: ${activeSchema ?? 'ninguna'}`,
     ];
-    /* Solo lo que el árbol ya pidió al servidor: leer no abre consultas nuevas. */
-    if (sessionId) {
-      for (const section of ['tables', 'views'] as const) {
-        const cached = queryClient.getQueriesData<SchemaTable[]>({ queryKey: DATABASE_KEYS.schemas(id, sessionId) })
-          .filter(([key]) => key[key.length - 1] === section);
-        for (const [key, tables] of cached) {
-          if (!Array.isArray(tables)) continue;
-          lines.push(`\n## ${section === 'tables' ? 'Tablas' : 'Vistas'} de ${String(key[5])}`);
-          for (const t of tables) {
-            const cols = t.columns.map(c => `${c.name} ${c.type}${c.key ? ` ${c.key}` : ''}${c.nullable ? '' : ' NOT NULL'}`).join(', ');
-            lines.push(`- ${t.namespace ? `${t.namespace}.` : ''}${t.name}${t.rows !== null ? ` (~${t.rows} filas)` : ''}: ${cols}`);
-          }
-        }
-      }
-    }
     return lines.join('\n');
-  }, assistantOn);
+  }, assistantOn, () => (conn ? { connectionId: conn.id, sessionId: sessionId ?? undefined, schema: activeSchema ?? undefined } : null));
   useAssistantTarget(`sql-editor:${id}`, 'sql', 'el editor SQL', text => {
     /* Se añade debajo de lo que haya: no se pierde lo que el usuario escribía. */
     setSql(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${text}` : text));

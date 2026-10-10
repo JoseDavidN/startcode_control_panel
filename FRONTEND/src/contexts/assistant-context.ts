@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { AssistantSourceType, AssistantTargetKind } from '@typings/assistant.types';
+import type { AssistantDatabaseRef, AssistantSourceType, AssistantTargetKind } from '@typings/assistant.types';
 
 /* Tipos y contexto del asistente, aparte del proveedor (AssistantContext.tsx)
    para que ese archivo solo exporte componentes. */
@@ -14,6 +14,8 @@ export interface AssistantSource {
 	type: AssistantSourceType;
 	title: string;
 	read: () => string;
+	/** En `schema`: de qué base lee el backend la estructura real. */
+	database?: () => AssistantDatabaseRef | null;
 }
 
 /**

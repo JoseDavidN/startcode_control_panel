@@ -28,7 +28,6 @@ export interface NotificationPrefs {
 	highCpuUsage: boolean;
 	highMemoryUsage: boolean;
 	highDiskUsage: boolean;
-	securityAlerts: boolean;
 	weeklyReport: boolean;
 	productNews: boolean;
 }
@@ -68,7 +67,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 		highCpuUsage: true,
 		highMemoryUsage: true,
 		highDiskUsage: false,
-		securityAlerts: true,
 		weeklyReport: true,
 		productNews: false,
 	},

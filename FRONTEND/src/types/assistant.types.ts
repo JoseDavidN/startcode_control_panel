@@ -75,10 +75,20 @@ export interface AssistantMemoryStatus {
 /** Lo que una pantalla puede ofrecer al asistente para leer. */
 export type AssistantSourceType = 'terminal' | 'command_output' | 'sql_editor' | 'sql_result' | 'schema' | 'page';
 
+/** Base abierta en pantalla: el backend lee su estructura real al preguntar. */
+export interface AssistantDatabaseRef {
+	connectionId: string;
+	sessionId?: string;
+	/** Base activa; sin ella, las de la conexión. */
+	schema?: string;
+}
+
 export interface AssistantContextItem {
 	type: AssistantSourceType;
 	title: string;
 	content: string;
+	/** Solo en `schema`. */
+	database?: AssistantDatabaseRef;
 }
 
 export interface AssistantChatResponse {

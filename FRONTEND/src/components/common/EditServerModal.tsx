@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { Select } from '@components/common/Select';
+import { SERVER_OS_OPTIONS } from '@utils/servers';
+import { TAG_FIELD_OPTIONS, type ResourceTag } from '@utils/tags';
 import { useUpdateServer } from '@hooks/useServers';
 import { notify } from '@services/notification.service';
 import type { Server } from '@services/server.service';
@@ -9,19 +11,6 @@ interface Props {
   server: Server | null;
   onClose: () => void;
 }
-
-const OS_OPTIONS = [
-  { value: 'ubuntu',  label: 'Ubuntu' },
-  { value: 'centos',  label: 'CentOS' },
-  { value: 'debian',  label: 'Debian' },
-  { value: 'fedora',  label: 'Fedora' },
-  { value: 'arch',    label: 'Arch Linux' },
-  { value: 'solaris', label: 'Solaris' },
-  { value: 'openbsd', label: 'OpenBSD' },
-  { value: 'netbsd',  label: 'NetBSD' },
-  { value: 'freebsd', label: 'FreeBSD' },
-  { value: 'other',   label: 'Otro' },
-];
 
 const Label = ({ children }: { children: React.ReactNode }) => (
   <div className="text-xs text-white/55 font-medium mb-1.5">{children}</div>
@@ -33,7 +22,7 @@ const wrapCls  = 'glass-input rounded-xl h-11 flex items-center px-3.5 transitio
 export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
   const update = useUpdateServer();
   const [form, setForm] = useState({
-    name: '', host: '', port: 22, username: '', os: 'ubuntu', description: '',
+    name: '', host: '', port: 22, username: '', os: 'ubuntu', tag: '' as ResourceTag | '', description: '',
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +35,7 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
       port: server.port ?? 22,
       username: server.username ?? '',
       os: server.os ?? 'ubuntu',
+      tag: server.tag ?? '',
       description: server.description ?? '',
     });
     setError(null);
@@ -74,6 +64,7 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
           port: Number(form.port) || 22,
           username: form.username.trim(),
           os: form.os,
+          tag: form.tag || null,
           description: form.description.trim(),
         },
       });
@@ -127,9 +118,17 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
           <div>
             <Label>Sistema operativo</Label>
             <div className={wrapCls}>
-              <Select className="w-full text-white/90" value={form.os} options={OS_OPTIONS}
+              <Select className="w-full text-white/90" value={form.os} options={SERVER_OS_OPTIONS}
                 onChange={set('os')} aria-label="Sistema operativo" />
             </div>
+          </div>
+        </div>
+
+        <div>
+          <Label>Etiqueta</Label>
+          <div className={wrapCls}>
+            <Select className="w-full text-white/90" value={form.tag} options={TAG_FIELD_OPTIONS}
+              onChange={set('tag')} aria-label="Etiqueta" />
           </div>
         </div>
 

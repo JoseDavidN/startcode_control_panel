@@ -1,4 +1,4 @@
--- Esquema inicial de StartCode Panel (backend 0.5.0).
+-- Esquema inicial de StartCode Panel (backend 0.7.0).
 -- Generado por docker/generate-schema.sh desde las entidades de TypeORM: no editar a mano.
 -- Postgres lo ejecuta solo al crear el volumen de datos (docker-entrypoint-initdb.d).
 
@@ -36,6 +36,38 @@ COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UU
 
 
 --
+-- Name: tbl_ai_assistant_configs_enu_provider_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.tbl_ai_assistant_configs_enu_provider_enum AS ENUM (
+    'anthropic',
+    'openai',
+    'gemini'
+);
+
+
+--
+-- Name: tbl_ai_assistant_messages_enu_provider_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.tbl_ai_assistant_messages_enu_provider_enum AS ENUM (
+    'anthropic',
+    'openai',
+    'gemini'
+);
+
+
+--
+-- Name: tbl_ai_assistant_messages_enu_role_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.tbl_ai_assistant_messages_enu_role_enum AS ENUM (
+    'user',
+    'assistant'
+);
+
+
+--
 -- Name: tbl_database_connections_enu_engine_enum; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -55,6 +87,19 @@ CREATE TYPE public.tbl_database_connections_enu_status_enum AS ENUM (
     'unknown',
     'connected',
     'disconnected'
+);
+
+
+--
+-- Name: tbl_database_connections_enu_tag_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.tbl_database_connections_enu_tag_enum AS ENUM (
+    'production',
+    'staging',
+    'testing',
+    'development',
+    'backup'
 );
 
 
@@ -114,6 +159,19 @@ CREATE TYPE public.tbl_servers_enu_status_enum AS ENUM (
     'warning',
     'pending',
     'checking'
+);
+
+
+--
+-- Name: tbl_servers_enu_tag_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.tbl_servers_enu_tag_enum AS ENUM (
+    'production',
+    'staging',
+    'testing',
+    'development',
+    'backup'
 );
 
 
@@ -209,6 +267,52 @@ CREATE TABLE public.tbl_agent_metrics_history (
 
 
 --
+-- Name: tbl_ai_assistant_configs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tbl_ai_assistant_configs (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    str_user_id uuid NOT NULL,
+    enu_provider public.tbl_ai_assistant_configs_enu_provider_enum NOT NULL,
+    str_model character varying(128) NOT NULL,
+    str_api_key_enc text NOT NULL,
+    str_api_key_hint character varying(8) NOT NULL,
+    bol_enabled boolean DEFAULT true NOT NULL,
+    "createdAt" timestamp with time zone DEFAULT now() NOT NULL,
+    "updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tbl_ai_assistant_memory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tbl_ai_assistant_memory (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    str_user_id uuid NOT NULL,
+    str_summary text DEFAULT ''::text NOT NULL,
+    int_summarized_count integer DEFAULT 0 NOT NULL,
+    "updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tbl_ai_assistant_messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tbl_ai_assistant_messages (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    str_user_id uuid NOT NULL,
+    enu_role public.tbl_ai_assistant_messages_enu_role_enum NOT NULL,
+    str_content text NOT NULL,
+    enu_provider public.tbl_ai_assistant_messages_enu_provider_enum,
+    str_model character varying(128),
+    bol_summarized boolean DEFAULT false NOT NULL,
+    dat_created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: tbl_command_audit; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -240,6 +344,7 @@ CREATE TABLE public.tbl_database_connections (
     int_port integer NOT NULL,
     str_username character varying DEFAULT ''::character varying NOT NULL,
     str_password_enc text,
+    enu_tag public.tbl_database_connections_enu_tag_enum,
     str_database character varying,
     enu_status public.tbl_database_connections_enu_status_enum DEFAULT 'unknown'::public.tbl_database_connections_enu_status_enum NOT NULL,
     str_version character varying,
@@ -301,6 +406,7 @@ CREATE TABLE public.tbl_servers (
     str_privatekey text NOT NULL,
     enu_status public.tbl_servers_enu_status_enum DEFAULT 'offline'::public.tbl_servers_enu_status_enum NOT NULL,
     enu_os public.tbl_servers_enu_os_enum NOT NULL,
+    enu_tag public.tbl_servers_enu_tag_enum,
     str_description text,
     json_metadata jsonb,
     dat_last_seen timestamp with time zone,
@@ -368,6 +474,14 @@ ALTER TABLE ONLY public.tbl_agent_metrics_history
 
 
 --
+-- Name: tbl_ai_assistant_configs PK_0acb7e22b4078ed016bff261d33; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_configs
+    ADD CONSTRAINT "PK_0acb7e22b4078ed016bff261d33" PRIMARY KEY (id);
+
+
+--
 -- Name: tbl_database_connections PK_1acfa53f5e9e65bf85fef3e72ba; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -381,6 +495,14 @@ ALTER TABLE ONLY public.tbl_database_connections
 
 ALTER TABLE ONLY public.tbl_servers
     ADD CONSTRAINT "PK_2936375f55e79be3bee82a72531" PRIMARY KEY (id);
+
+
+--
+-- Name: tbl_ai_assistant_memory PK_80784a9f96a77e1fe3bbf0025b4; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_memory
+    ADD CONSTRAINT "PK_80784a9f96a77e1fe3bbf0025b4" PRIMARY KEY (id);
 
 
 --
@@ -408,6 +530,14 @@ ALTER TABLE ONLY public.tbl_agent_metrics
 
 
 --
+-- Name: tbl_ai_assistant_messages PK_b3d7ae49c8ed4c522d2fb3eac53; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_messages
+    ADD CONSTRAINT "PK_b3d7ae49c8ed4c522d2fb3eac53" PRIMARY KEY (id);
+
+
+--
 -- Name: tbl_users PK_bb1d884179b3e42514b36c01e4e; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -432,6 +562,22 @@ ALTER TABLE ONLY public.tbl_database_query_audit
 
 
 --
+-- Name: tbl_ai_assistant_configs REL_65766b43b1736203a1a6f02646; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_configs
+    ADD CONSTRAINT "REL_65766b43b1736203a1a6f02646" UNIQUE (str_user_id);
+
+
+--
+-- Name: tbl_ai_assistant_memory REL_9e7e97761aae25dd1616cb8995; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_memory
+    ADD CONSTRAINT "REL_9e7e97761aae25dd1616cb8995" UNIQUE (str_user_id);
+
+
+--
 -- Name: tbl_users UQ_824e43bd5ce1ceedc6d6a9c6d30; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -444,6 +590,27 @@ ALTER TABLE ONLY public.tbl_users
 --
 
 CREATE INDEX idx_agent_metrics_history_server_ts ON public.tbl_agent_metrics_history USING btree (server_id, "timestamp");
+
+
+--
+-- Name: idx_ai_assistant_configs_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_ai_assistant_configs_user ON public.tbl_ai_assistant_configs USING btree (str_user_id);
+
+
+--
+-- Name: idx_ai_assistant_memory_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_ai_assistant_memory_user ON public.tbl_ai_assistant_memory USING btree (str_user_id);
+
+
+--
+-- Name: idx_ai_assistant_messages_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_ai_assistant_messages_user_created ON public.tbl_ai_assistant_messages USING btree (str_user_id, dat_created_at);
 
 
 --
@@ -505,6 +672,22 @@ ALTER TABLE ONLY public.tbl_database_connections
 
 
 --
+-- Name: tbl_ai_assistant_configs FK_65766b43b1736203a1a6f02646e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_configs
+    ADD CONSTRAINT "FK_65766b43b1736203a1a6f02646e" FOREIGN KEY (str_user_id) REFERENCES public.tbl_users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tbl_ai_assistant_messages FK_867a64be40df87e94e417960f9e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_messages
+    ADD CONSTRAINT "FK_867a64be40df87e94e417960f9e" FOREIGN KEY (str_user_id) REFERENCES public.tbl_users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: tbl_servers FK_87fe9ba1ab3ffa1e1b55d55d943; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -534,6 +717,14 @@ ALTER TABLE ONLY public.tbl_database_query_audit
 
 ALTER TABLE ONLY public.tbl_agent_metrics
     ADD CONSTRAINT "FK_9886c6dbc07f14f213d0d7b2330" FOREIGN KEY (server_id) REFERENCES public.tbl_servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tbl_ai_assistant_memory FK_9e7e97761aae25dd1616cb89954; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tbl_ai_assistant_memory
+    ADD CONSTRAINT "FK_9e7e97761aae25dd1616cb89954" FOREIGN KEY (str_user_id) REFERENCES public.tbl_users(id) ON DELETE CASCADE;
 
 
 --

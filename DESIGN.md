@@ -92,6 +92,8 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 | `--brand-1/2`, `--brand-1-rgb`/`--brand-2-rgb`, `--brand-light-1/2` | Gradiente de marca y variante clara (sliders, texto con gradiente) |
 | `--on-brand` | Tinta sobre superficies `.grad-brand` |
 | `--track`, `--knob`, `--scroll-thumb*`, `--chk-*`, `--select-bg`, `--focus-halo` | Controles: sliders, toggles, scrollbars, checkbox, select, foco |
+| `--row-stripe-1`, `--row-stripe-2` | Filas alternas (clara / oscura) de las tablas de datos (`.data-table`). Se aplican como capa de imagen para sumarse al fondo de las celdas fijas |
+| `--sql-keyword`, `--sql-function`, `--sql-type`, `--sql-string`, `--sql-number`, `--sql-identifier`, `--sql-comment`, `--sql-operator` | Resaltado del editor SQL. Las palabras reservadas siguen a la marca del tema (violeta, cian, naranja); el resto se elige para contrastar con ellas y con el fondo |
 
 ### Remapeo de utilidades de Tailwind
 
@@ -130,7 +132,7 @@ El puente con Tailwind son tres mecanismos:
 |---|---|---|
 | `@theme inline` | Colores de borde y tinte | `border-hairline`, `border-line`, `divide-line`, `bg-tint-hover`, `bg-track`, `border-edge` |
 | `@utility` | Sombras | `elev-raised`, `elev-panel`, `elev-float`, `elev-modal`, `elev-brand`, `glow-ok` |
-| `@layer components` | Recetas completas | `.glass`, `.glass-soft`, `.glass-input`, `.row-hit`, `.edge-dashed`, `.focus-ring`, `.nav-active`, `.panel-head` |
+| `@layer components` | Recetas completas | `.glass`, `.glass-soft`, `.glass-input`, `.row-hit`, `.edge-dashed`, `.focus-ring`, `.nav-active`, `.panel-head`, `.scroll-layer`, `.sticky-cell` |
 
 Las sombras no pueden ir por `@theme`: el namespace `--shadow-*` de Tailwind choca con los tokens del proyecto y `--shadow-panel: var(--shadow-panel)` sería circular.
 
@@ -190,6 +192,12 @@ Van al revés que los paneles: hundidos.
   box-shadow: inset 0 1px 2px var(--inset-field), 0 0 0 4px rgb(var(--brand-1-rgb) / 0.12);
 }
 ```
+
+### `.scroll-layer` — zona con scroll dentro de un panel glass
+Toda lista o tabla que se desplace dentro de una tarjeta glass lleva `.scroll-layer` junto a su `overflow-*`: le da capa propia (`translateZ(0)`, `contain: paint`) para que el scroll se componga en la GPU y no repinte el panel de cristal en cada fotograma. Sin ella, el webview de Linux desplaza a tirones.
+
+### `.sticky-cell` — celdas fijas de tablas largas
+Cabeceras y columnas `sticky` de una tabla con muchas filas usan `.sticky-cell` (fondo de `--glass-float-alpha` sin blur), **no** `.glass-float`: dentro de un panel `.glass-float` aplica `backdrop-filter`, y en una tabla eso es una capa desenfocada por celda.
 
 ### `.row-hit` — realce al pasar por encima
 **Sobre una superficie glass no se usa `hover:bg-*`**: esa utilidad sustituye el color del cristal en vez de sumarse, y la tarjeta se queda translúcida. `.row-hit` apila el tinte como capa de imagen, por encima del brillo y del color, y de paso sube el borde a `--hairline-hover`. En elementos que no son glass, `hover:bg-tint-hover` es correcto.
@@ -331,6 +339,9 @@ Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 Para un estado vacío completo basta la clase `.edge-dashed`, que ya trae el grosor y el hover.
 El resaltado al arrastrar se hace con `grad-brand-soft`, no con un color literal. El contenedor lleva un contador de `dragenter`/`dragleave`: sin él, los hijos hacen parpadear el estado. La usa el modal SFTP (`components/servers/sftp/SftpDropZone.tsx`).
 
+### Editor SQL
+Usar el componente `SqlEditor` de `components/databases/SqlEditor.tsx`. Es un `textarea` con el texto transparente sobre un `<pre>` resaltado con la misma caja (`tokenizeSql` en `utils/sql.ts`, clases `.sql-*` de `App.css`), más la columna de números de fila. El resaltado **solo cambia color** (y cursiva en comentarios): un peso distinto podría cambiar el ancho de los glifos y descolocar el cursor respecto al texto pintado.
+
 ### Separador de sección
 ```tsx
 <div className="border-t border-line" />
@@ -407,7 +418,7 @@ A las tres se suma **Symbols Nerd Font Mono** (MIT, `ryanoasis/nerd-fonts`), que
 - Hover: `rgba(255,255,255,0.12)`
 
 ### Sidebar (`.scroll-thin`)
-- Ancho: 6px
+- Ancho: 6px (también el alto de la barra horizontal)
 - Thumb: `rgba(255,255,255,0.08)`
 
 ### Modal (`.modal-scroll`)

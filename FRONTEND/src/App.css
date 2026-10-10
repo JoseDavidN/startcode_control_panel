@@ -80,7 +80,7 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
   background: var(--scroll-thumb-hover);
   background-clip: padding-box;
 }
-.scroll-thin::-webkit-scrollbar { width: 6px; }
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scroll-thin::-webkit-scrollbar-thumb { background: var(--scroll-thumb-thin); border-radius: 999px; }
 
 /* ── Superficies ──────────────────────────────────────────────────────
@@ -396,3 +396,63 @@ input[type="checkbox"].chk:checked::after {
 }
 
 /* Reducir animaciones: el interruptor vive en styles/motion.css. */
+
+/* ── Resaltado del editor SQL ─────────────────────────────────────────
+   Una clase por tipo de token (`tokenizeSql`, utils/sql.ts); el color sale
+   de los tokens `--sql-*` de cada tema. Solo color (y cursiva, que no cambia
+   el ancho): un peso distinto podría mover los caracteres respecto al textarea. */
+@layer components {
+  .sql-keyword    { color: var(--sql-keyword); }
+  .sql-function   { color: var(--sql-function); }
+  .sql-type       { color: var(--sql-type); }
+  .sql-string     { color: var(--sql-string); }
+  .sql-number     { color: var(--sql-number); }
+  .sql-identifier { color: var(--sql-identifier); }
+  .sql-comment    { color: var(--sql-comment); font-style: italic; }
+  .sql-operator   { color: var(--sql-operator); }
+}
+
+/* ── Tabla de resultados ──────────────────────────────────────────────
+   Filas alternas clara/oscura con los tokens `--row-stripe-*` del tema.
+   Las celdas fijas (cabecera y numeración, `.sticky-cell`) llevan el fondo
+   casi opaco de `.glass-float` pero SIN su blur: con un backdrop-filter por
+   celda, mil filas eran mil capas desenfocadas recalculándose en cada
+   fotograma de scroll. Su tinte de fila va como capa de imagen encima. */
+@layer components {
+  .sticky-cell { background-color: rgb(var(--surface-rgb) / var(--glass-float-alpha)); }
+
+  .data-table tbody tr:nth-child(odd) > td { background-color: var(--row-stripe-1); }
+  .data-table tbody tr:nth-child(even) > td { background-color: var(--row-stripe-2); }
+  .data-table tbody tr:hover > td { background-color: var(--tint-hover); }
+
+  .data-table tbody tr > td.sticky-cell { background-color: rgb(var(--surface-rgb) / var(--glass-float-alpha)); }
+  .data-table tbody tr:nth-child(odd) > td.sticky-cell { background-image: linear-gradient(var(--row-stripe-1), var(--row-stripe-1)); }
+  .data-table tbody tr:nth-child(even) > td.sticky-cell { background-image: linear-gradient(var(--row-stripe-2), var(--row-stripe-2)); }
+  .data-table tbody tr:hover > td.sticky-cell { background-image: linear-gradient(var(--tint-hover), var(--tint-hover)); }
+
+  /* Fila seleccionada (para copiar) y celda editada sin guardar. Van después
+     de las franjas para ganarles a igual especificidad. */
+  .data-table tbody tr.row-selected > td { background-color: rgb(var(--brand-1-rgb) / 0.16); }
+  .data-table tbody tr.row-selected > td.sticky-cell {
+    background-image: linear-gradient(rgb(var(--brand-1-rgb) / 0.22), rgb(var(--brand-1-rgb) / 0.22));
+  }
+  .data-table tbody tr > td.cell-dirty {
+    background-color: color-mix(in oklab, var(--color-amber-400) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-amber-400) 45%, transparent);
+  }
+}
+
+/* ── Zonas con scroll dentro de un panel glass ────────────────────────
+   Sin capa propia, desplazar una lista dentro de un panel con
+   backdrop-filter repinta el panel entero en cada fotograma (y WebKitGTK,
+   el webview de Linux, no siempre compone el scroll de un contenedor con
+   fondo transparente). `translateZ(0)` le da capa propia y el scroll se
+   compone en la GPU; `contain: paint` evita que lo de dentro invalide el
+   resto del panel. */
+@layer components {
+  .scroll-layer {
+    transform: translateZ(0);
+    will-change: scroll-position;
+    contain: paint;
+  }
+}

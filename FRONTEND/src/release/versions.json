@@ -3,6 +3,39 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.3.0",
+      "type": "minor",
+      "date": "2026-10-09",
+      "title": "Tab de Bases de Datos",
+      "changes": {
+        "added": [
+          "Nuevo tab Bases de Datos en la barra lateral, con la vista de las conexiones en tarjetas: motor, nombre, IP y puerto, usuario y la base específica a la que apunta cada conexión (o «Servidor completo» si no apunta a ninguna)",
+          "El indicador Bases de Datos del dashboard muestra cuántas conexiones tienes agregadas y de qué motores",
+          "Buscador de conexiones por nombre, motor, IP o base de datos, con el botón para agregar una conexión en la misma barra",
+          "Las conexiones se muestran en 3 columnas y se paginan de 9 en 9",
+          "Formulario para agregar una conexión: se elige el motor (MySQL, MariaDB, PostgreSQL o Redis) con botones con su logo, y se indica host, puerto, usuario, contraseña y, si se quiere, una base de datos concreta",
+          "Cada tarjeta muestra el logo de su motor de base de datos",
+          "Las conexiones se guardan en tu cuenta y la contraseña se almacena cifrada",
+          "Al crear o editar una conexión, el campo de base de datos muestra las bases disponibles en el servidor para elegir una",
+          "Probar conexión antes de guardar: muestra la versión del motor y el tiempo de respuesta, o el motivo del fallo",
+          "La conexión a la base de datos solo se abre mientras estás en su vista de consultas y se cierra al salir; las tarjetas no se conectan ni comprueban nada",
+          "Editar y eliminar conexiones desde la tarjeta; el campo de contraseña tiene un icono de ojo para verla u ocultarla",
+          "Al pulsar una conexión MySQL, MariaDB o PostgreSQL se abre su vista de gestión: lista de bases de datos con buscador, editor SQL con filas numeradas y resultados en una tabla desplazable",
+          "Cada base de datos se despliega en tablas (con buscador), vistas, triggers, índices y procedimientos; doble clic en cualquiera prepara la consulta para verlo. Si la conexión apunta a una base concreta, aparece ya desplegada",
+          "Doble clic en una tabla prepara la consulta de sus primeras 100 filas; Ctrl + Enter ejecuta y, si hay texto seleccionado, solo se ejecuta la selección",
+          "El editor SQL pone en mayúsculas las palabras reservadas (SELECT, FROM, INNER JOIN, WHERE, LIMIT…) mientras escribes, sin tocar textos entre comillas ni comentarios",
+          "El editor SQL colorea palabras reservadas, funciones, tipos, textos, números y comentarios con una paleta propia de cada tema",
+          "Exportar los resultados de una consulta a CSV o a Excel (XLSX); el Excel lleva el estilo de tabla del tema: cabecera con su color, filas alternas, bordes y filtros",
+          "Selección de filas en los resultados para copiarlas: clic en # selecciona todas y clic en el número de una fila la selecciona; se copian con Ctrl + C, listas para pegar en Excel",
+          "Doble clic en un campo de los resultados para editarlo; la fila muestra guardar y cancelar, y guardar actualiza solo esa fila en la base de datos",
+          "Las columnas de contraseñas, claves, tokens y correos aparecen ocultas en los resultados; un icono de ojo en la cabecera las muestra. Si se exportan ocultas, salen enmascaradas",
+          "La tabla de resultados alterna filas claras y oscuras según el tema y se desplaza en vertical y en horizontal cuando hay muchas columnas",
+          "Las consultas peligrosas (borrar bases o tablas, vaciar tablas, DELETE o UPDATE sin WHERE, cambiar permisos o usuarios…) piden confirmación antes de ejecutarse",
+          "Auditoría de las consultas peligrosas confirmadas en cada conexión: quién, cuándo, qué sentencia, sobre qué base y cómo terminó"
+        ]
+      }
+    },
+    {
       "version": "0.2.0",
       "type": "minor",
       "date": "2026-10-08",

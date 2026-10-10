@@ -85,6 +85,20 @@ html[data-theme="solar"] {
   --focus-ring: #c2410c;
   --focus-halo: rgba(255,250,246,0.95);
 
+  /* Resaltado del editor SQL */
+  --sql-keyword: #c2410c;
+  --sql-function: #be185d;
+  --sql-type: #7c3aed;
+  --sql-string: #047857;
+  --sql-number: #1d4ed8;
+  --sql-identifier: #0369a1;
+  --sql-comment: rgba(42,26,12,0.45);
+  --sql-operator: rgba(42,26,12,0.6);
+
+  /* Filas alternas de las tablas de datos: clara / oscura */
+  --row-stripe-1: rgba(255,255,255,0.65);
+  --row-stripe-2: rgba(249,115,22,0.07);
+
   /* ── Remapeo de la paleta de Tailwind ───────────────────────────
      La familia de marca pasa a naranja/ámbar y los semánticos se oscurecen
      para contrastar sobre fondo claro.

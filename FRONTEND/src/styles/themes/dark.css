@@ -92,6 +92,20 @@ html[data-theme="dark"],
   --focus-ring: #c084fc;
   --focus-halo: rgba(8,3,20,0.95);
 
+  /* Resaltado del editor SQL */
+  --sql-keyword: #c084fc;
+  --sql-function: #f472b6;
+  --sql-type: #a5b4fc;
+  --sql-string: #6ee7b7;
+  --sql-number: #fcd34d;
+  --sql-identifier: #7dd3fc;
+  --sql-comment: rgba(255,255,255,0.35);
+  --sql-operator: rgba(255,255,255,0.55);
+
+  /* Filas alternas de las tablas de datos: clara / oscura */
+  --row-stripe-1: rgba(168,85,247,0.07);
+  --row-stripe-2: rgba(0,0,0,0.18);
+
   /* ── Remapeo de la paleta de Tailwind ───────────────────────────
      Nocturno conserva la paleta nativa de Tailwind; los valores se repiten
      aquí (en oklch, tal cual los emite Tailwind) para que los tres temas

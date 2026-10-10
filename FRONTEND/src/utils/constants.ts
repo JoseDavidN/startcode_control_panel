@@ -27,6 +27,7 @@ export const API_CONFIG = {
 		PREFERENCES: '/auth/preferences',
 		HEALTH: '/health',
 		NOTIFICATIONS: '/notifications',
+		DATABASES: '/databases',
 		NOTIFICATIONS_UNREAD: '/notifications/unread-count',
 	},
 };
@@ -53,6 +54,9 @@ export const ROUTES = {
 	SERVICE_DETAIL: '/services/:id',
 	SERVICE_CREATE: '/services/create',
 	SERVICE_EDIT: '/services/:id/edit',
+	// Databases
+	DATABASES: '/databases',
+	DATABASE_DETAIL: '/databases/:id',
 	// Notifications
 	NOTIFICATIONS: '/notifications',
 	// Settings

@@ -1,0 +1,14 @@
+# Solo entra al contexto lo que el Dockerfile copia.
+node_modules
+dist
+coverage
+test
+agent-dist
+docker
+.env
+.env.*
+*.md
+Makefile
+.git
+.gitignore
+*.log

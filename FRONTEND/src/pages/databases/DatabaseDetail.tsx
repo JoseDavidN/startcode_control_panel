@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '@components/common/Card';
 import { EngineBadge } from '@components/databases/EngineIcon';
@@ -14,12 +15,16 @@ import {
   useDatabaseConnection,
   useDatabaseSchemas,
   useRunQuery,
+  DATABASE_KEYS,
 } from '@hooks/useDatabases';
+import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
+import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
 import type { DatabaseSessionStatus } from '@hooks/useDatabases';
 import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES } from '@typings/database.types';
 import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
 import type { ApiError } from '@typings/api.types';
+import type { QueryResult, SchemaTable } from '@typings/database.types';
 
 /** Mensaje del backend (los de validación llegan como lista). */
 function errorMessage(err: unknown): string | null {
@@ -50,6 +55,29 @@ interface PendingQuery {
 function dangerousQuery(err: unknown): { message: string; hint?: string } | null {
   const e = err as Partial<ApiError> | undefined;
   return e?.code === 'DANGEROUS_QUERY' ? { message: e.message ?? 'Consulta peligrosa', hint: e.hint } : null;
+}
+
+/** Filas del resultado que lee el asistente. */
+const ASSISTANT_ROWS = 100;
+
+/** Resultado como texto tabulado para el asistente, con las columnas de secretos tapadas. */
+function resultForAssistant(result: QueryResult | undefined, sql: string | undefined): string {
+  if (!result) return '';
+  const head = sql ? `Consulta: ${sql}\n` : '';
+  if (!result.columns) {
+    return `${head}Sin filas. Filas afectadas: ${result.affectedRows ?? 0} · ${result.durationMs} ms`;
+  }
+  /* Las contraseñas y tokens de las tablas no salen; los correos sí (son datos de consulta). */
+  const secret = result.columns.map(c => sensitiveKind(c) === 'secret');
+  const cell = (v: unknown, i: number) => {
+    if (secret[i] && v !== null && v !== undefined) return maskValue('secret', v);
+    if (v === null || v === undefined) return 'NULL';
+    const text = typeof v === 'object' ? JSON.stringify(v) : String(v as string | number);
+    return text.length > 300 ? `${text.slice(0, 300)}…` : text.replace(/[\t\n]/g, ' ');
+  };
+  const rows = result.rows.slice(0, ASSISTANT_ROWS).map(r => r.map(cell).join('\t'));
+  const more = result.rowCount > rows.length ? `\n… ${result.rowCount - rows.length} filas más${result.truncated ? ' (el resultado venía recortado a 1000)' : ''}` : '';
+  return `${head}${result.columns.join('\t')}\n${rows.join('\n')}${more}\n(${result.rowCount} filas · ${result.durationMs} ms)`;
 }
 
 /** `startcode-db_mercadeo-20261009-1745`: conexión, base y fecha local. */
@@ -88,6 +116,46 @@ export const DatabaseDetail: React.FC = () => {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   /* Con base fija en la conexión, el editor siempre corre sobre ella. */
   const activeSchema = conn?.database ?? selectedSchema;
+
+  /* ── Asistente: lee el editor, el último resultado y la estructura ya
+     cargada en el árbol; puede dejar SQL en el editor, nunca ejecutarlo. */
+  const queryClient = useQueryClient();
+  const sessionId = session.sessionId;
+  const assistantOn = Boolean(conn && manageable);
+  const connLabel = conn?.name ?? 'Base de datos';
+  useAssistantSource(`sql-editor:${id}`, 'sql_editor', `Editor SQL · ${connLabel}`,
+    () => (sql.trim() ? `Base activa: ${activeSchema ?? 'ninguna'}\n${sql}` : ''), assistantOn);
+  useAssistantSource(`sql-result:${id}`, 'sql_result', `Resultado SQL · ${connLabel}`,
+    () => resultForAssistant(runQuery.data, runQuery.variables?.sql), assistantOn);
+  useAssistantSource(`sql-schema:${id}`, 'schema', `Estructura · ${connLabel}`, () => {
+    if (!conn) return '';
+    const lines = [
+      `Motor: ${DATABASE_ENGINE_LABELS[conn.engine]}${conn.version ? ` v${conn.version}` : ''} · ${conn.host}:${conn.port} · usuario ${conn.username || '—'}`,
+      `Bases: ${(schemasQuery.data ?? []).filter(s => !s.system).map(s => s.name).join(', ') || '—'}`,
+      `Base activa: ${activeSchema ?? 'ninguna'}`,
+    ];
+    /* Solo lo que el árbol ya pidió al servidor: leer no abre consultas nuevas. */
+    if (sessionId) {
+      for (const section of ['tables', 'views'] as const) {
+        const cached = queryClient.getQueriesData<SchemaTable[]>({ queryKey: DATABASE_KEYS.schemas(id, sessionId) })
+          .filter(([key]) => key[key.length - 1] === section);
+        for (const [key, tables] of cached) {
+          if (!Array.isArray(tables)) continue;
+          lines.push(`\n## ${section === 'tables' ? 'Tablas' : 'Vistas'} de ${String(key[5])}`);
+          for (const t of tables) {
+            const cols = t.columns.map(c => `${c.name} ${c.type}${c.key ? ` ${c.key}` : ''}${c.nullable ? '' : ' NOT NULL'}`).join(', ');
+            lines.push(`- ${t.namespace ? `${t.namespace}.` : ''}${t.name}${t.rows !== null ? ` (~${t.rows} filas)` : ''}: ${cols}`);
+          }
+        }
+      }
+    }
+    return lines.join('\n');
+  }, assistantOn);
+  useAssistantTarget(`sql-editor:${id}`, 'sql', 'el editor SQL', text => {
+    /* Se añade debajo de lo que haya: no se pierde lo que el usuario escribía. */
+    setSql(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${text}` : text));
+    editorRef.current?.focus();
+  }, assistantOn);
 
   const run = () => {
     const el = editorRef.current;

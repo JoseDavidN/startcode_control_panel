@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES, STORAGE_KEYS } from '@utils/constants';
 import {
   useTwoFactorSetup,
@@ -28,8 +28,10 @@ import { notify } from '@services/notification.service';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
 import { copyText } from '@lib/clipboard';
+import { useAssistantConfig, useSaveAssistantConfig, useDeleteAssistantConfig, useTestAssistant, useAssistantMemory, useClearAssistantMemory, useAssistantModels } from '@hooks/useAssistant';
+import { AI_PROVIDERS, type AiProvider } from '@typings/assistant.types';
 
-type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'monitoring' | 'system';
+type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'monitoring' | 'assistant' | 'system';
 
 /* ── SVG base props ───────────────────────────────────────────────── */
 const svg = (className = 'w-4 h-4') => ({
@@ -75,6 +77,8 @@ const Icon = ({ name, className = 'w-4 h-4' }: { name: string; className?: strin
     case 'download':     return <svg {...p}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>;
     case 'checkCircle':  return <svg {...p}><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>;
     case 'alertCircle':  return <svg {...p}><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16v.01"/></svg>;
+    case 'spark':        return <svg {...p}><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/></svg>;
+    case 'trash':        return <svg {...p}><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>;
     default:             return null;
   }
 };
@@ -1729,6 +1733,315 @@ const AppearancePane = () => {
   );
 };
 
+/* ── Pane: Asistente IA ───────────────────────────────────────────── */
+const errorMsg = (e: unknown, fallback: string) => {
+  const m = (e as { message?: unknown } | null)?.message;
+  return typeof m === 'string' && m.trim() ? m : fallback;
+};
+
+const AssistantPane = () => {
+  const { data: config, isLoading } = useAssistantConfig();
+  const save = useSaveAssistantConfig();
+  const remove = useDeleteAssistantConfig();
+  const test = useTestAssistant();
+  const { data: memory } = useAssistantMemory();
+  const clearMemory = useClearAssistantMemory();
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const [provider, setProvider] = useState<AiProvider>(config?.provider ?? 'anthropic');
+  const [model, setModel]       = useState(config?.model ?? '');
+  const [apiKey, setApiKey]     = useState('');
+  const [showKey, setShowKey]   = useState(false);
+  const [msg, setMsg]           = useState<{ ok: boolean; text: string } | null>(null);
+
+  /* Al llegar la configuración guardada, el formulario la adopta. */
+  React.useEffect(() => {
+    if (!config) return;
+    setProvider(config.provider);
+    setModel(config.model);
+  }, [config]);
+
+  const info = AI_PROVIDERS.find(p => p.id === provider) ?? AI_PROVIDERS[0];
+  /* Una clave es de un proveedor: al cambiarlo, la guardada ya no sirve. */
+  const keepsKey = Boolean(config && config.provider === provider);
+  const dirty = !config || config.provider !== provider || config.model !== model.trim() || apiKey.trim() !== '';
+  const canSave = model.trim() !== '' && (keepsKey || apiKey.trim().length >= 8) && !save.isPending;
+
+  /* Modelos en vivo del proveedor, con la clave escrita o la guardada. */
+  const { query: modelsQuery, usable: canListModels, refresh: refreshModels } = useAssistantModels(provider, apiKey, keepsKey);
+  const models = modelsQuery.data?.models;
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  /* El modelo guardado ya no se ofrece: se enseña igual, para no cambiarlo sin avisar. */
+  const savedMissing = Boolean(models && model && !models.some(m => m.id === model));
+
+  /* Con la lista nueva, si no hay modelo elegido (o el elegido no es el
+     guardado y ya no existe), se toma el preferido o el primero. */
+  React.useEffect(() => {
+    if (!models?.length) return;
+    if (model && (models.some(m => m.id === model) || model === config?.model)) return;
+    setModel((models.find(m => m.id === info.preferred) ?? models[0]).id);
+  }, [models, model, config?.model, info.preferred]);
+
+  const handleRefreshModels = async () => {
+    setRefreshingModels(true);
+    try { await refreshModels(); }
+    catch (e) { flash(false, errorMsg(e, 'No se pudieron actualizar los modelos')); }
+    finally { setRefreshingModels(false); }
+  };
+
+  const flash = (ok: boolean, text: string) => {
+    setMsg({ ok, text });
+    setTimeout(() => setMsg(null), 5000);
+  };
+
+  const pickProvider = (id: AiProvider) => {
+    setProvider(id);
+    setModel(config?.provider === id ? config.model : '');
+  };
+
+  const handleSave = async () => {
+    try {
+      await save.mutateAsync({ provider, model: model.trim(), apiKey: apiKey.trim() || undefined });
+      setApiKey('');
+      flash(true, 'Asistente guardado. La clave se guarda cifrada y no vuelve a mostrarse.');
+    } catch (e) { flash(false, errorMsg(e, 'No se pudo guardar el asistente')); }
+  };
+
+  const handleTest = async () => {
+    try {
+      const res = await test.mutateAsync();
+      flash(true, config && res.model !== config.model
+        ? `Conexión correcta con ${info.vendor}, pero ${config.model} está saturado: respondió ${res.model}. Puedes elegir un modelo más estable.`
+        : `Conexión correcta con ${info.vendor}`);
+    } catch (e) { flash(false, errorMsg(e, 'La prueba de conexión falló')); }
+  };
+
+  const handleToggle = async (enabled: boolean) => {
+    if (!config) return;
+    try { await save.mutateAsync({ provider: config.provider, model: config.model, enabled }); }
+    catch (e) { flash(false, errorMsg(e, 'No se pudo cambiar el estado')); }
+  };
+
+  const handleClearMemory = async () => {
+    try {
+      await clearMemory.mutateAsync();
+      setConfirmClear(false);
+      flash(true, 'Memoria del asistente borrada');
+    } catch (e) { flash(false, errorMsg(e, 'No se pudo borrar la memoria')); }
+  };
+
+  const handleRemove = async () => {
+    try {
+      await remove.mutateAsync();
+      setApiKey('');
+      flash(true, 'Asistente desconectado y clave eliminada. La memoria se conserva.');
+    } catch (e) { flash(false, errorMsg(e, 'No se pudo desconectar el asistente')); }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="glass-soft rounded-xl p-4 flex items-center gap-3 text-sm text-white/45">
+        <Icon name="loader" className="w-4 h-4" />Cargando asistente…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* ── Qué hace y qué no ── */}
+      <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
+        <span className="text-violet-300 mt-0.5 shrink-0"><Icon name="spark" /></span>
+        <div className="text-xs text-white/60 leading-relaxed space-y-2">
+          <p>
+            Un asistente de consulta propio de tu cuenta: responde dudas y propone comandos y consultas SQL.
+            Ábrelo con el botón <span className="text-white/85 font-medium">Asistente</span> de la barra superior o desde la terminal.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <ul className="space-y-1">
+              <li className="text-emerald-300 font-medium">Puede</li>
+              <li>Leer los datos del panel de tu cuenta: servidores, métricas, conexiones y auditorías</li>
+              <li>Leer la terminal, la línea de comandos, el editor y los resultados SQL</li>
+              <li>Pegar comandos y consultas para que tú decidas si ejecutarlos</li>
+            </ul>
+            <ul className="space-y-1">
+              <li className="text-rose-300 font-medium">No puede</li>
+              <li>Ejecutar comandos en ningún servidor ni consultas en ninguna base</li>
+              <li>Leer llaves SSH ni contraseñas de bases de datos</li>
+              <li>Ver datos de otros usuarios</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Proveedor ── */}
+      <Group title="Proveedor">
+        <div role="radiogroup" aria-label="Proveedor de IA" className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {AI_PROVIDERS.map(p => {
+            const selected = provider === p.id;
+            return (
+              <button key={p.id} type="button" role="radio" aria-checked={selected} tabIndex={selected ? 0 : -1}
+                onClick={() => pickProvider(p.id)}
+                className={`mo-tab glass-soft rounded-xl p-4 text-left
+                  ${selected ? 'ring-2 ring-violet-400/60 bg-tint-active' : 'row-hit'}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0
+                    ${selected ? 'grad-brand border-transparent' : 'border-hairline-strong'}`}>
+                    {selected && <Icon name="check" className="w-2.5 h-2.5" />}
+                  </span>
+                  <span className="text-sm font-medium">{p.name}</span>
+                  {config?.provider === p.id && (
+                    <span className="ml-auto text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20">
+                      Conectado
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-white/50 mt-1.5">{p.vendor}</p>
+              </button>
+            );
+          })}
+        </div>
+      </Group>
+
+      {/* ── Credenciales ── */}
+      <div className="space-y-5">
+        <SectionTitle>Modelo y clave de API</SectionTitle>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Modelo *"
+            hint={!canListModels
+              ? 'Escribe la clave de API para ver los modelos disponibles'
+              : modelsQuery.isError
+                ? errorMsg(modelsQuery.error, 'No se pudieron cargar los modelos')
+                : modelsQuery.data
+                  ? `${modelsQuery.data.models.length} modelos de ${info.vendor} · actualizado ${timeAgo(modelsQuery.data.fetchedAt)}`
+                  : 'Consultando los modelos disponibles…'}>
+            <div className="flex items-center gap-2">
+              <div className="glass-input rounded-xl h-11 flex-1 min-w-0 flex items-center gap-2 px-3.5">
+                <span className="text-white/45 shrink-0"><Icon name="cpu" /></span>
+                <select
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  disabled={!models?.length && !model}
+                  className="flex-1 min-w-0 bg-transparent outline-none text-sm text-white/90 pr-2 disabled:opacity-50"
+                >
+                  {!models?.length && !model && <option value="">{modelsQuery.isFetching ? 'Cargando modelos…' : 'Sin modelos'}</option>}
+                  {savedMissing && <option value={model}>{model} (ya no disponible)</option>}
+                  {!models && model && <option value={model}>{model}</option>}
+                  {models?.map(m => (
+                    <option key={m.id} value={m.id}>{m.name !== m.id ? `${m.name} — ${m.id}` : m.id}</option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" onClick={() => void handleRefreshModels()}
+                disabled={!canListModels || refreshingModels || modelsQuery.isFetching}
+                title="Volver a pedir la lista al proveedor"
+                className="mo-tab w-11 h-11 rounded-xl glass-soft row-hit text-white/70 hover:text-white flex items-center justify-center shrink-0 disabled:opacity-40">
+                <Icon name={refreshingModels || modelsQuery.isFetching ? 'loader' : 'refresh'} />
+              </button>
+            </div>
+          </Field>
+          <Field label={keepsKey ? 'Clave de API' : 'Clave de API *'}
+            hint={keepsKey ? `Guardada: ••••${config?.apiKeyHint}. Déjala vacía para conservarla.` : `Créala en ${info.keyUrl.replace(/^https:\/\//, '')}`}>
+            <GlassInput icon={<Icon name="key" />} type={showKey ? 'text' : 'password'} value={apiKey}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+              placeholder={keepsKey ? '••••••••' : info.keyHint} autoComplete="off" spellCheck={false}
+              suffix={
+                <button type="button" onClick={() => setShowKey(v => !v)} className="text-white/50 hover:text-white transition">
+                  <Icon name={showKey ? 'eyeOff' : 'eye'} />
+                </button>
+              } />
+          </Field>
+        </div>
+        <p className="text-xs text-white/40">
+          La clave se guarda cifrada en el servidor y solo se usa para hablar con {info.vendor}. El consumo se factura en tu cuenta del proveedor.
+        </p>
+
+        {config && (
+          <NotifRow
+            icon={<span className="text-violet-300"><Icon name="spark" /></span>}
+            title="Asistente activo"
+            desc="Desactívalo para dejar de usarlo sin borrar la configuración"
+            on={config.enabled}
+            onChange={v => void handleToggle(v)}
+          />
+        )}
+
+        {msg && <Feedback ok={msg.ok} msg={msg.text} />}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {config && (
+            <button type="button" onClick={() => void handleRemove()} disabled={remove.isPending}
+              className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 disabled:opacity-50">
+              <Icon name={remove.isPending ? 'loader' : 'trash'} className="w-4 h-4" />Desconectar
+            </button>
+          )}
+          <span className="flex-1" />
+          {config && (
+            <button type="button" onClick={() => void handleTest()} disabled={test.isPending || dirty}
+              title={dirty ? 'Guarda los cambios antes de probar' : 'Envía una petición mínima al proveedor'}
+              className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium disabled:opacity-40">
+              <Icon name={test.isPending ? 'loader' : 'refresh'} className="w-4 h-4" />
+              {test.isPending ? 'Probando…' : 'Probar conexión'}
+            </button>
+          )}
+          <button type="button" onClick={() => void handleSave()} disabled={!canSave || !dirty}
+            className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi disabled:opacity-50">
+            <Icon name={save.isPending ? 'loader' : 'save'} className="w-4 h-4" />
+            {save.isPending ? 'Guardando…' : config ? 'Guardar cambios' : 'Conectar asistente'}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-line" />
+
+      {/* ── Memoria: es del panel, no del proveedor ── */}
+      <div className="space-y-4">
+        <SectionTitle>Memoria</SectionTitle>
+        <p className="text-xs text-white/40 -mt-2">
+          La conversación se guarda en tu cuenta, no en el proveedor: si cambias de Claude a ChatGPT o Gemini, o lo desconectas y vuelves a conectarlo,
+          el asistente sigue recordando. Lo más antiguo se condensa en un resumen. No guarda lo adjuntado de la pantalla ni contraseñas.
+        </p>
+
+        <div className="glass-soft rounded-xl divide-y divide-line">
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <span className="text-sm text-white/55">Mensajes guardados</span>
+            <span className="text-sm text-white/90 font-mono tabular-nums">{memory?.messageCount ?? 0}</span>
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-white/55">Lo que recuerda a largo plazo</span>
+              {memory?.updatedAt && <span className="text-xs text-white/35">actualizado {timeAgo(memory.updatedAt)}</span>}
+            </div>
+            {memory?.summary
+              ? <pre className="text-xs text-white/70 whitespace-pre-wrap break-words max-h-56 overflow-y-auto scroll-thin font-[inherit] leading-relaxed">{memory.summary}</pre>
+              : <p className="text-xs text-white/35">Todavía nada: el resumen se crea cuando la conversación crece.</p>}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          {confirmClear ? (
+            <>
+              <span className="text-xs text-white/55 mr-auto">Se borrará la conversación y el resumen. No se puede deshacer.</span>
+              <button type="button" onClick={() => setConfirmClear(false)}
+                className="mo-tab h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void handleClearMemory()} disabled={clearMemory.isPending}
+                className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white text-sm font-semibold disabled:opacity-50">
+                <Icon name={clearMemory.isPending ? 'loader' : 'trash'} className="w-4 h-4" />Borrar memoria
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirmClear(true)} disabled={!memory?.messageCount && !memory?.summary}
+              className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 disabled:opacity-40">
+              <Icon name="trash" className="w-4 h-4" />Borrar memoria
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Settings page ────────────────────────────────────────────────── */
 const TABS: [SettingsTab, string, string][] = [
   ['profile',       'Perfil',         'user'],
@@ -1736,13 +2049,17 @@ const TABS: [SettingsTab, string, string][] = [
   ['notifications', 'Notificaciones', 'bell'],
   ['security',      'Seguridad',      'shield'],
   ['monitoring',    'Monitoreo',      'monitor'],
+  ['assistant',     'Asistente IA',   'spark'],
   ['system',        'Sistema',        'database'],
 ];
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
+  /* `?tab=assistant` abre directamente una pestaña (lo usa el panel del asistente). */
+  const [searchParams] = useSearchParams();
+  const initialTab = TABS.find(([id]) => id === searchParams.get('tab'))?.[0] ?? 'profile';
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-6">
@@ -1794,6 +2111,7 @@ export const Settings: React.FC = () => {
               {activeTab === 'notifications' && <NotifPane />}
               {activeTab === 'security' && <SecurityPane />}
               {activeTab === 'monitoring' && <MonitoringPane />}
+              {activeTab === 'assistant' && <AssistantPane />}
               {activeTab === 'system' && <SystemPane />}
             </div>
           </div>

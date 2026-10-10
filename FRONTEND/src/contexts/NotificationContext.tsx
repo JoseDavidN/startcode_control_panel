@@ -143,7 +143,8 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         notify.info('Reporte semanal listo', 'El resumen de actividad de la semana está disponible.');
         break;
       case 'productNews':
-        notify.info('Nueva versión disponible', 'StartCode Panel v0.2.0 ya está lista para actualizar.');
+        /* La versión sale de tauri.conf.json (vite.config.ts), no se escribe aquí. */
+        notify.info('Nueva versión disponible', `StartCode Panel v${import.meta.env.VITE_APP_VERSION ?? ''} ya está lista para actualizar.`);
         break;
       default:
         notify.info('Notificación de prueba', 'El sistema de notificaciones funciona correctamente.');

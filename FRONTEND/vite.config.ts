@@ -1,18 +1,41 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, watchFile, unwatchFile } from 'fs';
 
 const host = process.env.TAURI_DEV_HOST
 
 /* La versión vive en tauri.conf.json; en el navegador (sin la API de Tauri)
    la app la lee de aquí. */
-const appVersion = (JSON.parse(readFileSync(path.resolve(__dirname, 'src-tauri/tauri.conf.json'), 'utf8')) as { version: string }).version;
+const tauriConf = path.resolve(__dirname, 'src-tauri/tauri.conf.json');
+const readVersion = () => (JSON.parse(readFileSync(tauriConf, 'utf8')) as { version: string }).version;
+const appVersion = readVersion();
+
+/* La versión se fija al arrancar, y src-tauri está fuera del vigilante de
+   Vite (ignored, abajo). Sin esto, subir la versión no se veía en
+   Configuración → Sistema hasta reiniciar `pnpm dev` a mano. Se sondea el
+   archivo y, si cambia la versión, el servidor se reinicia solo. */
+const restartOnVersionChange = (): Plugin => ({
+  name: 'restart-on-app-version-change',
+  apply: 'serve',
+  configureServer(server) {
+    const onChange = () => {
+      let next: string;
+      try { next = readVersion(); } catch { return; /* a medio escribir */ }
+      if (next === appVersion) return;
+      server.config.logger.info(`Versión de la app ${appVersion} → ${next}: reiniciando el servidor`, { timestamp: true });
+      unwatchFile(tauriConf, onChange);
+      void server.restart();
+    };
+    watchFile(tauriConf, { interval: 1000 }, onChange);
+    server.httpServer?.once('close', () => unwatchFile(tauriConf, onChange));
+  },
+});
 
 export default defineConfig(({ command }) => ({
   clearScreen: false,
-	plugins: [react(), tailwindcss()],
+	plugins: [react(), tailwindcss(), restartOnVersionChange()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

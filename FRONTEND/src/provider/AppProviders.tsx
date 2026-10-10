@@ -9,6 +9,7 @@ import { RealtimeMetricsProvider } from '@contexts/RealtimeMetricsContext';
 import { NotificationProvider } from '@contexts/NotificationContext';
 import { PreferencesProvider } from '@contexts/PreferencesContext';
 import { UpdaterProvider } from '@contexts/UpdaterContext';
+import { AssistantProvider } from '@contexts/AssistantContext';
 import { PreferencesSync } from '@components/PreferencesSync';
 import { queryClient } from '@lib/queryClient';
 import { API_CONFIG } from '@utils/constants';
@@ -44,7 +45,9 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
           <RealtimeMetricsProvider backendUrl={backendUrl}>
             <NotificationProvider>
               <UpdaterProvider>
-                {children}
+                <AssistantProvider>
+                  {children}
+                </AssistantProvider>
               </UpdaterProvider>
             </NotificationProvider>
           </RealtimeMetricsProvider>

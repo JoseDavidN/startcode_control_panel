@@ -67,4 +67,4 @@ docker compose --env-file .env.production exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > backup-$(date +%F).dump
 ```
 
-Guardar también `.env.production`: sin el mismo `DB_CREDENTIALS_KEY` las contraseñas de las conexiones a bases de datos de la copia no se pueden descifrar. Redis es solo caché y no necesita copia.
+Guardar también `.env.production`: sin el mismo `DB_CREDENTIALS_KEY` las contraseñas de las conexiones a bases de datos y las claves de API de los asistentes de IA de la copia no se pueden descifrar. Redis es solo caché y no necesita copia.

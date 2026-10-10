@@ -15,5 +15,6 @@ import { DatabaseSessionService } from './services/database-session.service';
   imports: [TypeOrmModule.forFeature([DatabaseConnection, DatabaseQueryAudit]), AuthModule],
   controllers: [DatabasesController],
   providers: [DatabasesService, CredentialsCipherService, DatabaseProbeService, DatabaseExplorerService, PostgresExplorerService, DatabaseSessionService],
+  exports: [CredentialsCipherService],
 })
 export class DatabasesModule {}

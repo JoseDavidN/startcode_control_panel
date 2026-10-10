@@ -3,6 +3,27 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.4.0",
+      "type": "minor",
+      "date": "2026-10-09",
+      "title": "Asistente de IA",
+      "changes": {
+        "added": [
+          "Nueva pestaña Asistente IA en Configuración: conecta tu propio asistente con Anthropic (Claude), OpenAI (ChatGPT) o Google Gemini usando tu clave de API, con el modelo que prefieras",
+          "Cada usuario tiene su propio asistente, y este solo puede ver los datos de su cuenta",
+          "La clave de API se guarda cifrada y no vuelve a mostrarse; se puede probar la conexión, desactivar el asistente o desconectarlo",
+          "Botón Asistente en la barra superior y en la terminal para abrir el chat sin salir de la pantalla",
+          "El asistente puede leer tus servidores, métricas, conexiones a bases de datos, auditorías y notificaciones, además de la terminal, la línea de comandos, el editor SQL, los resultados de las consultas y la estructura de la base abierta. Cada fuente se puede quitar con un clic",
+          "Los comandos y consultas que propone se pegan en la terminal, la línea de comandos o el editor SQL con un botón; nunca se ejecutan solos",
+          "Solo consulta: el asistente no ejecuta comandos ni consultas y no tiene acceso a llaves SSH ni contraseñas de bases de datos",
+          "El asistente no da información interna de StartCode Panel: para credenciales y ajustes remite siempre a las pantallas de Servidores, Bases de Datos o Configuración",
+          "El modelo se elige de una lista con los modelos que tu proveedor ofrece en ese momento, que se actualiza sola al cambiar de proveedor o de clave y periódicamente",
+          "El asistente tiene memoria: recuerda tus conversaciones anteriores aunque recargues la app, entres desde otro equipo o cambies de Claude a ChatGPT o Gemini",
+          "En Configuración → Asistente IA puedes ver lo que recuerda a largo plazo y borrar su memoria"
+        ]
+      }
+    },
+    {
       "version": "0.3.0",
       "type": "minor",
       "date": "2026-10-09",

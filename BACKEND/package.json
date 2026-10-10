@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "",
   "author": "",
   "private": true,
@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.7",
     "@nestjs/config": "^4.0.2",

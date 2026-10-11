@@ -15,7 +15,11 @@ interface AddServerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** Datos propuestos (por ejemplo, por el asistente). La llave nunca viene aquí: la pega el usuario. */
+  initial?: AddServerInitial;
 }
+
+export type AddServerInitial = Partial<Pick<ServerFormData, 'name' | 'host' | 'port' | 'username' | 'os' | 'tag' | 'description'>>;
 
 interface ServerFormData {
   name: string;
@@ -40,10 +44,11 @@ const Label = ({ children }: { children: React.ReactNode }) => (
 const inputCls = 'w-full bg-transparent outline-none text-sm placeholder:text-white/30 text-white/90';
 const wrapCls  = 'glass-input rounded-xl h-11 flex items-center px-3.5 transition';
 
-export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose, onSuccess, initial }) => {
   const [formData, setFormData] = useState<ServerFormData>({
     name: '', host: '', port: 22, username: 'root',
     privateKey: '', os: 'ubuntu', tag: '', description: '', sudoPassword: '',
+    ...initial,
   });
   const [error, setError]             = useState<string | null>(null);
   const [isConnecting, setConnecting] = useState(false);

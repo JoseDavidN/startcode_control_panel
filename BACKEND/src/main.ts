@@ -1,3 +1,5 @@
+/* Antes que nada: fija cómo sale a internet (VPN) para todo el backend. */
+import './network-defaults';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';

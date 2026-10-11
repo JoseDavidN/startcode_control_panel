@@ -228,6 +228,22 @@ export class DatabasesController {
     return this.databasesService.runQuery(req.user.id, id, dto.sql, dto.schema, dto.confirm, dto.sessionId);
   }
 
+  @Post(':id/query/export')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Resultado completo de una consulta para exportar',
+    description: 'Vuelve a ejecutar la consulta sin el tope de 1000 filas de la vista (hasta 200 000; `truncated` indica si había más). Solo consultas de lectura: las demás responden 400. `confirm` se ignora.',
+  })
+  @ApiParam({ name: 'id' })
+  exportQuery(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RunQueryDto,
+  ): Promise<QueryResult> {
+    return this.databasesService.exportQuery(req.user.id, id, dto.sql, dto.schema, dto.sessionId);
+  }
+
   @Post(':id/rows/update')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 60 } })

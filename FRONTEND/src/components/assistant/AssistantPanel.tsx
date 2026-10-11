@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAssistant } from '@hooks/useAssistantBridge';
@@ -8,6 +8,10 @@ import { copyText } from '@lib/clipboard';
 import { ROUTES } from '@utils/constants';
 import type { AssistantTarget } from '@contexts/assistant-context';
 import { AI_PROVIDERS, type AssistantTargetKind, type ChatMessage } from '@typings/assistant.types';
+import { AddServerModal } from '@components/common/AddServerModal';
+import { ConnectionModal } from '@components/databases/ConnectionModal';
+import { AssistantActionCard } from '@components/assistant/AssistantAction';
+import { parseAction, type AssistantAction } from '@components/assistant/assistantActions';
 
 const sp = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
@@ -99,7 +103,7 @@ const CodeBlock = ({ lang, code, targets }: { lang: string; code: string; target
   );
 };
 
-const Bubble = ({ message, targets }: { message: ChatMessage; targets: AssistantTarget[] }) => {
+const Bubble = ({ message, targets, onReview }: { message: ChatMessage; targets: AssistantTarget[]; onReview: (a: AssistantAction) => void }) => {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -115,11 +119,15 @@ const Bubble = ({ message, targets }: { message: ChatMessage; targets: Assistant
         <SparkIcon className="w-3.5 h-3.5" />
       </span>
       <div className="flex-1 min-w-0 text-sm text-white/80 leading-relaxed">
-        {parseReply(message.content).map((p, i) =>
-          p.kind === 'code'
-            ? <CodeBlock key={i} lang={p.lang} code={p.code} targets={targets} />
-            : <p key={i} className="whitespace-pre-wrap break-words"><InlineText text={p.text.replace(/^\n+|\n+$/g, '')} /></p>,
-        )}
+        {parseReply(message.content).map((p, i) => {
+          if (p.kind === 'code') {
+            const action = parseAction(p.lang, p.code);
+            return action
+              ? <AssistantActionCard key={i} action={action} onReview={onReview} />
+              : <CodeBlock key={i} lang={p.lang} code={p.code} targets={targets} />;
+          }
+          return <p key={i} className="whitespace-pre-wrap break-words"><InlineText text={p.text.replace(/^\n+|\n+$/g, '')} /></p>;
+        })}
         {/* Quién respondió: la memoria es la misma aunque cambie el proveedor. */}
         {message.model && (
           <div className="text-[10px] text-white/30 mt-1 font-mono">
@@ -140,13 +148,16 @@ const SUGGESTIONS = [
   '¿Qué servidores tienen problemas ahora mismo?',
   'Explícame la salida de la terminal',
   'Escribe una consulta para ver las tablas más pesadas',
+  'Agrega una conexión PostgreSQL a 10.0.0.5',
 ];
 
 /**
- * Asistente de IA flotante. Solo conversa: lee los datos del panel de la
+ * Asistente de IA flotante. Conversa: lee los datos del panel de la
  * cuenta (en el backend) y lo que la pantalla ofrece (terminal, línea de
  * comandos, editor y resultados SQL), y propone comandos o consultas que el
- * usuario puede pegar donde corresponda. Nunca ejecuta nada.
+ * usuario puede pegar donde corresponda. También prepara altas de servidores y
+ * conexiones (`AssistantAction`) que el usuario revisa y guarda en el
+ * formulario de siempre. Nunca ejecuta ni crea nada por su cuenta.
  *
  * Va en portal y por encima de los modales (z-60) para poder consultarlo con
  * la terminal abierta. Se abre desde la barra superior (`AssistantLauncher`)
@@ -163,11 +174,18 @@ export const AssistantPanel: React.FC = () => {
   const [confirmClear, setConfirmClear] = useState(false);
   const [input, setInput] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  /* Alta propuesta por el asistente que el usuario está revisando en el formulario. */
+  const [reviewing, setReviewing] = useState<AssistantAction | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const provider = AI_PROVIDERS.find(p => p.id === config?.provider);
   const ready = Boolean(config?.enabled);
+
+  /* Al abrir, directo al final sin animación: la conversación ya está en caché y el efecto de abajo no se dispara. */
+  useLayoutEffect(() => {
+    if (open) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [open]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -188,6 +206,12 @@ export const AssistantPanel: React.FC = () => {
       .filter(c => c.content.trim());
     setInput('');
     chat.mutate({ message: question, context });
+  };
+
+  /* El formulario va por debajo del panel (z-50 frente a z-60): se cierra el panel para verlo entero. */
+  const review = (action: AssistantAction) => {
+    setOpen(false);
+    setReviewing(action);
   };
 
   const toggleSource = (id: string) => setExcluded(prev => {
@@ -253,7 +277,7 @@ export const AssistantPanel: React.FC = () => {
         {ready && messages.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-white/70 leading-relaxed">
-              Pregunta sobre tus servidores, bases de datos, la terminal o una consulta. Te propongo comandos y SQL para que los pegues y decidas si ejecutarlos.
+              Pregunta sobre tus servidores, bases de datos, la terminal o una consulta. Te propongo comandos y SQL para que los pegues y decidas si ejecutarlos, y puedo preparar el alta de un servidor o de una conexión a base de datos.
             </p>
             <div className="space-y-1.5">
               {SUGGESTIONS.map(s => (
@@ -266,7 +290,7 @@ export const AssistantPanel: React.FC = () => {
           </div>
         )}
 
-        {messages.map(m => <Bubble key={m.id} message={m} targets={targets} />)}
+        {messages.map(m => <Bubble key={m.id} message={m} targets={targets} onReview={review} />)}
 
         {chat.isPending && (
           <div className="flex items-center gap-2.5 text-xs text-white/45">
@@ -325,13 +349,23 @@ export const AssistantPanel: React.FC = () => {
           </button>
         </div>
         <p className="text-[10px] text-white/35 flex items-center gap-1">
-          <LockIcon /> Solo consulta: no ejecuta comandos ni consultas y no ve llaves SSH ni contraseñas.
+          <LockIcon /> No ejecuta comandos ni consultas y no ve llaves SSH ni contraseñas. Las altas que proponga las confirmas tú.
         </p>
       </div>
     </aside>
   );
 
-  return panel ? createPortal(panel, document.body) : null;
+  return (
+    <>
+      {panel && createPortal(panel, document.body)}
+      {reviewing?.kind === 'server' && (
+        <AddServerModal isOpen initial={reviewing.data} onClose={() => setReviewing(null)} />
+      )}
+      {reviewing?.kind === 'database' && (
+        <ConnectionModal initial={reviewing.data} onClose={() => setReviewing(null)} />
+      )}
+    </>
+  );
 };
 
 /** Botón que abre el asistente; lo usan la barra superior y la terminal. */

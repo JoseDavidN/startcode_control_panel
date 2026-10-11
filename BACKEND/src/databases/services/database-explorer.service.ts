@@ -224,8 +224,8 @@ export class DatabaseExplorerService {
     });
   }
 
-  async runQuery(t: ProbeTarget, sql: string, schema: string | null): Promise<QueryResult> {
-    if (this.isPg(t)) return this.pg.runQuery(t, sql, schema);
+  async runQuery(t: ProbeTarget, sql: string, schema: string | null, maxRows = MAX_ROWS): Promise<QueryResult> {
+    if (this.isPg(t)) return this.pg.runQuery(t, sql, schema, maxRows);
     this.assertSupported(t);
     if (schema) this.assertSchemaAllowed(t, schema);
 
@@ -247,9 +247,9 @@ export class DatabaseExplorerService {
         return {
           columns: fields.map(f => f.name),
           ...editing,
-          rows: rows.slice(0, MAX_ROWS).map(row => row.map(serializeValue)),
+          rows: rows.slice(0, maxRows).map(row => row.map(serializeValue)),
           rowCount: rows.length,
-          truncated: rows.length > MAX_ROWS,
+          truncated: rows.length > maxRows,
           affectedRows: null,
           insertId: null,
           durationMs,

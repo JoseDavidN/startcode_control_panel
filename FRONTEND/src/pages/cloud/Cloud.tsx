@@ -84,10 +84,10 @@ export const Cloud: React.FC = () => {
   const downloadFrom = (sec: CloudSection, entry: CloudEntry) => {
     if (entry.kind === 'folder') {
       info(`Preparando «${entry.name}.zip»`, 'La descarga empieza cuando la nube termine de comprimir la carpeta.');
-      cloudApi.zip(sec, entry.id).then(blob => downloadBlob(blob, `${entry.name}.zip`), fail('No se pudo descargar'));
+      cloudApi.zip(sec, entry.id).then(blob => downloadBlob(blob, `${entry.name}.zip`)).catch(fail('No se pudo descargar'));
       return;
     }
-    cloudApi.content(sec, entry.id).then(blob => downloadBlob(blob, entry.name), fail('No se pudo descargar'));
+    cloudApi.content(sec, entry.id).then(blob => downloadBlob(blob, entry.name)).catch(fail('No se pudo descargar'));
   };
   const download = (entry: CloudEntry) => downloadFrom(section, entry);
 

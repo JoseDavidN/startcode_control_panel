@@ -316,6 +316,7 @@ export const DatabaseDetail: React.FC = () => {
               connectionId={id}
               sessionId={session.sessionId}
               fileName={exportName(conn.name, activeSchema)}
+              query={runQuery.variables}
             />
           </Card>
         </div>

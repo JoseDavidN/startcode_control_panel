@@ -12,6 +12,8 @@ interface QueryResultsProps {
   sessionId: string | null;
   /** Nombre base del archivo exportado, sin extensión. */
   fileName: string;
+  /** Consulta que dio el resultado: al exportar se repite para traer todas las filas. */
+  query?: { sql: string; schema: string | null };
 }
 
 /* Cada resultado nuevo recibe un número: es la `key` de la tabla, y así una
@@ -21,7 +23,7 @@ let resultSeq = 0;
 /** Resultado de la última consulta. Con filas, la tabla (`ResultGrid`); si no, el estado. */
 /* `memo`: la vista se re-renderiza con cada tecla del editor y esta tabla
    puede tener mil filas; solo cambia cuando cambia el resultado. */
-export const QueryResults = memo(function QueryResults({ result, error, running, connectionId, sessionId, fileName }: QueryResultsProps) {
+export const QueryResults = memo(function QueryResults({ result, error, running, connectionId, sessionId, fileName, query }: QueryResultsProps) {
   const resultKey = useMemo(() => (result ? ++resultSeq : 0), [result]);
 
   /* ── Barra de estado ── */
@@ -49,7 +51,7 @@ export const QueryResults = memo(function QueryResults({ result, error, running,
   }
 
   if (result?.columns && result.columns.length > 0 && result.rows.length > 0 && !running && !error && sessionId) {
-    return <ResultGrid key={resultKey} result={result} connectionId={connectionId} sessionId={sessionId} fileName={fileName} status={status} />;
+    return <ResultGrid key={resultKey} result={result} connectionId={connectionId} sessionId={sessionId} fileName={fileName} query={query} status={status} />;
   }
 
   return (

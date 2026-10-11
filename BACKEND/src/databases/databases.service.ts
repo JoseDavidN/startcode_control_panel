@@ -24,8 +24,9 @@ import {
   SchemaTrigger,
   UpdateRowInput,
 } from './services/database-explorer.service';
-import { findDangerousQuery } from './services/query-policy';
+import { findDangerousQuery, isReadOnlyQuery } from './services/query-policy';
 import { DatabaseSessionService } from './services/database-session.service';
+import { EXPORT_MAX_ROWS } from './services/explorer.common';
 import {
   DatabaseQueryAudit,
   DatabaseQueryAuditStatus,
@@ -154,6 +155,20 @@ export class DatabasesService {
       await audit(DatabaseQueryAuditStatus.ERROR, { error: message });
       throw err;
     }
+  }
+
+  /**
+   * Resultado completo para exportar: vuelve a ejecutar la consulta sin el
+   * tope de filas de la vista (hasta `EXPORT_MAX_ROWS`). Solo consultas de
+   * lectura: repetir una que escribe duplicaría su efecto.
+   */
+  async exportQuery(userId: string, id: string, sql: string, schema?: string, sessionId?: string): Promise<QueryResult> {
+    const conn = await this.findOwned(userId, id);
+    if (!isReadOnlyQuery(sql, conn.engine === DatabaseEngine.POSTGRESQL ? 'postgresql' : 'mysql')) {
+      throw new BadRequestException('Solo se puede exportar el resultado completo de consultas de lectura (SELECT, WITH, SHOW…)');
+    }
+    const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
+    return this.explorer.runQuery(target, sql, schema || null, EXPORT_MAX_ROWS);
   }
 
   /** Edición de una fila desde la tabla de resultados, por su clave primaria. */

@@ -3,6 +3,28 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.6.0",
+      "type": "minor",
+      "date": "2026-10-10",
+      "title": "El asistente prepara servidores y conexiones",
+      "changes": {
+        "added": [
+          "Pídele al asistente de IA que agregue un servidor o una conexión a base de datos: te muestra una tarjeta con los datos y «Revisar y crear» abre el formulario de siempre ya rellenado",
+          "La llave SSH y la contraseña las escribes tú en el formulario: nunca pasan por el asistente, y nada se crea hasta que lo guardas"
+        ],
+        "fixed": [
+          "Conexión más estable con el proveedor de IA cuando el servidor del panel está en una VPN",
+          "Al exportar el resultado de una consulta, la app de escritorio abre el diálogo del sistema para elegir dónde guardarlo y avisa cuando termina",
+        "Las descargas de Cloud también preguntan dónde guardar en la app de escritorio",
+        "Exportar un resultado guarda todas las filas de la consulta, no solo las 1000 que se muestran (hasta 200 000). Las columnas ocultas siguen saliendo enmascaradas",
+        "Si el asistente no puede contactar con el proveedor, el error dice la causa (DNS, tiempo agotado, conexión cortada, certificado interceptado) y qué revisar"
+        ],
+        "changed": [
+          "Al abrir el asistente se muestra el final de la conversación"
+        ]
+      }
+    },
+    {
       "version": "0.5.1",
       "type": "patch",
       "date": "2026-10-10",

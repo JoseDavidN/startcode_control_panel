@@ -4,6 +4,7 @@ import { ExportMenu } from '@components/databases/ExportMenu';
 import { databasesApi } from '@services/databases.api';
 import { copyText } from '@lib/clipboard';
 import type { ExportTable } from '@lib/tableExport';
+import type { ExportSource } from '@components/databases/ExportMenu';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
 import type { SensitiveKind } from '@utils/sensitiveColumns';
 import type { QueryResult } from '@typings/database.types';
@@ -14,6 +15,8 @@ interface ResultGridProps {
   /** Sesión de la vista: el UPDATE va por la misma conexión. */
   sessionId: string;
   fileName: string;
+  /** Consulta que dio el resultado: al exportar se repite para traer todas las filas. */
+  query?: { sql: string; schema: string | null };
   /** Resumen de la consulta (filas, truncado) para la barra. */
   status: React.ReactNode;
 }
@@ -106,7 +109,7 @@ const CellEditor = ({ initial, onCommit, onCancel }: {
  * - Doble clic en una celda editable la edita; la fila muestra guardar y
  *   cancelar, y guardar hace un UPDATE por clave primaria de esa fila.
  */
-export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, sessionId, fileName, status }) => {
+export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, sessionId, fileName, query, status }) => {
   const columns = useMemo(() => result.columns ?? [], [result.columns]);
   const meta = result.columnMeta ?? [];
   const sensitive = useMemo(() => columns.map(sensitiveKind), [columns]);
@@ -276,10 +279,23 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
     }
   };
 
-  const exportTable = (): ExportTable => ({
-    columns,
-    rows: rows.map((_, r) => columns.map((__, c) => shownAt(r, c))),
-  });
+  /* Si la vista está recortada, el backend repite la consulta y trae todas las
+     filas; las columnas ocultas se enmascaran igual que en la tabla. */
+  const exportTable = async (): Promise<ExportSource> => {
+    if (!result.truncated || !query) {
+      return { table: { columns, rows: rows.map((_, r) => columns.map((__, c) => shownAt(r, c))) }, total: rows.length, complete: !result.truncated };
+    }
+    const full = await databasesApi.exportQuery(connectionId, sessionId, query.sql, query.schema);
+    const table: ExportTable = {
+      columns,
+      rows: full.rows.map(row => columns.map((_, c) => {
+        const v = row[c];
+        const kind = sensitive[c];
+        return kind && isHidden(c) && v !== null && v !== undefined ? maskValue(kind, v) : v;
+      })),
+    };
+    return { table, total: full.rowCount, complete: !full.truncated };
+  };
 
   const toggleReveal = (c: number) => setRevealed(prev => {
     const next = new Set(prev);

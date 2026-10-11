@@ -84,6 +84,21 @@ export const databasesApi = {
 		);
 	},
 
+	/**
+	 * Resultado completo para exportar: el backend repite la consulta sin el
+	 * tope de 1000 filas de la vista. Solo consultas de lectura.
+	 */
+	async exportQuery(id: string, sessionId: string, sql: string, schema?: string | null): Promise<QueryResult> {
+		return unwrap<QueryResult>(
+			await apiService.post<QueryResult>(
+				`${BASE}/${id}/query/export`,
+				{ sessionId, sql, ...(schema ? { schema } : {}) },
+				/* Muchas filas tardan en llegar: más margen que el resto de llamadas. */
+				{ timeout: 120_000 },
+			)
+		);
+	},
+
 	/** UPDATE de una fila del resultado por su clave primaria completa. */
 	async updateRow(
 		id: string,

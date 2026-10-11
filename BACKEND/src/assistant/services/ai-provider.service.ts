@@ -151,6 +151,7 @@ export class AiProviderService {
       if (err instanceof Anthropic.BadRequestError && /not scoped to a workspace/i.test(err.message)) {
         throw new BadRequestException(WORKSPACE_KEY_MESSAGE);
       }
+      if (err instanceof Anthropic.APIConnectionError) throw this.network('Anthropic', err, LIST_TIMEOUT_MS);
       if (err instanceof Anthropic.APIError) {
         this.logger.warn(`Anthropic models ${err.status}: ${err.message}`);
         throw new BadGatewayException(`Anthropic respondió con un error (${err.status ?? 'sin estado'})`);
@@ -237,6 +238,7 @@ export class AiProviderService {
           'La cuenta de Anthropic no tiene saldo: la clave es válida, pero hay que comprar créditos en console.anthropic.com → Plans & Billing',
         );
       }
+      if (err instanceof Anthropic.APIConnectionError) throw this.network('Anthropic', err, REQUEST_TIMEOUT_MS);
       if (err instanceof Anthropic.APIError) {
         this.logger.warn(`Anthropic ${err.status}: ${err.message}`);
         throw new BadGatewayException(`Anthropic respondió con un error (${err.status ?? 'sin estado'})`);
@@ -382,13 +384,43 @@ export class AiProviderService {
   }
 
   private network(name: string, err: unknown, timeoutMs?: number): BadGatewayException {
-    const e = err as (Error & { cause?: { code?: string; message?: string } }) | undefined;
-    this.logger.warn(`${name}: ${e?.message ?? String(err)}${e?.cause ? ` (${e.cause.code ?? e.cause.message})` : ''}`);
-    /* Un corte por tiempo no es «no se pudo contactar»: el proveedor recibió la petición y no contestó. */
-    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+    const e = err as (Error & { cause?: NetworkCause }) | undefined;
+    const code = causeCode(e?.cause);
+    this.logger.warn(`${name}: ${e?.message ?? String(err)}${code ? ` (${code})` : e?.cause?.message ? ` (${e.cause.message})` : ''}`);
+    /* Un corte por tiempo no es «no se pudo contactar»: el proveedor recibió la petición y no contestó.
+       El SDK de Anthropic avisa del suyo con APIConnectionTimeoutError. */
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError' || err instanceof Anthropic.APIConnectionTimeoutError) {
       const secs = timeoutMs ? ` en ${Math.round(timeoutMs / 1000)} s` : '';
       return new ProviderUnavailableError(`${name} no respondió${secs}; suele pasar cuando el modelo está saturado. Reintenta o elige un modelo más rápido`);
     }
-    return new BadGatewayException(`No se pudo contactar con ${name}: revisa la conexión a internet del servidor del panel`);
+    const hint = code ? (NETWORK_HINTS[code] ?? '') : '';
+    return new BadGatewayException(
+      `No se pudo contactar con ${name}${code ? ` (${code})` : ''}: ${hint || 'revisa la conexión a internet del servidor del panel'}`,
+    );
   }
 }
+
+type NetworkCause = { code?: string; message?: string; errors?: NetworkCause[]; cause?: NetworkCause };
+
+/* El código útil puede venir anidado: fetch → cause → AggregateError (un intento por IP). */
+function causeCode(cause: NetworkCause | undefined, depth = 0): string | undefined {
+  if (!cause || depth > 3) return undefined;
+  return cause.code ?? causeCode(cause.errors?.[0], depth + 1) ?? causeCode(cause.cause, depth + 1);
+}
+
+/* Lo que suele significar cada fallo cuando el servidor del panel está detrás de una VPN. */
+const NETWORK_HINTS: Record<string, string> = {
+  ENOTFOUND: 'el servidor del panel no resuelve el dominio del proveedor; revisa el DNS que impone la VPN',
+  EAI_AGAIN: 'el DNS no respondió; revisa el DNS que impone la VPN',
+  ETIMEDOUT: 'la conexión no se completó a tiempo; si el servidor está en una VPN, comprueba que permita salir a internet (túnel completo o nodo de salida)',
+  ECONNREFUSED: 'la conexión fue rechazada; puede que la VPN o un cortafuegos bloqueen la salida',
+  ECONNRESET: 'la conexión se cortó; si el servidor está en una VPN, puede ser el MTU del túnel o un filtro de la VPN',
+  ENETUNREACH: 'no hay ruta a internet; la VPN puede estar enviando todo el tráfico por un túnel sin salida',
+  EHOSTUNREACH: 'no hay ruta a internet; la VPN puede estar enviando todo el tráfico por un túnel sin salida',
+  UND_ERR_CONNECT_TIMEOUT: 'la conexión no se completó a tiempo; si el servidor está en una VPN, comprueba que permita salir a internet',
+  UND_ERR_SOCKET: 'la conexión se cortó; si el servidor está en una VPN, puede ser el MTU del túnel o un filtro de la VPN',
+  CERT_HAS_EXPIRED: 'el certificado recibido no es válido; la VPN o un proxy puede estar interceptando HTTPS',
+  SELF_SIGNED_CERT_IN_CHAIN: 'la VPN o un proxy está interceptando HTTPS con su propio certificado; añádelo con NODE_EXTRA_CA_CERTS',
+  UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 'la VPN o un proxy está interceptando HTTPS con su propio certificado; añádelo con NODE_EXTRA_CA_CERTS',
+  DEPTH_ZERO_SELF_SIGNED_CERT: 'la VPN o un proxy está interceptando HTTPS con su propio certificado; añádelo con NODE_EXTRA_CA_CERTS',
+};

@@ -9,6 +9,40 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.6.0] — 2026-10-10
+
+Versión **menor** sobre 0.5.1: el asistente de IA prepara altas de servidores y de conexiones a bases de datos. Va junto con el backend 0.8.0.
+
+### Añadido
+- Propuestas de alta del asistente (`components/assistant/assistantActions.ts`, `AssistantAction.tsx`): los bloques ```` ```startcode-servidor ```` y ```` ```startcode-conexion ```` con JSON se muestran como tarjeta con los datos en lugar de como código. `parseAction` solo deja pasar campos conocidos y valores válidos (sistema operativo, motor, etiqueta, puerto 1–65535); si el JSON no es válido, se ve como un bloque normal
+- «Revisar y crear» cierra el panel (va por encima de los modales) y abre `AddServerModal` o `ConnectionModal` rellenados con la propuesta; ambos aceptan `initial`. La llave SSH y la contraseña las escribe el usuario en el formulario: nunca pasan por el modelo y nada se crea sin guardarlo
+
+### Corregido
+- Exportar resultados (CSV/XLSX) en la app compilada: el webview ignora `<a download>`, así que `downloadBlob` (`lib/download.ts`) abre en Tauri el diálogo nativo de guardar (`@tauri-apps/plugin-dialog` `save`) y escribe con `plugin-fs` `writeFile`. Devuelve la ruta o null si se cancela. Permisos nuevos `dialog:allow-save` y `fs:allow-write-file` en `capabilities/default.json`; la ruta elegida entra sola en el alcance de `fs`
+- `ExportMenu` avisa «Consulta exportada» con las filas y dónde quedó, o el error si falla. Las descargas de Cloud usan el mismo camino
+- Exportar un resultado recortado trae todas las filas: `ResultGrid` repite la consulta con `databasesApi.exportQuery` (la recibe de `DatabaseDetail` por `QueryResults`, prop `query`) y enmascara las columnas ocultas igual que la tabla. El botón muestra «Exportando…» y, si el backend también recorta, el aviso dice cuántas filas salieron de cuántas
+
+### Cambiado
+- Al abrir el asistente se baja al final de la conversación sin animación (`useLayoutEffect` sobre `open`); antes, con la conversación en caché, se quedaba arriba
+- Textos del panel del asistente: la bienvenida menciona las altas y el pie dice que las altas propuestas las confirma el usuario
+
+---
+
+## [0.8.0] — 2026-10-10
+
+Versión **menor** sobre 0.7.0. Va junto con la app de escritorio 0.6.0.
+
+### Añadido
+- Prompt del asistente: puede proponer el alta de un servidor o de una conexión con un bloque `startcode-servidor` o `startcode-conexion` (JSON con los campos de `CreateServerDto` y `CreateDatabaseConnectionDto`, sin llave ni contraseña). Debe pedir el host si falta y avisar si ya existe en los datos del panel. Sigue sin herramientas: el backend no crea nada desde el asistente
+- `POST /databases/:id/query/export` (10/min): repite la consulta sin el tope de 1000 filas de la vista, hasta `EXPORT_MAX_ROWS` (200 000) con `truncated` si había más. Solo consultas de lectura (`isReadOnlyQuery` en `query-policy.ts`: SELECT, WITH, SHOW, DESCRIBE, EXPLAIN sin ANALYZE, VALUES, TABLE; rechaza `INTO` y los CTE que modifican); las demás responden 400 para no repetir su efecto. `runQuery` de los dos exploradores acepta `maxRows`
+
+### Corregido
+- Salida a internet detrás de una VPN (`src/network-defaults.ts`, importado primero en `main.ts`): resolución IPv4 primero (`dns.setDefaultResultOrder`) y 2,5 s por intento de conexión en lugar de 250 ms (`net.setDefaultAutoSelectFamilyAttemptTimeout`). Ajustables con `NET_IP_ORDER=verbatim` y `NET_ATTEMPT_TIMEOUT_MS`. Para un proxy: `HTTPS_PROXY` con `NODE_USE_ENV_PROXY=1`
+- Anthropic: un corte de conexión (`APIConnectionError`) ya no se informa como «respondió con un error (sin estado)», y el tiempo agotado del SDK se trata como proveedor no disponible
+- Errores de red de los proveedores con el código de la causa (también anidado en `AggregateError`) y una pista para cada uno: DNS de la VPN, tiempo agotado, conexión rechazada o cortada, sin ruta, certificado interceptado (`NODE_EXTRA_CA_CERTS`)
+
+---
+
 ## [Cloud 0.1.0] — 2026-10-10
 
 Primera versión del backend de StartCode Cloud, nuevo proyecto en `CLOUD/` (NestJS 11 + TypeScript), separado de `BACKEND/`. Va junto con la app de escritorio 0.5.0, que habla con él directamente.

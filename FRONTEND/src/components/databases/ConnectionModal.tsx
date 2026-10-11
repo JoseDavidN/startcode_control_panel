@@ -25,6 +25,8 @@ import type {
 interface ConnectionModalProps {
   /** Con conexión edita; sin ella crea una nueva. */
   connection?: DatabaseConnection | null;
+  /** Solo al crear: datos propuestos (por ejemplo, por el asistente). La contraseña la escribe el usuario. */
+  initial?: Partial<Omit<DatabaseConnectionForm, 'password'>>;
   onClose: () => void;
 }
 
@@ -91,9 +93,13 @@ const EngineButton = ({ engine, active, onSelect }: {
 
 /* Se monta solo mientras está abierto: al cerrarlo se desmonta y la
    contraseña revelada no se queda en memoria del componente. */
-export const ConnectionModal: React.FC<ConnectionModalProps> = ({ connection, onClose }) => {
+export const ConnectionModal: React.FC<ConnectionModalProps> = ({ connection, initial, onClose }) => {
   const editing = Boolean(connection);
-  const [form, setForm] = useState<DatabaseConnectionForm>(connection ? toForm(connection) : EMPTY_FORM);
+  const [form, setForm] = useState<DatabaseConnectionForm>(() => {
+    if (connection) return toForm(connection);
+    const engine = initial?.engine ?? EMPTY_FORM.engine;
+    return { ...EMPTY_FORM, port: DATABASE_DEFAULT_PORTS[engine], ...initial, engine };
+  });
   const [showPassword, setShowPassword] = useState(false);
   /* En edición la contraseña no se carga hasta pulsar el ojo. Mientras no se
      cargue ni se escriba, se omite al guardar y el backend conserva la suya. */

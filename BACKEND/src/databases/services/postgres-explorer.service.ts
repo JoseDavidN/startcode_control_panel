@@ -166,7 +166,7 @@ export class PostgresExplorerService {
     });
   }
 
-  async runQuery(t: ProbeTarget, sql: string, database: string | null): Promise<QueryResult> {
+  async runQuery(t: ProbeTarget, sql: string, database: string | null, maxRows = MAX_ROWS): Promise<QueryResult> {
     if (database) this.assertDatabaseAllowed(t, database);
     const db = database ?? t.database ?? 'postgres';
 
@@ -187,9 +187,9 @@ export class PostgresExplorerService {
         return {
           columns: res.fields.map(f => f.name),
           ...(await this.describeEditable(client, res.fields, db)),
-          rows: rows.slice(0, MAX_ROWS).map(row => row.map(serializeValue)),
+          rows: rows.slice(0, maxRows).map(row => row.map(serializeValue)),
           rowCount: rows.length,
-          truncated: rows.length > MAX_ROWS,
+          truncated: rows.length > maxRows,
           affectedRows: null,
           insertId: null,
           durationMs,

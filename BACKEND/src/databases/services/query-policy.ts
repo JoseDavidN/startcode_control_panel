@@ -50,6 +50,23 @@ export function stripSql(sql: string, dialect: SqlDialect = 'mysql'): string {
     .toLowerCase();
 }
 
+/* Sentencias que solo leen. `select … into` crea tablas (PostgreSQL) o escribe variables y archivos (MySQL). */
+const READ_ONLY_START = /^(select|with|show|describe|desc|explain|values|table)\b/;
+/* Dentro de una lectura solo escriben los CTE de modificación (PostgreSQL) y `into`. `for update` solo bloquea. */
+const WRITES = /\b(insert|update|delete|merge|into)\b/;
+
+/**
+ * Exportar vuelve a ejecutar la consulta para traer todas las filas: solo se
+ * permite con las que no cambian nada, para no repetir un INSERT o un UPDATE.
+ */
+export function isReadOnlyQuery(sql: string, dialect: SqlDialect = 'mysql'): boolean {
+  const s = stripSql(sql, dialect).replace(/;\s*$/, '');
+  if (!READ_ONLY_START.test(s)) return false;
+  /* `explain analyze` ejecuta la sentencia de verdad. */
+  if (/^explain\b/.test(s) && /\banalyze\b/.test(s)) return false;
+  return !WRITES.test(s.replace(/^(show|describe|desc)\b.*/, '').replace(/\bfor (no key )?update\b/g, ''));
+}
+
 export function findDangerousQuery(sql: string, dialect: SqlDialect = 'mysql'): DangerousQuery | null {
   const s = stripSql(sql, dialect).replace(/;\s*$/, '');
   if (!s) return null;

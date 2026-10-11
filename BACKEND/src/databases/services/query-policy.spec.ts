@@ -1,4 +1,4 @@
-import { findDangerousQuery } from './query-policy';
+import { findDangerousQuery, isReadOnlyQuery } from './query-policy';
 
 describe('findDangerousQuery', () => {
   it.each([
@@ -57,5 +57,33 @@ describe('findDangerousQuery (PostgreSQL)', () => {
     'UPDATE users SET active = false WHERE id = 1',
   ])('no pide confirmación: %s', sql => {
     expect(findDangerousQuery(sql, 'postgresql')).toBeNull();
+  });
+});
+
+describe('isReadOnlyQuery', () => {
+  it.each([
+    'SELECT * FROM users',
+    "select replace(name, 'a', 'b') from users;",
+    'WITH t AS (SELECT 1) SELECT * FROM t',
+    'SHOW TABLES',
+    'DESCRIBE users',
+    'EXPLAIN SELECT * FROM users',
+    'SELECT * FROM users FOR UPDATE',
+    "SELECT 'insert into' AS txt",
+  ])('se puede exportar: %s', sql => {
+    expect(isReadOnlyQuery(sql)).toBe(true);
+  });
+
+  it.each([
+    'INSERT INTO users (name) VALUES (1)',
+    'UPDATE users SET a = 1 WHERE id = 1',
+    'DELETE FROM users WHERE id = 1',
+    'SELECT * INTO backup FROM users',
+    "SELECT * FROM users INTO OUTFILE '/tmp/x'",
+    'WITH x AS (DELETE FROM logs RETURNING *) SELECT * FROM x',
+    'EXPLAIN ANALYZE DELETE FROM users',
+    'CALL limpiar()',
+  ])('no se repite al exportar: %s', sql => {
+    expect(isReadOnlyQuery(sql, 'postgresql')).toBe(false);
   });
 });

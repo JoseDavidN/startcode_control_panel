@@ -114,6 +114,8 @@ export interface UpdateRowInput {
 
 /** Filas que viajan a la app como máximo; el resto se cuenta pero no se envía. */
 export const MAX_ROWS = 1_000;
+/** Exportar trae el resultado completo, con este tope para no agotar la memoria del backend. */
+export const EXPORT_MAX_ROWS = 200_000;
 export const QUERY_TIMEOUT_MS = 30_000;
 export const CONNECT_TIMEOUT_MS = 5_000;
 

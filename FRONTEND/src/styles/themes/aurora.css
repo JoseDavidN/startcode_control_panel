@@ -18,6 +18,7 @@ html[data-theme="aurora"] {
   --glass-soft-alpha: 0.35;
   --glass-input-alpha: 0.28;
   --glass-float-alpha: 0.86;
+  --glass-media-alpha: 0.40;
   --sheen-1: rgba(255,255,255,0.08);
   --sheen-2: rgba(255,255,255,0.03);
   --sheen-soft-1: rgba(255,255,255,0.06);

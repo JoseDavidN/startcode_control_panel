@@ -1,19 +1,26 @@
-/**
- * Selección de archivos y carpetas, con una sola interfaz para el navegador y
- * para la app de escritorio.
- *
- * En Tauri v2 el webview se queda con el *drop* del sistema operativo y los
- * eventos HTML no reciben archivos; por eso la ventana declara
- * `dragDropEnabled: false` en `tauri.conf.json`. Con eso, el mismo camino web
- * —objetos `File`, que el navegador transmite desde disco sin cargarlos en
- * memoria— funciona en los dos sitios para soltar.
- *
- * Para *elegir*, la app de escritorio usa el diálogo nativo del sistema
- * (`filePicker.tauri.ts`, plugins `dialog` y `fs`); el navegador, el
- * `<input type="file">`.
- */
+import { open } from '@tauri-apps/plugin-dialog';
+import { readDir, readFile, stat } from '@tauri-apps/plugin-fs';
+import { basename, join } from '@tauri-apps/api/path';
 
-import { IS_TAURI } from '@lib/tauriStore';
+/**
+ * Selección de archivos y carpetas en la app de escritorio.
+ *
+ * Elegir: el diálogo nativo del sistema (plugin `dialog`) y el contenido se
+ * lee con el plugin `fs`. Lo que se elige entra en el ámbito de `fs` (las
+ * carpetas, con sus subcarpetas: `recursive`), así que no hace falta abrir
+ * permisos de lectura a todo el disco. El contenido se lee al pedirlo
+ * (`blob()`), no al elegir: una carpeta grande no carga nada en memoria hasta
+ * que se sube cada archivo.
+ *
+ * Soltar: la ventana declara `dragDropEnabled: false` en `tauri.conf.json`,
+ * así el soltar del sistema llega al webview como eventos HTML con objetos
+ * `File`, que se transmiten desde disco sin cargarlos en memoria.
+ *
+ * Al cargar una carpeta se omiten las de paquetes y cachés (`node_modules`,
+ * entornos virtuales de Python…): miles de archivos que se regeneran con el
+ * gestor de paquetes. Si se elige o se suelta una de ellas directamente, sí
+ * se carga.
+ */
 
 export interface PickedFile {
 	/** Ruta POSIX relativa a la raíz de la selección: "dist/assets/app.js" */
@@ -23,35 +30,167 @@ export interface PickedFile {
 	blob(): Promise<Blob>;
 }
 
-export interface FilePickerProvider {
-	readonly id: 'web' | 'tauri';
-	readonly canPickDirectory: boolean;
-	pickFiles(): Promise<PickedFile[]>;
-	pickDirectory(): Promise<PickedFile[]>;
-	fromDropEvent(event: React.DragEvent): Promise<PickedFile[]>;
+/** Lo elegido o soltado, y las carpetas de paquetes que se dejaron fuera (ruta relativa). */
+export interface PickResult {
+	files: PickedFile[];
+	skipped: string[];
 }
 
-let provider: FilePickerProvider | null = null;
+/* Carpetas de dependencias y cachés que no se suben. Un entorno virtual de
+   Python con otro nombre se reconoce por su `pyvenv.cfg`. */
+const PACKAGE_DIRS = new Set([
+	'node_modules', 'bower_components', 'jspm_packages', '.pnpm-store',
+	'venv', '.venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox',
+	'.gradle',
+]);
+const isPackageDir = (name: string, children: string[]) =>
+	PACKAGE_DIRS.has(name) || children.includes('pyvenv.cfg');
 
-export async function getFilePicker(): Promise<FilePickerProvider> {
-	if (provider) return provider;
+const merge = (parts: PickResult[]): PickResult => ({
+	files: parts.flatMap(p => p.files),
+	skipped: parts.flatMap(p => p.skipped),
+});
 
-	if (IS_TAURI) {
-		const { tauriFilePicker } = await import('./filePicker.tauri');
-		provider = tauriFilePicker;
-	} else {
-		const { webFilePicker } = await import('./filePicker.web');
-		provider = webFilePicker;
+async function pickedFromPath(path: string, relPath: string): Promise<PickedFile> {
+	const info = await stat(path);
+	return {
+		relPath,
+		name: relPath.split('/').pop() ?? relPath,
+		size: info.size,
+		blob: async () => new Blob([await readFile(path)]),
+	};
+}
+
+/** Todos los archivos bajo `dir`, con su ruta relativa a la carpeta elegida. `root`: la elegida, que nunca se omite. */
+async function walk(dir: string, prefix: string, root = false): Promise<PickResult> {
+	const entries = await readDir(dir);
+	if (!root && isPackageDir(prefix.split('/').pop() ?? '', entries.filter(e => e.isFile).map(e => e.name))) {
+		return { files: [], skipped: [prefix] };
 	}
-	return provider;
+	const nested = await Promise.all(entries.map(async (entry): Promise<PickResult> => {
+		const path = await join(dir, entry.name);
+		const rel = `${prefix}/${entry.name}`;
+		/* Los enlaces simbólicos se saltan: pueden salir del ámbito o hacer ciclos. */
+		if (entry.isSymlink) return { files: [], skipped: [] };
+		if (entry.isDirectory) return walk(path, rel);
+		return { files: entry.isFile ? [await pickedFromPath(path, rel)] : [], skipped: [] };
+	}));
+	return merge(nested);
 }
 
-/** Envuelve un `File` del navegador conservando su ruta dentro de la carpeta. */
-export function pickedFromFile(file: File, relPath?: string): PickedFile {
+export async function pickFiles(): Promise<PickResult> {
+	const selected = await open({ multiple: true, directory: false, title: 'Elegir archivos' });
+	if (!selected) return { files: [], skipped: [] };
+	const paths = Array.isArray(selected) ? selected : [selected];
+	return { files: await Promise.all(paths.map(async path => pickedFromPath(path, await basename(path)))), skipped: [] };
+}
+
+export async function pickDirectory(): Promise<PickResult> {
+	const selected = await open({ multiple: false, directory: true, recursive: true, title: 'Elegir carpeta' });
+	if (!selected || Array.isArray(selected)) return { files: [], skipped: [] };
+	return walk(selected, await basename(selected), true);
+}
+
+/** Envuelve un `File` soltado conservando su ruta dentro de la carpeta. */
+function pickedFromFile(file: File, relPath?: string): PickedFile {
 	return {
 		relPath: relPath || file.webkitRelativePath || file.name,
 		name: file.name,
 		size: file.size,
 		blob: () => Promise.resolve(file),
 	};
+}
+
+/* ── Recorrido de carpetas soltadas ───────────────────────────────── */
+
+interface FsEntry {
+	isFile: boolean;
+	isDirectory: boolean;
+	name: string;
+	fullPath: string;
+	file?: (cb: (file: File) => void, err: (e: unknown) => void) => void;
+	createReader?: () => {
+		readEntries: (cb: (entries: FsEntry[]) => void, err: (e: unknown) => void) => void;
+	};
+}
+
+const fileOf = (entry: FsEntry): Promise<File | null> =>
+	new Promise(resolve => {
+		entry.file?.(
+			file => resolve(file),
+			() => resolve(null),
+		);
+	});
+
+/**
+ * Lee un directorio entero. `readEntries` devuelve lotes (Chromium corta en
+ * 100): hay que llamarlo en bucle hasta que devuelva vacío o se pierden
+ * archivos sin que nada avise.
+ */
+async function readAllEntries(entry: FsEntry): Promise<FsEntry[]> {
+	const reader = entry.createReader?.();
+	if (!reader) return [];
+
+	const all: FsEntry[] = [];
+	for (;;) {
+		const batch = await new Promise<FsEntry[]>(resolve => {
+			reader.readEntries(
+				entries => resolve(entries),
+				() => resolve([]),
+			);
+		});
+		if (batch.length === 0) break;
+		all.push(...batch);
+	}
+	return all;
+}
+
+async function walkEntry(entry: FsEntry, prefix: string, root = false): Promise<PickResult> {
+	if (entry.isFile) {
+		const file = await fileOf(entry);
+		return { files: file ? [pickedFromFile(file, `${prefix}${entry.name}`)] : [], skipped: [] };
+	}
+
+	if (!entry.isDirectory) return { files: [], skipped: [] };
+
+	const children = await readAllEntries(entry);
+	if (!root && isPackageDir(entry.name, children.filter(c => c.isFile).map(c => c.name))) {
+		return { files: [], skipped: [`${prefix}${entry.name}`] };
+	}
+	const nested = await Promise.all(
+		children.map(child => walkEntry(child, `${prefix}${entry.name}/`)),
+	);
+	return merge(nested);
+}
+
+/**
+ * Archivos y carpetas soltados. Llamarla dentro del manejador del `drop`,
+ * sin ningún `await` antes: el `DataTransfer` se vacía en cuanto termina.
+ */
+export function filesFromDrop(event: React.DragEvent): Promise<PickResult> {
+	const transfer = event.dataTransfer;
+	if (!transfer) return Promise.resolve({ files: [], skipped: [] });
+
+	/* Los items se toman ya, antes de cualquier await. */
+	const entries: FsEntry[] = [];
+	for (const item of Array.from(transfer.items ?? [])) {
+		const asEntry = (item as DataTransferItem & {
+			webkitGetAsEntry?: () => FsEntry | null;
+		}).webkitGetAsEntry?.();
+		if (asEntry) entries.push(asEntry);
+	}
+	if (entries.length === 0) {
+		return Promise.resolve({ files: Array.from(transfer.files ?? []).map(file => pickedFromFile(file)), skipped: [] });
+	}
+	/* Lo soltado directamente cuenta como elegido: no se omite aunque sea de paquetes. */
+	return Promise.all(entries.map(entry => walkEntry(entry, '', true))).then(merge);
+}
+
+/** «Se omitieron node_modules y 2 más (carpetas de paquetes).» para avisar al usuario; null si no se omitió nada. */
+export function describeSkipped(skipped: string[]): string | null {
+	if (skipped.length === 0) return null;
+	const names = [...new Set(skipped.map(p => p.split('/').pop() ?? p))];
+	const shown = names.slice(0, 3).join(', ');
+	const more = names.length > 3 ? ` y ${names.length - 3} más` : '';
+	return `No se cargaron ${skipped.length === 1 ? 'una carpeta' : `${skipped.length} carpetas`} de paquetes o cachés (${shown}${more}): se regeneran con el gestor de paquetes.`;
 }

@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Modal } from '@components/common/Modal';
 import { MenuIcon } from '@components/common/ContextMenu';
 import { CloudIcon, FileGlyph, FolderGlyph } from '@components/cloud/icons';
-import { CLOUD_SECTIONS, containsEntry, entryNameError, folderSummary, resolvePath } from '@utils/cloud';
+import { CLOUD_SECTIONS, containsEntry, describeEntries, entryNameError, folderSummary, resolvePath } from '@utils/cloud';
 import type { CloudEntry, CloudFolder, CloudSection } from '@typings/cloud.types';
 
 /* Modales de las acciones de carpetas y archivos del menú contextual de
@@ -77,15 +77,33 @@ export const RenameEntryModal = ({ entry, siblings, onRename, onClose }: {
 const deepCount = (folder: CloudFolder): number =>
   folder.children.reduce((n, e) => n + 1 + (e.kind === 'folder' ? deepCount(e) : 0), 0);
 
-/* ── Eliminar ── */
-export const DeleteEntryModal = ({ entry, onDelete, onClose }: {
-  entry: CloudEntry;
+/* Nombres de una selección para un modal: unos pocos y «y N más». */
+const NameList = ({ entries }: { entries: CloudEntry[] }) => {
+  const shown = entries.slice(0, 5);
+  return (
+    <ul className="mt-2 space-y-1">
+      {shown.map(e => (
+        <li key={e.id} className="flex items-center gap-2 text-xs text-white/70 min-w-0">
+          <EntryIcon entry={e} /><span className="truncate">{e.name}</span>
+        </li>
+      ))}
+      {entries.length > shown.length && <li className="text-xs text-white/40 pl-7">y {entries.length - shown.length} más</li>}
+    </ul>
+  );
+};
+
+/* ── Eliminar: uno o varios elementos de la carpeta abierta ── */
+export const DeleteEntryModal = ({ entries, onDelete, onClose }: {
+  entries: CloudEntry[];
   onDelete: () => void;
   onClose: () => void;
 }) => {
-  const inside = entry.kind === 'folder' ? deepCount(entry) : 0;
+  const entry = entries[0];
+  const many = entries.length > 1;
+  const inside = entries.reduce((n, e) => n + (e.kind === 'folder' ? deepCount(e) : 0), 0);
+  const title = many ? `Eliminar ${entries.length} elementos` : entry.kind === 'folder' ? 'Eliminar carpeta' : 'Eliminar archivo';
   return (
-    <Modal isOpen onClose={onClose} title={entry.kind === 'folder' ? 'Eliminar carpeta' : 'Eliminar archivo'} size="sm">
+    <Modal isOpen onClose={onClose} title={title} size="sm">
       <form onSubmit={e => { e.preventDefault(); onDelete(); }} className="space-y-4">
         <div className="flex items-start gap-3">
           <span className="w-9 h-9 rounded-xl bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/20 flex items-center justify-center shrink-0">
@@ -93,11 +111,14 @@ export const DeleteEntryModal = ({ entry, onDelete, onClose }: {
           </span>
           <div className="min-w-0">
             <p className="text-sm text-white">
-              ¿Eliminar <span className="font-semibold break-words">«{entry.name}»</span>?
+              {many
+                ? <>¿Eliminar <span className="font-semibold">{describeEntries(entries)}</span>?</>
+                : <>¿Eliminar <span className="font-semibold break-words">«{entry.name}»</span>?</>}
             </p>
-            <p className="text-xs text-white/55 mt-1">
-              {entry.kind === 'folder' && inside > 0
-                ? `Se eliminará también todo su contenido (${inside} ${inside === 1 ? 'elemento' : 'elementos'}). `
+            {many && <NameList entries={entries} />}
+            <p className="text-xs text-white/55 mt-2">
+              {inside > 0
+                ? `Se eliminará también todo el contenido de ${many ? 'las carpetas' : 'la carpeta'} (${inside} ${inside === 1 ? 'elemento' : 'elementos'}). `
                 : ''}
               Esta acción no se puede deshacer.
             </p>
@@ -112,13 +133,13 @@ export const DeleteEntryModal = ({ entry, onDelete, onClose }: {
 /* ── Mover: árbol de carpetas de todas las secciones para elegir destino ── */
 interface Destination { section: CloudSection; path: string[] }
 
-const PickerNode = ({ folder, section, path, depth, entry, selected, expanded, onSelect, onToggle }: {
-  folder: CloudFolder; section: CloudSection; path: string[]; depth: number; entry: CloudEntry;
+const PickerNode = ({ folder, section, path, depth, entries, selected, expanded, onSelect, onToggle }: {
+  folder: CloudFolder; section: CloudSection; path: string[]; depth: number; entries: CloudEntry[];
   selected: Destination | null; expanded: Set<string>;
   onSelect: (d: Destination) => void; onToggle: (id: string) => void;
 }) => {
   /* Una carpeta no puede ir dentro de sí misma ni de sus subcarpetas. */
-  const blocked = entry.kind === 'folder' && containsEntry(entry, folder.id);
+  const blocked = entries.some(entry => entry.kind === 'folder' && containsEntry(entry, folder.id));
   const subfolders = folder.children.filter((e): e is CloudFolder => e.kind === 'folder');
   const open = expanded.has(folder.id) && !blocked;
   const isSelected = selected?.section === section && selected.path.join('/') === path.join('/');
@@ -146,7 +167,7 @@ const PickerNode = ({ folder, section, path, depth, entry, selected, expanded, o
         <ul className="space-y-0.5 mt-0.5">
           {subfolders.map(sub => (
             <PickerNode key={sub.id} folder={sub} section={section} path={[...path, sub.id]} depth={depth + 1}
-              entry={entry} selected={selected} expanded={expanded} onSelect={onSelect} onToggle={onToggle} />
+              entries={entries} selected={selected} expanded={expanded} onSelect={onSelect} onToggle={onToggle} />
           ))}
         </ul>
       )}
@@ -154,8 +175,8 @@ const PickerNode = ({ folder, section, path, depth, entry, selected, expanded, o
   );
 };
 
-export const MoveEntryModal = ({ entry, from, roots, onMove, onClose }: {
-  entry: CloudEntry;
+export const MoveEntryModal = ({ entries, from, roots, onMove, onClose }: {
+  entries: CloudEntry[];
   /** Dónde está ahora (sección y ruta de su carpeta). */
   from: Destination;
   roots: Record<CloudSection, CloudFolder>;
@@ -172,25 +193,35 @@ export const MoveEntryModal = ({ entry, from, roots, onMove, onClose }: {
     return next;
   });
 
+  const entry = entries[0];
+  const many = entries.length > 1;
   const target = selected ? resolvePath(roots[selected.section], selected.path).at(-1) : undefined;
   const same = selected?.section === from.section && selected.path.join('/') === from.path.join('/');
-  const conflict = target && !same ? entryNameError(entry.name, target.children, entry.kind) : null;
+  /* El primero que chocaría con un nombre del destino. */
+  const clash = target && !same
+    ? entries.map(e => ({ e, error: entryNameError(e.name, target.children, e.kind) })).find(c => c.error)
+    : undefined;
+  const conflict = clash?.error ?? null;
   const message = !selected ? 'Elige la carpeta de destino.'
-    : same ? `«${entry.name}» ya está en esta carpeta.`
-      : conflict ? conflict.replace('aquí', `en «${target?.name}»`)
-        : `Se moverá a «${target?.name}».`;
+    : same ? (many ? 'Ya están en esta carpeta.' : `«${entry.name}» ya está en esta carpeta.`)
+      : conflict ? `${many ? `«${clash?.e.name}»: ` : ''}${conflict.replace('aquí', `en «${target?.name}»`)}`
+        : `Se ${many ? 'moverán' : 'moverá'} a «${target?.name}».`;
 
   return (
-    <Modal isOpen onClose={onClose} title={`Mover «${entry.name}»`} size="md">
+    <Modal isOpen onClose={onClose} title={many ? `Mover ${entries.length} elementos` : `Mover «${entry.name}»`} size="md">
       <form onSubmit={e => { e.preventDefault(); if (selected && !same && !conflict) onMove(selected); }} className="space-y-4">
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <EntryIcon entry={entry} />
-          <span className="truncate">{entry.kind === 'folder' ? folderSummary(entry) : entry.name}</span>
-        </div>
+        {many ? (
+          <div className="text-xs text-white/50">{describeEntries(entries)}<NameList entries={entries} /></div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-white/50">
+            <EntryIcon entry={entry} />
+            <span className="truncate">{entry.kind === 'folder' ? folderSummary(entry) : entry.name}</span>
+          </div>
+        )}
         <ul aria-label="Carpeta de destino"
           className="max-h-80 overflow-y-auto scroll-thin scroll-layer rounded-xl bg-tint-sunken border border-line p-2 space-y-0.5">
           {CLOUD_SECTIONS.map(({ id }) => (
-            <PickerNode key={id} folder={roots[id]} section={id} path={[]} depth={0} entry={entry}
+            <PickerNode key={id} folder={roots[id]} section={id} path={[]} depth={0} entries={entries}
               selected={selected} expanded={expanded} onSelect={setSelected} onToggle={toggle} />
           ))}
         </ul>

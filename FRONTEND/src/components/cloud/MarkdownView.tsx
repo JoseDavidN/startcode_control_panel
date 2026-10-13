@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 /* ── Vista previa de Markdown ─────────────────────────────────────────
    react-markdown arma elementos de React (nunca inserta HTML crudo: el
@@ -17,8 +18,8 @@ const COMPONENTS: Components = {
   h6: ({ children }) => <h6 className="text-sm font-semibold text-white/70 mt-4 mb-1.5">{children}</h6>,
   p: ({ children }) => <p className="my-3">{children}</p>,
   a: ({ href, children }) => (
-    /* Fuera de la app: nunca se navega dentro del panel. */
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-violet-300 underline underline-offset-2 hover:text-violet-200">{children}</a>
+    /* En el navegador del sistema (plugin `opener`): nunca se navega dentro de la app. */
+    <a href={href} onClick={e => { e.preventDefault(); if (href && /^(https?|mailto):/i.test(href)) void openUrl(href).catch(() => undefined); }} className="text-violet-300 underline underline-offset-2 hover:text-violet-200">{children}</a>
   ),
   strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
   del: ({ children }) => <del className="text-white/50">{children}</del>,

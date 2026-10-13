@@ -1,6 +1,6 @@
 {
   "name": "startcode-cloud",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Backend de StartCode Cloud: archivos de Home y Backups en el disco del servidor",
   "private": true,
   "license": "UNLICENSED",

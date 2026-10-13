@@ -5,22 +5,41 @@
     {
       "version": "0.6.0",
       "type": "minor",
-      "date": "2026-10-10",
+      "date": "2026-10-13",
       "title": "El asistente prepara servidores y conexiones",
       "changes": {
         "added": [
           "Pídele al asistente de IA que agregue un servidor o una conexión a base de datos: te muestra una tarjeta con los datos y «Revisar y crear» abre el formulario de siempre ya rellenado",
-          "La llave SSH y la contraseña las escribes tú en el formulario: nunca pasan por el asistente, y nada se crea hasta que lo guardas"
+          "La llave SSH y la contraseña las escribes tú en el formulario: nunca pasan por el asistente, y nada se crea hasta que lo guardas",
+          "Visor de imágenes en Cloud: doble clic en una imagen la abre ajustada a la ventana, con zoom (rueda, + y −), arrastrar para moverla, tamaño real y flechas para pasar a la anterior o la siguiente de la carpeta",
+          "Reproductor de video en Cloud: doble clic en un video empieza a verse enseguida, sin descargarlo entero, y saltar a cualquier punto es inmediato. Controles con el tema: reproducir, ±10 s, barra con lo ya cargado, volumen, velocidad y pantalla completa, también con el teclado. Requiere StartCode Cloud 0.2.0",
+          "Cloud: con clic derecho, «Compartir por SFTP» envía un archivo o una carpeta a cualquiera de tus servidores; eliges el servidor y la carpeta de destino y ves el progreso de cada archivo",
+          "Cloud reproduce videos de cualquier formato (MKV, AVI, WMV, HEVC…): la nube los prepara al vuelo sin esperar a convertirlos enteros, y los que ya convirtió una vez se abren al instante",
+          "Cloud: selección múltiple desde el clic derecho («Seleccionar» en cualquier parte de la vista o sobre un elemento) para mover, compartir por SFTP o eliminar varias carpetas y archivos a la vez. El mismo menú ofrece también nueva carpeta y cargar archivos o carpetas",
+          "Dashboard: gráficas de Cloud con el espacio de Home y Backups, la actividad de los últimos 30 días, el espacio por tipo de archivo y los archivos más grandes (requiere StartCode Cloud 0.2.0)"
         ],
         "fixed": [
           "Conexión más estable con el proveedor de IA cuando el servidor del panel está en una VPN",
           "Al exportar el resultado de una consulta, la app de escritorio abre el diálogo del sistema para elegir dónde guardarlo y avisa cuando termina",
-        "Las descargas de Cloud también preguntan dónde guardar en la app de escritorio",
-        "Exportar un resultado guarda todas las filas de la consulta, no solo las 1000 que se muestran (hasta 200 000). Las columnas ocultas siguen saliendo enmascaradas",
-        "Si el asistente no puede contactar con el proveedor, el error dice la causa (DNS, tiempo agotado, conexión cortada, certificado interceptado) y qué revisar"
+          "Las descargas de Cloud también preguntan dónde guardar en la app de escritorio",
+          "Exportar un resultado guarda todas las filas de la consulta, no solo las 1000 que se muestran (hasta 200 000). Las columnas ocultas siguen saliendo enmascaradas",
+          "Si el asistente no puede contactar con el proveedor, el error dice la causa (DNS, tiempo agotado, conexión cortada, certificado interceptado) y qué revisar",
+          "La pantalla completa del reproductor de video funciona: la ventana de la app pasa a pantalla completa y Escape vuelve sin cerrar el video",
+          "Descargar los códigos de respaldo de la verificación en dos pasos y exportar la configuración abren el diálogo para elegir dónde guardarlos",
+          "Los enlaces dentro de un archivo Markdown de Cloud se abren en tu navegador",
+          "Soltar archivos en la ventana de SFTP ya no puede quedarse sin subir nada",
+          "Copiar y pegar usan el portapapeles del sistema y ya no dependen de permisos del visor de la app"
         ],
         "changed": [
-          "Al abrir el asistente se muestra el final de la conversación"
+          "Al abrir el asistente se muestra el final de la conversación",
+          "Nuevos controles del reproductor de video: botones redondos e independientes con los colores del tema, translúcidos sobre el video, barra de reproducción con lo ya cargado y el tiempo al pasar el ratón, y aviso al saltar ±10 s",
+          "La terminal SSH siempre se abre apaisada y, con el asistente abierto, se coloca a su lado en lugar de quedar debajo",
+          "Cerrar la terminal ya no corta la sesión: al volver está como la dejaste. «Terminar sesión» la cierra, y también salir del detalle del servidor",
+          "Se quitó «Imagen en imagen» del reproductor: no funcionaba en la app de escritorio",
+          "Dashboard más compacto: las gráficas y tarjetas se reparten en filas compartidas en pantallas grandes",
+          "Al cargar una carpeta en Cloud o por SFTP se omiten las carpetas de paquetes y cachés (node_modules, venv, __pycache__…), con un aviso de cuáles se dejaron fuera",
+          "Cloud: las carpetas se abren con doble clic, como los archivos",
+          "Servidores: en las tarjetas el estado de conexión y el indicador de en línea pasan a la parte inferior, y se quita el texto «Último reporte»"
         ]
       }
     },

@@ -23,9 +23,14 @@ import { ROUTES } from '@utils/constants';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
 import { useCloudConnection } from '@hooks/useCloudConnection';
-import { useCloudStorage } from '@hooks/useCloudData';
+import { useCloudStats, useCloudStorage } from '@hooks/useCloudData';
 import { formatBytes } from '@utils/cloud';
 import { Select } from '@components/common/Select';
+import { Empty as EmptyState, SectionTitle } from '@components/dashboard/DashboardParts';
+import { TOOLTIP_STYLE } from '@components/dashboard/chartStyles';
+import {
+  CloudActivityChart, CloudLargestFiles, CloudStorageCard, CloudTypesChart, StatsAge, type CloudCardState,
+} from '@components/dashboard/CloudCharts';
 
 /* ── Glassmorphism primitives ─────────────────────────────────────── */
 
@@ -83,23 +88,8 @@ const icons = {
   bolt:     <I d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" className="w-4 h-4" />,
 };
 
-/* ── Estado vacío honesto ─────────────────────────────────────────── */
-const Empty = ({ title, hint }: { title: string; hint: string }) => (
-  <div
-    className="edge-dashed rounded-xl flex flex-col items-center justify-center text-center gap-2 py-10 px-6"
-  >
-    <span className="text-white/20">{icons.server}</span>
-    <div className="text-sm font-medium text-white/60">{title}</div>
-    <p className="text-xs text-white/35 max-w-[380px] leading-relaxed">{hint}</p>
-  </div>
-);
-
-const SectionTitle = ({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) => (
-  <div className="flex items-center justify-between gap-3 mb-4">
-    <h2 className="text-base font-semibold text-white/90 tracking-tight">{children}</h2>
-    {right}
-  </div>
-);
+/* Estado vacío de las tarjetas de servidores: con el icono de servidor. */
+const Empty = ({ title, hint }: { title: string; hint: string }) => <EmptyState title={title} hint={hint} icon={icons.server} />;
 
 /* ── Reloj ────────────────────────────────────────────────────────── */
 /* Aislado en su propio componente: con el estado en el Dashboard, el tic de
@@ -126,13 +116,6 @@ const X_TICK = { fontSize: 11, fill: 'rgb(var(--surface-rgb) / 0)' };
 const Y_TICK = { fontSize: 11 };
 const AXIS_STYLE = { fill: 'currentColor' };
 const Y_DOMAIN: [number, number] = [0, 100];
-const TOOLTIP_STYLE = {
-  background: 'rgb(var(--surface-rgb) / 0.92)',
-  border: '1px solid var(--hairline)',
-  borderRadius: 12,
-  color: 'var(--ink)',
-  fontSize: 12,
-};
 const fmtTime = (t: number) =>
   new Date(t).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
 const fmtLabel = (t: number) =>
@@ -252,6 +235,20 @@ export const Dashboard: React.FC = () => {
     : cloud.status === 'connecting' ? 'Conectando con la nube…'
       : cloud.connection ? `Sin respuesta · ${cloudHost}`
         : 'Sin conectar · conéctala desde Cloud';
+  /* Resumen de la nube (Cloud 0.2.0): reparto, actividad, tipos y los más grandes. */
+  const statsQuery = useCloudStats(cloud.connection, cloudConnected);
+  const cloudState: CloudCardState = useMemo(() => {
+    if (!cloud.connection) return { kind: 'empty', title: 'Nube sin conectar', hint: 'Conéctala desde Cloud para ver aquí su espacio, su actividad y sus archivos.' };
+    if (!cloudConnected) return { kind: 'empty', title: 'La nube no responde', hint: `No hay respuesta de ${cloudHost}. Revisa la conexión desde Cloud.` };
+    if (statsQuery.data) return { kind: 'ready', stats: statsQuery.data };
+    if (statsQuery.isError) {
+      const status = (statsQuery.error as { statusCode?: number } | null)?.statusCode;
+      return status === 404
+        ? { kind: 'empty', title: 'Actualiza StartCode Cloud', hint: 'Estas gráficas necesitan Cloud 0.2.0 o posterior en el servidor de la nube.' }
+        : { kind: 'empty', title: 'No se pudo leer la nube', hint: (statsQuery.error as Error | null)?.message ?? 'Inténtalo de nuevo en un momento.' };
+    }
+    return { kind: 'loading' };
+  }, [cloud.connection, cloudConnected, cloudHost, statsQuery.data, statsQuery.isError, statsQuery.error]);
   const { settings: monitoring } = useMonitoringSettings();
 
   const [selected, setSelected] = useState<string | undefined>();
@@ -346,8 +343,9 @@ export const Dashboard: React.FC = () => {
             sub={cloudSub} />
         </div>
 
-        {/* Gráfica 24 h */}
-        <Card className="p-5">
+        {/* Fila: gráfica 24 h (2/3) y almacenamiento de la nube (1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <Card className="p-5 lg:col-span-8 min-w-0">
           <SectionTitle
             right={
               servers.length > 1 ? (
@@ -396,8 +394,29 @@ export const Dashboard: React.FC = () => {
           )}
         </Card>
 
-        {/* Salud por servidor */}
-        <Card className="p-5">
+        <Card className="p-5 lg:col-span-4 min-w-0">
+          <SectionTitle right={<StatsAge state={cloudState} />}>Almacenamiento de la nube</SectionTitle>
+          <CloudStorageCard storage={cloudStorage} state={cloudState} />
+        </Card>
+        </div>
+
+        {/* Fila: actividad de la nube (7/12) y espacio por tipo (5/12) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <Card className="p-5 lg:col-span-7 min-w-0">
+            <SectionTitle right={<span className="text-xs text-white/40">archivos nuevos o modificados</span>}>
+              Actividad de la nube · últimos 30 días
+            </SectionTitle>
+            <CloudActivityChart state={cloudState} />
+          </Card>
+          <Card className="p-5 lg:col-span-5 min-w-0">
+            <SectionTitle>Espacio por tipo de archivo</SectionTitle>
+            <CloudTypesChart state={cloudState} />
+          </Card>
+        </div>
+
+        {/* Fila: salud por servidor (2/3) y, al lado, avisos y archivos más grandes */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <Card className="p-5 lg:col-span-8 min-w-0">
           <SectionTitle right={<span className="text-xs text-white/40">ordenado por carga</span>}>
             Salud por servidor
           </SectionTitle>
@@ -442,6 +461,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
+        <div className="lg:col-span-4 min-w-0 space-y-5">
         {/* Capacidad y avisos */}
         <Card className="p-5">
           <SectionTitle>Capacidad y avisos</SectionTitle>
@@ -487,6 +507,13 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
         </Card>
+
+        <Card className="p-5">
+          <SectionTitle>Archivos más grandes</SectionTitle>
+          <CloudLargestFiles state={cloudState} onOpen={() => navigate(ROUTES.CLOUD)} />
+        </Card>
+        </div>
+        </div>
       </div>
     </div>
   );

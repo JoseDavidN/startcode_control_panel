@@ -11,6 +11,7 @@ export const CLOUD_KEYS = {
   tree: (c: CloudConnection | null, section: CloudSection) => [...scope(c), 'tree', section] as const,
   storage: (c: CloudConnection | null) => [...scope(c), 'storage'] as const,
   paths: (c: CloudConnection | null) => [...scope(c), 'paths'] as const,
+  stats: (c: CloudConnection | null) => [...scope(c), 'stats'] as const,
 };
 
 /** Raíz vacía de una sección: lo que se ve mientras carga o sin conexión. */
@@ -41,6 +42,18 @@ export function useCloudStorage(connection: CloudConnection | null, enabled: boo
     queryFn: () => cloudApi.storage(),
     enabled: enabled && Boolean(connection),
     staleTime: 30_000,
+    retry: false,
+  });
+}
+
+/** Resumen para el dashboard. Una nube anterior a 0.2.0 responde 404: `isError` con `statusCode` 404. */
+export function useCloudStats(connection: CloudConnection | null, enabled: boolean) {
+  return useQuery({
+    queryKey: CLOUD_KEYS.stats(connection),
+    queryFn: () => cloudApi.stats(),
+    enabled: enabled && Boolean(connection),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
     retry: false,
   });
 }

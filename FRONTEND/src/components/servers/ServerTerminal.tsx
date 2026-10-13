@@ -6,7 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { TokenManager } from '@utils/tokenManager';
 import { API_CONFIG } from '@utils/constants';
-import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
+import { useAssistant, useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { AssistantLauncher } from '@components/assistant/AssistantPanel';
 import { toSingleLine } from '@utils/commands';
 import { useContextMenu } from '@hooks/useContextMenu';
@@ -52,28 +52,47 @@ function readBuffer(term: Terminal | null): string {
   return lines.join('\n').replace(/\s+$/, '');
 }
 
+/* Siempre apaisada (16:9). El asistente ocupa 440 px a la derecha más sus
+   márgenes: abierto, la terminal se encoge y se centra en lo que queda. */
+const ASPECT = 16 / 9;
+const ASSISTANT_SPACE = 460;
+const MARGIN = 24;
+
 interface Props {
   serverId: string;
   serverName: string;
+  /** Oculta, la sesión sigue viva: al volver a abrirla está como se dejó. */
+  open: boolean;
+  /** Ocultar sin cerrar la sesión. */
   onClose: () => void;
+  /** Cerrar la sesión SSH. */
+  onEnd: () => void;
 }
 
-export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose }) => {
+/**
+ * Terminal SSH del detalle de un servidor. Cerrar la ventana solo la oculta:
+ * la conexión sigue hasta que se termina la sesión o se sale del detalle del
+ * servidor (al desmontarse).
+ */
+export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, onClose, onEnd }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const fitRef = useRef<(() => void) | null>(null);
+  const { open: assistantOpen } = useAssistant();
 
   const [status, setStatus] = useState<Status>('connecting');
   const [message, setMessage] = useState('Conectando por SSH…');
 
-  useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => readBuffer(termRef.current));
+  /* Oculta no se ofrece al asistente: no está en pantalla. */
+  useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => readBuffer(termRef.current), open);
   useAssistantTarget(`terminal:${serverId}`, 'terminal', 'la terminal', text => {
     const line = toSingleLine(text);
     if (!line || !socketRef.current?.connected) return;
     /* Se escribe como si se tecleara, sin Enter: ejecutar lo decide el usuario. */
     socketRef.current.emit('terminal:input', line);
     termRef.current?.focus();
-  }, status === 'ready');
+  }, status === 'ready' && open);
 
   /* Clic derecho: la selección de xterm no es la del documento, así que la
      terminal da su propio menú. Pegar hace lo mismo que Ctrl + V. */
@@ -180,6 +199,7 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
         socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
       } catch { /* el contenedor aún no tiene tamaño */ }
     };
+    fitRef.current = resize;
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     window.addEventListener('resize', resize);
@@ -194,8 +214,19 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
       term.dispose();
       termRef.current = null;
       socketRef.current = null;
+      fitRef.current = null;
     };
   }, [serverId]);
+
+  /* Al volver a mostrarla: tamaño al día y el foco en la shell. */
+  useEffect(() => {
+    if (!open) return;
+    const raf = requestAnimationFrame(() => {
+      fitRef.current?.();
+      termRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, assistantOpen]);
 
   const tone =
     status === 'ready' ? 'bg-emerald-400' :
@@ -205,12 +236,19 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
   /* Al body, igual que el Modal común: un ancestro con `backdrop-filter` o con
      `transform` crea bloque contenedor y encerraría este overlay fijo dentro de
      la tarjeta desde la que se abrió. */
+  /* Ancho: el disponible (sin el asistente si está abierto), sin pasar de
+     1280 px ni de lo que permite el alto en 16:9. */
+  const reserved = assistantOpen ? ASSISTANT_SPACE : 0;
+  const width = `min(1280px, calc(100vw - ${MARGIN * 2 + reserved}px), calc((100vh - ${MARGIN * 2}px) * ${ASPECT}))`;
+
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
+    <div className={open ? 'fixed inset-0 z-50 flex items-center justify-center' : 'hidden'}
+      style={{ padding: MARGIN, paddingRight: MARGIN + reserved }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-fadeIn" onClick={onClose} />
 
       <div
-        className="relative w-full max-w-5xl h-[80vh] flex flex-col glass elev-modal grain rounded-2xl animate-slideUp overflow-hidden"
+        className="relative flex flex-col glass elev-modal grain rounded-2xl animate-slideUp overflow-hidden transition-[width] duration-200"
+        style={{ width, aspectRatio: `${ASPECT}` }}
       >
         <div className="flex items-center gap-3 px-5 py-3 border-b border-line shrink-0">
           <span className={`w-2 h-2 rounded-full shrink-0 ${tone}`} />
@@ -227,9 +265,17 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, onClose 
             Limpiar
           </button>
           <button
+            onClick={onEnd}
+            title="Cierra la conexión SSH"
+            className="mo-tab h-9 px-3 rounded-xl text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-medium"
+          >
+            Terminar sesión
+          </button>
+          <button
             onClick={onClose}
+            title="Ocultar: la sesión sigue abierta hasta salir del servidor"
             className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/70 hover:text-white row-hit flex items-center justify-center"
-            aria-label="Cerrar terminal"
+            aria-label="Ocultar terminal"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" className="w-4 h-4">
               <path d="M18 6L6 18M6 6l12 12" />

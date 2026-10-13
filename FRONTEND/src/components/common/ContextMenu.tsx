@@ -8,7 +8,7 @@ export interface ContextMenuState {
   items: ContextMenuItem[];
 }
 
-export type MenuIconName = 'cut' | 'copy' | 'paste' | 'download' | 'open' | 'pin' | 'unpin' | 'move' | 'rename' | 'trash' | 'info';
+export type MenuIconName = 'cut' | 'copy' | 'paste' | 'download' | 'open' | 'pin' | 'unpin' | 'move' | 'rename' | 'trash' | 'info' | 'send' | 'select' | 'unselect' | 'newFolder' | 'upload';
 
 /* Iconos de trazo de las opciones del menú contextual. */
 export const MenuIcon = ({ name, className = 'w-4 h-4' }: { name: MenuIconName; className?: string }) => (
@@ -24,6 +24,11 @@ export const MenuIcon = ({ name, className = 'w-4 h-4' }: { name: MenuIconName; 
     {name === 'rename'   && <><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" /><path d="M14 7l3 3" /></>}
     {name === 'info'     && <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>}
     {name === 'trash'    && <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4h6v3" />}
+    {name === 'send'     && <><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 16.5h.01M12 3v7M8.5 6.5L12 3l3.5 3.5" /></>}
+    {name === 'select'   && <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M8 12l3 3 5-6" /></>}
+    {name === 'unselect' && <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M9 9l6 6M15 9l-6 6" /></>}
+    {name === 'newFolder' && <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM12 10.5v5M9.5 13h5" />}
+    {name === 'upload'   && <path d="M12 16V5M7 10l5-5 5 5M5 20h14" />}
     {name === 'open'     && <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>}
   </svg>
 );

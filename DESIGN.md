@@ -76,7 +76,7 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 |---|---|
 | `--bg-base`, `--bg-mid`, `--bg-radial` | Fondo de la app y gradiente radial fijo |
 | `--aurora-1..3`, `--aurora-opacity`, `--aurora-2-opacity`, `--aurora-3-opacity` | Blobs animados del fondo |
-| `--surface-rgb` + `--glass-alpha` / `--glass-soft-alpha` / `--glass-input-alpha` / `--glass-float-alpha` | Base de `.glass`, `.glass-soft`, `.glass-input` y `.glass-float` (casi opaca, para separarse del contenido que pasa por debajo) |
+| `--surface-rgb` + `--glass-alpha` / `--glass-soft-alpha` / `--glass-input-alpha` / `--glass-float-alpha` / `--glass-media-alpha` | Base de `.glass`, `.glass-soft`, `.glass-input`, `.glass-float` (casi opaca, para separarse del contenido que pasa por debajo) y `.glass-media` (translúcida, controles sobre video) |
 | `--sheen-*` | Gradiente de brillo superior de los paneles |
 | `--hairline`, `--hairline-soft`, `--hairline-strong`, `--hairline-hover` | Bordes de superficie: normal, anidada, acentuada y al pasar por encima |
 | `--line` | Separadores dentro de un panel (`border-b`, `divide-y`). Deliberadamente más suave que `--hairline`: es el token que se repite N veces en una lista |
@@ -177,6 +177,9 @@ Tarjetas dentro de paneles glass, chips de usuario, secciones de settings.
   box-shadow: var(--shadow-raised);
 }
 ```
+
+### `.glass-media` — controles sobre video o imagen
+Translúcida (`--glass-media-alpha`: 0.42 Nocturno, 0.40 Aurora, 0.58 Solar) con su propio borroneo (`blur(16px) saturate(170%)`), también dentro de un modal `.glass`: deja ver el video debajo. Solo para controles que flotan sobre un medio (reproductor de Cloud); en el resto de la interfaz, `.glass-float`. Botones de reproductor redondos (`rounded-full`), cada uno su propia pieza con `border border-hairline` → `hover:border-hairline-strong`, activos con `grad-brand-soft`; el principal, `grad-brand`.
 
 ### `.glass-input` — inputs y selects
 Van al revés que los paneles: hundidos.
@@ -298,7 +301,7 @@ Usar el componente `Toggle` existente en `Settings.tsx`. Clases clave:
 - Dot: `bg-white rounded-full` con `translate-x-5` cuando está on
 
 ### Slider (rango)
-**Siempre usar el componente `RangeSlider`** de `Settings.tsx`, nunca `<input type="range">` nativo. El componente superpone un input invisible sobre visuals custom para consistencia cross-browser.
+**Siempre usar el componente `RangeSlider`** de `components/common/RangeSlider.tsx`, nunca `<input type="range">` nativo. El componente superpone un input invisible sobre visuals custom para consistencia cross-browser. `step`, `onCommit` (al soltar), `buffered` (franja de lo cargado con la marca al 28 %, para medios), `tooltip` (valor bajo el puntero) y `compact` (pista fina que engrosa y tirador que aparece al pasar por encima; barras de reproducción).
 
 Thumb: `linear-gradient(135deg, #c084fc 0%, #f472b6 100%)` con `box-shadow: 0 0 0 4px rgba(168,85,247,0.22)`.
 Track filled: `linear-gradient(135deg, #a855f7 0%, #ec4899 100%)`.

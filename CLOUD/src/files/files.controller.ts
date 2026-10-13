@@ -1,10 +1,14 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { randomUUID } from 'crypto';
 import { CloudAuthGuard } from '@/auth/cloud-auth.guard';
+import { AuthService } from '@/auth/auth.service';
 import type { AuthedRequest } from '@/auth/auth.types';
 import { SECTIONS, type Section } from '@/common/sections';
-import { CreateFolderDto, MoveDto, RenameDto, SectionPathQuery, UploadQuery } from './dto/files.dto';
+import { CreateFolderDto, MoveDto, RenameDto, SectionPathQuery, StreamTicketDto, UploadQuery } from './dto/files.dto';
+import { fileTypeFromName } from './file-types';
+import { MediaService } from './media.service';
 import { contentDisposition, FilesService } from './files.service';
 
 const SECTION_ENUM = Object.fromEntries(SECTIONS.map(s => [s, s]));
@@ -12,7 +16,11 @@ const SECTION_ENUM = Object.fromEntries(SECTIONS.map(s => [s, s]));
 @Controller()
 @UseGuards(CloudAuthGuard)
 export class FilesController {
-  constructor(private readonly files: FilesService) {}
+  constructor(
+    private readonly files: FilesService,
+    private readonly auth: AuthService,
+    private readonly media: MediaService,
+  ) {}
 
   @Get('tree/:section')
   tree(@Req() req: AuthedRequest, @Param('section', new ParseEnumPipe(SECTION_ENUM)) section: Section) {
@@ -22,6 +30,12 @@ export class FilesController {
   @Get('storage')
   storage(@Req() req: AuthedRequest) {
     return this.files.storage(req.user.username);
+  }
+
+  /** Resumen para el dashboard: por sección, por tipo, actividad de 30 días y los más grandes. */
+  @Get('stats')
+  stats(@Req() req: AuthedRequest) {
+    return this.files.stats(req.user.username);
   }
 
   @Post('folders')
@@ -43,6 +57,37 @@ export class FilesController {
   async content(@Req() req: AuthedRequest, @Query() q: SectionPathQuery): Promise<StreamableFile> {
     const file = await this.files.content(req.user.username, q.section, q.path ?? '');
     return new StreamableFile(file.stream, { type: file.type, length: file.size, disposition: contentDisposition(file.name) });
+  }
+
+  /**
+   * URL para reproducir con `<video src>` (ver `StreamController`). En videos,
+   * ffprobe decide si va directo, re-empaquetado o convertido (`mode`):
+   * - `direct`: `/files/stream`, a tramos (`Range`); también los ya convertidos en caché.
+   * - `remux`/`transcode`: `/files/play`, MP4 que se genera mientras se ve; para
+   *   saltar, el reproductor la vuelve a pedir con `&start=segundos`.
+   */
+  @Post('files/stream-ticket')
+  @HttpCode(200)
+  async streamTicket(@Req() req: AuthedRequest, @Body() dto: StreamTicketDto) {
+    const path = dto.path ?? '';
+    /* Se comprueba ya que el archivo existe: el error sale aquí y no en el reproductor. */
+    const file = await this.files.resolveFile(req.user.username, dto.section, path);
+    const cap = dto.client ?? {};
+    const decision = fileTypeFromName(file.name) === 'video' ? await this.media.decide(file, cap) : null;
+    const { ticket, expiresAt } = await this.auth.streamTicket(req.user, dto.section, path, { sid: randomUUID(), cap });
+    const mode = decision?.cached ? 'direct' : decision?.plan.mode ?? 'direct';
+    const endpoint = mode === 'direct' ? 'stream' : 'play';
+    return {
+      url: `/api/v1/files/${endpoint}?ticket=${encodeURIComponent(ticket)}`,
+      mode,
+      /* Convertido una vez y guardado: se sirve sin ffmpeg. */
+      cached: decision?.cached ?? false,
+      duration: decision?.plan.duration ?? null,
+      /* Sin ffmpeg, un formato que el webview no admite no se podrá ver. */
+      ffmpeg: decision?.ffmpeg ?? null,
+      size: file.size,
+      expiresAt,
+    };
   }
 
   @Get('files/zip')

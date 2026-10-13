@@ -106,3 +106,29 @@ export interface CloudConnectionState {
   /** Por qué no está conectada teniendo una conexión guardada (servidor caído, sesión cerrada…). */
   error: string | null;
 }
+
+/** Cómo se reproduce un video de la nube (`POST /files/stream-ticket`). */
+export interface CloudStream {
+  url: string;
+  /** `direct`: a tramos, se puede saltar libremente. `remux`/`transcode`: ffmpeg lo genera al vuelo y se salta pidiéndolo desde otro punto. */
+  mode: 'direct' | 'remux' | 'transcode';
+  /** Ya convertido una vez: se sirve desde la caché de la nube. */
+  cached: boolean;
+  /** Segundos, de ffprobe; null si no se sabe. */
+  duration: number | null;
+  /** false: la nube no tiene ffmpeg y solo reproduce lo que el webview admite. */
+  ffmpeg: boolean | null;
+}
+
+/** Resumen de la nube para el dashboard (`GET /stats`, Cloud 0.2.0). */
+export interface CloudStats {
+  sections: Record<CloudSection, { files: number; bytes: number }>;
+  /** De mayor a menor tamaño; solo los tipos con archivos. */
+  byType: { type: CloudFileType; files: number; bytes: number }[];
+  /** 30 días hasta hoy (`YYYY-MM-DD`, UTC), por fecha de modificación; días vacíos a cero. */
+  activity: { date: string; files: number; bytes: number }[];
+  largest: { section: CloudSection; id: string; name: string; type: CloudFileType; size: number; modifiedAt: string }[];
+  /** La nube recortó el recorrido (demasiados archivos): las cifras se quedan cortas. */
+  truncated: boolean;
+  generatedAt: string;
+}

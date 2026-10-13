@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Update } from '@tauri-apps/plugin-updater';
-import { IS_TAURI, storeGet, storeSet } from '@lib/tauriStore';
+import { storeGet, storeSet } from '@lib/tauriStore';
 import { notify } from '@services/notification.service';
 import { UpdaterContext, type UpdatePrefs, type UpdaterContextValue, type UpdaterState } from '@contexts/updater-context';
 
@@ -111,7 +111,7 @@ export const UpdaterProvider = ({ children }: { children: ReactNode }) => {
 
 	/** `background`: sin errores a la vista ni avisos si se busca a mano. */
 	const run = useCallback(async (background: boolean) => {
-		if (!IS_TAURI || busyRef.current || stateRef.current.ready) return;
+		if (busyRef.current || stateRef.current.ready) return;
 		busyRef.current = true;
 		setState(s => ({ ...s, checking: true, error: background ? s.error : null }));
 
@@ -148,7 +148,6 @@ export const UpdaterProvider = ({ children }: { children: ReactNode }) => {
 	const checkForUpdates = useCallback(() => run(false), [run]);
 
 	const installUpdate = useCallback(async () => {
-		if (!IS_TAURI) return;
 		try {
 			if (!stateRef.current.ready) {
 				const update = updateRef.current ?? await (await import('@tauri-apps/plugin-updater')).check();
@@ -166,7 +165,7 @@ export const UpdaterProvider = ({ children }: { children: ReactNode }) => {
 
 	/* Comprobación en segundo plano, cuando ya se saben las preferencias. */
 	useEffect(() => {
-		if (!IS_TAURI || !prefsLoaded) return;
+		if (!prefsLoaded) return;
 		const first = window.setTimeout(() => { void run(true); }, FIRST_CHECK_DELAY_MS);
 		const every = window.setInterval(() => { void run(true); }, CHECK_EVERY_MS);
 		return () => { window.clearTimeout(first); window.clearInterval(every); };

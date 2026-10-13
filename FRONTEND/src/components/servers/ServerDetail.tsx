@@ -123,6 +123,9 @@ const TABS = [
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
   const [installOpen, setInstallOpen] = useState(false);
+  /* La terminal se monta al abrirla por primera vez y sigue montada (oculta)
+     al cerrarla: la sesión SSH dura hasta terminarla o salir de este detalle. */
+  const [terminalSession, setTerminalSession] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [sftpOpen, setSftpOpen] = useState(false);
   const commandBarRef = useRef<CommandBarHandle>(null);
@@ -361,10 +364,12 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={() => setTerminalOpen(true)}
-              title="Abrir una shell SSH en este servidor"
+            <button onClick={() => { setTerminalSession(true); setTerminalOpen(true); }}
+              title={terminalSession ? 'La sesión SSH sigue abierta: volver a ella' : 'Abrir una shell SSH en este servidor'}
               className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
-              <TerminalIcon className="w-4 h-4" /> Abrir Terminal
+              <TerminalIcon className="w-4 h-4" />
+              {terminalSession ? 'Volver a la terminal' : 'Abrir Terminal'}
+              {terminalSession && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-label="Sesión abierta" />}
             </button>
             <button onClick={() => setSftpOpen(true)}
               title="Subir archivos y carpetas por SFTP"
@@ -778,12 +783,14 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
       )}
 
       {/* ── Terminal SSH ─────────────────────────────────────────────── */}
-      {terminalOpen && (
+      {terminalSession && (
         <Suspense fallback={null}>
           <ServerTerminal
             serverId={server.id}
             serverName={server.name}
+            open={terminalOpen}
             onClose={() => setTerminalOpen(false)}
+            onEnd={() => { setTerminalOpen(false); setTerminalSession(false); }}
           />
         </Suspense>
       )}

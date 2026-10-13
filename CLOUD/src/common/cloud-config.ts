@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { cpus } from 'os';
 import { resolve } from 'path';
 import type { SectionPaths } from './sections';
 
@@ -28,6 +29,17 @@ export class CloudConfig {
   readonly treeMaxEntries: number;
   readonly adminUsername?: string;
   readonly adminPassword?: string;
+  /* Video: ffmpeg/ffprobe para reproducir cualquier formato. */
+  readonly ffmpegPath: string;
+  readonly ffprobePath: string;
+  /** Conversiones a H.264 a la vez (las más pesadas); el resto espera. */
+  readonly maxTranscodes: number;
+  readonly transcodeThreads: number;
+  readonly transcodeMaxHeight: number;
+  readonly transcodePreset: string;
+  /** Videos ya convertidos: la segunda vez se sirven sin ffmpeg. 0 lo desactiva. */
+  readonly mediaCacheBytes: number;
+  readonly mediaCacheDir: string;
 
   constructor(config: ConfigService) {
     const get = (key: string) => config.get<string>(key)?.trim() || undefined;
@@ -51,5 +63,16 @@ export class CloudConfig {
     this.treeMaxEntries = Number(get('CLOUD_TREE_MAX_ENTRIES') ?? 50_000) || 50_000;
     this.adminUsername = get('CLOUD_ADMIN_USERNAME');
     this.adminPassword = get('CLOUD_ADMIN_PASSWORD');
+    this.ffmpegPath = get('CLOUD_FFMPEG_PATH') ?? 'ffmpeg';
+    this.ffprobePath = get('CLOUD_FFPROBE_PATH') ?? 'ffprobe';
+    this.maxTranscodes = Math.max(1, Number(get('CLOUD_MAX_TRANSCODES') ?? 2) || 2);
+    /* Por defecto la mitad de los núcleos (mínimo 2): deja aire al resto del servidor. */
+    this.transcodeThreads = Math.max(1, Number(get('CLOUD_TRANSCODE_THREADS')) || Math.max(2, Math.floor(cpus().length / 2)));
+    /* 720p con `superfast` va por encima de tiempo real incluso con 2 núcleos. */
+    this.transcodeMaxHeight = Math.max(240, Number(get('CLOUD_TRANSCODE_MAX_HEIGHT') ?? 720) || 720);
+    const preset = get('CLOUD_TRANSCODE_PRESET') ?? 'superfast';
+    this.transcodePreset = /^(ultrafast|superfast|veryfast|faster|fast|medium)$/.test(preset) ? preset : 'superfast';
+    this.mediaCacheBytes = parseBytes(get('CLOUD_MEDIA_CACHE_BYTES'), 10 * 1024 ** 3);
+    this.mediaCacheDir = resolve(get('CLOUD_MEDIA_CACHE_DIR') ?? `${this.dataDir}/media-cache`);
   }
 }

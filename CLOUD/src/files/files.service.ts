@@ -12,9 +12,13 @@ import type { Section } from '@/common/sections';
 import { PathsService } from '@/paths/paths.service';
 import { mimeFromName } from './file-types';
 import { assertName, assertNoSymlinks, joinInside, parseRelative } from './path-guard';
-import { buildTree, listFiles } from './tree';
+import { buildTree, listFiles, scanTree } from './tree';
+import { aggregateStats, type CloudStatsDto } from './stats';
 
 const LABEL: Record<Section, string> = { home: 'Home', backups: 'Backups' };
+
+/* El dashboard pide las estadísticas a menudo y recorrer el disco cuesta: se reutilizan un minuto. */
+const STATS_TTL_MS = 60_000;
 
 /** Corta la subida si pasa del máximo, sin esperar a que termine. */
 class ByteCounter extends Transform {
@@ -41,6 +45,8 @@ export const contentDisposition = (name: string) =>
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
+  /* Por usuario; la promesa, para que dos peticiones a la vez recorran el disco una sola vez. */
+  private readonly statsCache = new Map<string, { at: number; value: Promise<CloudStatsDto> }>();
 
   constructor(
     private readonly config: CloudConfig,
@@ -89,6 +95,26 @@ export class FilesService {
     } catch (error) {
       throw translateFsError(error, `la carpeta de ${LABEL[section]}`);
     }
+  }
+
+  /** Resumen para el dashboard del panel (ver `aggregateStats`). */
+  stats(username: string): Promise<CloudStatsDto> {
+    const hit = this.statsCache.get(username);
+    if (hit && Date.now() - hit.at < STATS_TTL_MS) return hit.value;
+    const value = (async () => {
+      const [home, backups] = await Promise.all((['home', 'backups'] as const).map(async section => {
+        try {
+          return await scanTree(await this.root(username, section), LABEL[section], this.config.treeMaxEntries);
+        } catch (error) {
+          throw translateFsError(error, `la carpeta de ${LABEL[section]}`);
+        }
+      }));
+      return aggregateStats({ home: home.tree, backups: backups.tree }, home.truncated || backups.truncated);
+    })();
+    this.statsCache.set(username, { at: Date.now(), value });
+    /* Un fallo no se queda en caché. */
+    value.catch(() => this.statsCache.delete(username));
+    return value;
   }
 
   /** Espacio del disco donde vive Home. */
@@ -151,6 +177,34 @@ export class FilesService {
     } catch (error) {
       throw translateFsError(error, 'el archivo');
     }
+  }
+
+  /** Tamaño de un archivo propio de la nube (caché de videos), o null si ya no está. */
+  async sizeOf(full: string): Promise<number | null> {
+    return stat(full).then(s => (s.isFile() ? s.size : null), () => null);
+  }
+
+  /** Ruta absoluta y datos de un archivo (no carpeta), ya validada por path-guard. */
+  async resolveFile(username: string, section: Section, rel: string) {
+    const { full, segments } = await this.locateEntry(username, section, rel);
+    try {
+      const info = await stat(full);
+      if (!info.isFile()) throw Object.assign(new Error(), { code: 'EISDIR' });
+      return { full, name: segments[segments.length - 1], size: info.size, mtimeMs: info.mtimeMs };
+    } catch (error) {
+      throw translateFsError(error, 'el archivo');
+    }
+  }
+
+  /**
+   * Archivo para reproducir: entero o el tramo que pida la cabecera `Range`
+   * (`bytes=inicio-fin`, `bytes=inicio-`, `bytes=-últimos`). Así un video
+   * empieza a verse sin descargarlo y saltar a un minuto pide solo ese tramo.
+   * `null` en `range` si el tramo no es satisfacible (416).
+   */
+  async openRange(username: string, section: Section, rel: string, header: string | undefined) {
+    const file = await this.resolveFile(username, section, rel);
+    return openFileRange(file.full, file.size, mimeFromName(file.name), header);
   }
 
   /** Carpeta comprimida en .zip, escrita directamente en la respuesta. */
@@ -231,4 +285,37 @@ export class FilesService {
       throw translateFsError(error, 'el elemento');
     }
   }
+}
+
+/**
+ * Cabecera `Range` de un solo tramo. `undefined`: sin cabecera (o con varios
+ * tramos, que no se admiten) → archivo entero. `null`: fuera del archivo.
+ */
+export function parseRange(header: string | undefined, size: number): { start: number; end: number } | null | undefined {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '');
+  if (!m || (!m[1] && !m[2])) return undefined;
+  let start: number;
+  let end: number;
+  if (!m[1]) {
+    /* Los últimos N bytes. */
+    const suffix = Number(m[2]);
+    if (suffix === 0) return null;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  }
+  if (start >= size || start > end) return null;
+  return { start, end };
+}
+
+/** Tramo de un archivo ya localizado (también los videos convertidos en caché). */
+export function openFileRange(full: string, size: number, type: string, header: string | undefined) {
+  const range = parseRange(header, size);
+  if (range === null) return { size, type, range: null, stream: null };
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  /* Un archivo vacío no tiene bytes que leer (createReadStream con end -1 fallaría). */
+  const stream = size === 0 ? null : createReadStream(full, { start, end, highWaterMark: 256 * 1024 });
+  return { size, type, range: range ?? undefined, start, end, stream };
 }

@@ -198,7 +198,7 @@ export function folderSummary(folder: CloudFolder): string {
 }
 
 /** Tipos que el lector abre: los demás solo se descargan. */
-const PREVIEWABLE = new Set<CloudFileType>(['word', 'excel', 'pdf', 'text', 'code']);
+const PREVIEWABLE = new Set<CloudFileType>(['word', 'excel', 'pdf', 'image', 'video', 'text', 'code']);
 export const isPreviewable = (type: CloudFileType) => PREVIEWABLE.has(type);
 
 /* ── Carga de archivos ──────────────────────────────────────────────── */
@@ -239,4 +239,12 @@ export const folderNameError = (name: string, siblings: CloudEntry[]) => entryNa
 /** Si `id` es la carpeta `folder` o está dentro de ella. */
 export function containsEntry(folder: CloudFolder, id: string): boolean {
   return folder.id === id || folder.children.some(e => e.id === id || (e.kind === 'folder' && containsEntry(e, id)));
+}
+
+/** «2 carpetas y 3 archivos». */
+export function describeEntries(entries: CloudEntry[]): string {
+  const folders = entries.filter(e => e.kind === 'folder').length;
+  const files = entries.length - folders;
+  const part = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : '');
+  return [part(folders, 'carpeta', 'carpetas'), part(files, 'archivo', 'archivos')].filter(Boolean).join(' y ');
 }

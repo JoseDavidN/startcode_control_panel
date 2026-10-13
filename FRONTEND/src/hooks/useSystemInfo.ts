@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@services/api.service';
 import { API_CONFIG } from '@utils/constants';
-import { IS_TAURI } from '@lib/tauriStore';
+import { getVersion } from '@tauri-apps/api/app';
 
 export interface SystemHealth {
   status: 'ok';
@@ -20,14 +20,7 @@ export function useSystemInfo() {
   const [appVersion, setAppVersion] = useState<string>('—');
 
   useEffect(() => {
-    if (IS_TAURI) {
-      import('@tauri-apps/api/app')
-        .then((m) => m.getVersion())
-        .then(setAppVersion)
-        .catch(() => setAppVersion('dev'));
-    } else {
-      setAppVersion(String(import.meta.env.VITE_APP_VERSION || 'dev'));
-    }
+    getVersion().then(setAppVersion).catch(() => setAppVersion('dev'));
   }, []);
 
   const query = useQuery<SystemHealth>({

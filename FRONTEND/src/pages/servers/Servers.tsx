@@ -136,11 +136,7 @@ const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <div className="font-semibold truncate">{server.name}</div>
-              <StatusBadge status={rt.state} />
               <TagBadge tag={tag} />
-              {rt.live && rt.state === 'online' && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse" />
-              )}
             </div>
             <div className="text-xs text-white/55 mt-0.5 font-mono truncate">
               {server.ip} · {server.os}
@@ -169,17 +165,15 @@ const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
           <Tile icon={icons.uptime}   label="Activo"    value={rt.uptime === null ? dash : formatUptime(rt.uptime)} tone="sky" />
         </div>
 
-        {/* Footer: frescura del dato */}
+        {/* Footer: estado de conexión (con el punto «en vivo» pegado) y servicios */}
         <div className="border-t border-line mt-4 pt-3 flex items-center justify-between gap-3 text-sm">
-          {rt.hasMetrics ? (
-            <span className={`flex items-center gap-2 ${rt.stale ? 'text-amber-300' : 'text-white/55'}`}>
-              {icons.clock}
-              <span className="text-xs">Último reporte</span>
-              <span className="text-xs font-mono">{timeAgo(rt.lastMetricAt)}</span>
-            </span>
-          ) : (
-            <span className="text-xs text-white/40">Instala el agente para ver métricas</span>
-          )}
+          <span className="flex items-center gap-2 min-w-0">
+            <StatusBadge status={rt.state} />
+            {rt.live && rt.state === 'online' && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse shrink-0" aria-label="Métricas en vivo" />
+            )}
+            {!rt.hasMetrics && <span className="text-xs text-white/40 truncate">Instala el agente para ver métricas</span>}
+          </span>
           {rt.servicesTotal !== null && (
             <span className="text-xs text-white/45 tabular-nums">
               {count(rt.services)} de {rt.servicesTotal} servicios activos
@@ -234,11 +228,12 @@ const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold truncate">{server.name}</span>
+          {/* El punto «en vivo» va pegado al estado, antes de la etiqueta. */}
           <StatusBadge status={rt.state} />
-          <TagBadge tag={tag} />
           {rt.live && rt.state === 'online' && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 glow-ok animate-pulse shrink-0 -ml-1" aria-label="Métricas en vivo" />
           )}
+          <TagBadge tag={tag} />
         </div>
         <div className="text-xs text-white/55 mt-0.5 font-mono truncate">
           {server.ip} · {server.os}
@@ -362,7 +357,7 @@ export const Servers: React.FC = () => {
   }, [showingList, refreshServers]);
 
   if (selectedServer) {
-    return <ServerDetail server={selectedServer} onBack={() => setSelectedServer(null)} />;
+    return <ServerDetail key={selectedServer.id} server={selectedServer} onBack={() => setSelectedServer(null)} />;
   }
 
   return (

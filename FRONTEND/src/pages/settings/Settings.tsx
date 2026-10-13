@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { RangeSlider } from '@components/common/RangeSlider';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES, STORAGE_KEYS } from '@utils/constants';
 import {
@@ -29,6 +30,7 @@ import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
 import { Select, type SelectOption } from '@components/common/Select';
 import { copyText } from '@lib/clipboard';
+import { downloadBlob } from '@lib/download';
 import { useAssistantConfig, useSaveAssistantConfig, useDeleteAssistantConfig, useTestAssistant, useAssistantMemory, useClearAssistantMemory, useAssistantModels } from '@hooks/useAssistant';
 import { AI_PROVIDERS, type AiProvider } from '@typings/assistant.types';
 
@@ -142,48 +144,6 @@ const Group = ({ title, children }: { title: string; children: React.ReactNode }
     <div className="mt-4 space-y-2.5">{children}</div>
   </div>
 );
-
-/* ── Custom range slider ──────────────────────────────────────────── */
-const RangeSlider = ({
-  min = 0, max = 100, value, onChange, className = '',
-}: {
-  min?: number; max?: number; value: number;
-  onChange: (v: number) => void; className?: string;
-}) => {
-  const pct = ((value - min) / (max - min)) * 100;
-  return (
-    <div className={`relative flex items-center ${className}`} style={{ height: 24 }}>
-      {/* Track */}
-      <div className="absolute left-0 right-0 h-1.5 rounded-full" style={{ background: 'var(--track)' }}>
-        {/* Filled portion */}
-        <div
-          className="absolute inset-y-0 left-0 rounded-full"
-          style={{
-            width: `${pct}%`,
-            background: 'linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%)',
-          }}
-        />
-      </div>
-      {/* Thumb */}
-      <div
-        className="absolute w-[18px] h-[18px] rounded-full pointer-events-none"
-        style={{
-          left: `calc(${pct}% - 9px)`,
-          background: 'linear-gradient(135deg, var(--brand-light-1) 0%, var(--brand-light-2) 100%)',
-          boxShadow: '0 0 0 4px rgb(var(--brand-1-rgb) / 0.22), 0 2px 6px rgba(0,0,0,0.5)',
-          zIndex: 1,
-        }}
-      />
-      {/* Native input invisible on top */}
-      <input
-        type="range" min={min} max={max} value={value}
-        onChange={e => onChange(+e.target.value)}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        style={{ zIndex: 2 }}
-      />
-    </div>
-  );
-};
 
 /* ── Password strength ────────────────────────────────────────────── */
 const passwordStrength = (pw: string): { score: number; pct: number; label: string } => {
@@ -691,12 +651,9 @@ const SecurityPane = () => {
       [`Códigos de respaldo — StartCode Panel\nCuenta: ${user?.email ?? ''}\n\n${codes.join('\n')}\n`],
       { type: 'text/plain' },
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'startcode-codigos-respaldo.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    void downloadBlob(blob, 'startcode-codigos-respaldo.txt')
+      .then(path => { if (path) notify.success('Códigos guardados', path); })
+      .catch((e: unknown) => notify.error('No se pudieron guardar los códigos', errorText(e, '')));
   };
 
   const handleSetup = async () => {
@@ -1291,13 +1248,9 @@ const SystemPane = () => {
       appearance:    prefs.appearance,
     };
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `startcode-config-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    notify.success('Configuración exportada');
+    void downloadBlob(blob, `startcode-config-${new Date().toISOString().split('T')[0]}.json`)
+      .then(path => { if (path) notify.success('Configuración exportada', path); })
+      .catch((e: unknown) => notify.error('No se pudo exportar la configuración', e instanceof Error ? e.message : String(e)));
   };
 
   const InfoRow = ({ label, children }: { label: string; children: React.ReactNode }) => (

@@ -61,6 +61,13 @@ export default defineConfig(({ command }) => ({
     },
     allowedHosts: ['devstar'],
   },
+  /* pdf.js se importa de forma dinámica (solo al abrir un PDF): sin esto Vite
+     lo descubre tarde, re-optimiza las dependencias con la app ya abierta y
+     el webview se queda con módulos de dos optimizaciones distintas
+     (`pdfjs.GlobalWorkerOptions` llegaba undefined). Se pre-empaqueta al arrancar. */
+  optimizeDeps: {
+    include: ['pdfjs-dist'],
+  },
   envPrefix: ['VITE_', 'TAURI_'],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),

@@ -5,11 +5,13 @@ import { Modal } from '@components/common/Modal';
 import { MenuIcon } from '@components/common/ContextMenu';
 import { FileGlyph } from '@components/cloud/icons';
 import { MarkdownView } from '@components/cloud/MarkdownView';
+import { ImageView } from '@components/cloud/ImageView';
+import { VideoView } from '@components/cloud/VideoView';
 import { readDocx, readXlsx, SHEET_MAX_COLS, SHEET_MAX_ROWS, UnsupportedFileError } from '@lib/fileViewer/office';
 import type { DocBlock, Sheet } from '@lib/fileViewer/office';
 import { openPdf } from '@lib/fileViewer/pdf';
 import { CLOUD_FILE_TYPE_LABELS, formatBytes } from '@utils/cloud';
-import type { CloudFile } from '@typings/cloud.types';
+import type { CloudFile, CloudStream } from '@typings/cloud.types';
 
 /** Más allá de esto un texto se corta: pintarlo entero congelaría la ventana. */
 const TEXT_MAX_CHARS = 500_000;
@@ -19,13 +21,22 @@ type Loaded =
   | { kind: 'sheets'; sheets: Sheet[] }
   | { kind: 'pdf'; doc: PDFDocumentProxy }
   | { kind: 'text'; text: string; truncated: boolean }
-  | { kind: 'markdown'; text: string; truncated: boolean };
+  | { kind: 'markdown'; text: string; truncated: boolean }
+  /* URL del blob: se libera al cerrar el lector o cambiar de imagen. */
+  | { kind: 'image'; url: string }
+  /* Se reproduce desde la nube mientras carga: no se descarga el video entero. */
+  | { kind: 'video'; stream: CloudStream };
 
 async function load(file: CloudFile, blob: Blob): Promise<Loaded> {
   switch (file.type) {
     case 'word': return { kind: 'doc', blocks: await readDocx(blob) };
     case 'excel': return { kind: 'sheets', sheets: await readXlsx(blob) };
     case 'pdf': return { kind: 'pdf', doc: await openPdf(blob) };
+    case 'image': {
+      /* Un SVG sin su tipo MIME no se pinta en <img>; el resto se reconoce por su contenido. */
+      const typed = /\.svg$/i.test(file.name) && blob.type !== 'image/svg+xml' ? new Blob([blob], { type: 'image/svg+xml' }) : blob;
+      return { kind: 'image', url: URL.createObjectURL(typed) };
+    }
     default: {
       const text = await blob.text();
       /* .md se interpreta; el resto del texto y el código, tal cual. */
@@ -33,6 +44,14 @@ async function load(file: CloudFile, blob: Blob): Promise<Loaded> {
       return { kind, text: text.slice(0, TEXT_MAX_CHARS), truncated: text.length > TEXT_MAX_CHARS };
     }
   }
+}
+
+/** Por qué no se pudo reproducir, según cómo lo servía la nube. */
+function videoError(stream: CloudStream): string {
+  if (stream.ffmpeg === false) return 'Este formato necesita conversión y el servidor de la nube no tiene ffmpeg instalado.';
+  if (stream.mode === 'transcode') return 'No se pudo convertir el video. Si la nube está convirtiendo otros, inténtalo en un momento.';
+  if (stream.mode === 'remux') return 'No se pudo preparar el video para reproducirlo.';
+  return 'Este video usa un formato o códec que el reproductor no admite.';
 }
 
 const Centered = ({ children }: { children: ReactNode }) => (
@@ -163,13 +182,21 @@ const TextView = ({ text, truncated }: { text: string; truncated: boolean }) => 
 
 /* ── Lector de archivos de Cloud ──────────────────────────────────────
    Modal grande con el nombre en la cabecera y Descargar junto a Cerrar.
-   Word, Excel, PDF, texto y código; el contenido se lee en la app. */
+   Word, Excel, PDF, imágenes, texto y código; el contenido se lee en la app.
+   Con `siblings`, las imágenes se recorren con las flechas. */
 export const FileViewerModal = ({
-  file, getContent, onDownload, onClose,
+  file, siblings, getContent, getStream, seekPoint, onDownload, onSelect, onClose,
 }: {
   file: CloudFile | null;
+  /** Imágenes de la carpeta, en el orden en que se ven. */
+  siblings?: CloudFile[];
   getContent: (file: CloudFile) => Promise<Blob>;
+  /** Videos: cómo reproducirlos mientras cargan, en lugar de bajar el archivo. */
+  getStream?: (file: CloudFile) => Promise<CloudStream>;
+  /** En `remux`/`transcode`: segundo real desde el que empezará al saltar. */
+  seekPoint?: (stream: CloudStream, t: number) => Promise<number>;
   onDownload: (file: CloudFile) => void;
+  onSelect?: (file: CloudFile) => void;
   onClose: () => void;
 }) => {
   const [state, setState] = useState<{ status: 'loading' } | { status: 'ready'; data: Loaded } | { status: 'error'; message: string }>({ status: 'loading' });
@@ -179,22 +206,35 @@ export const FileViewerModal = ({
     let alive = true;
     /* El PDF abierto se libera al cerrar el lector o cambiar de archivo. */
     let pdf: PDFDocumentProxy | null = null;
+    let url: string | null = null;
     setState({ status: 'loading' });
-    getContent(file)
-      .then(blob => load(file, blob))
+    const loading: Promise<Loaded> = file.type === 'video' && getStream
+      ? getStream(file).then(stream => ({ kind: 'video', stream }))
+      : getContent(file).then(blob => load(file, blob));
+    loading
       .then(data => {
         if (data.kind === 'pdf') pdf = data.doc;
-        if (alive) setState({ status: 'ready', data }); else void pdf?.loadingTask.destroy();
+        if (data.kind === 'image') url = data.url;
+        if (alive) setState({ status: 'ready', data });
+        else { void pdf?.loadingTask.destroy(); if (url) URL.revokeObjectURL(url); }
       })
       .catch((err: unknown) => {
         if (!alive) return;
-        const message = err instanceof UnsupportedFileError ? err.message : 'No se pudo leer el archivo.';
+        /* El motivo real va al mensaje: sin él no hay forma de saber por qué falló un lector. */
+        console.error(`Lector de Cloud (${file.name}):`, err);
+        const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+        const message = err instanceof UnsupportedFileError ? err.message : `No se pudo leer el archivo${detail}.`;
         setState({ status: 'error', message });
       });
-    return () => { alive = false; void pdf?.loadingTask.destroy(); };
-  }, [file, getContent]);
+    return () => { alive = false; void pdf?.loadingTask.destroy(); if (url) URL.revokeObjectURL(url); };
+  }, [file, getContent, getStream]);
 
   if (!file) return null;
+
+  /* Navegación entre las imágenes de la carpeta (en círculo). */
+  const index = siblings?.findIndex(f => f.id === file.id) ?? -1;
+  const canStep = file.type === 'image' && onSelect && siblings && index >= 0 && siblings.length > 1;
+  const step = (d: number) => () => { if (canStep) onSelect(siblings[(index + d + siblings.length) % siblings.length]); };
 
   const actions = (
     <button type="button" onClick={() => onDownload(file)}
@@ -233,6 +273,27 @@ export const FileViewerModal = ({
           {state.data.kind === 'pdf' && <PdfView doc={state.data.doc} />}
           {state.data.kind === 'text' && <TextView text={state.data.text} truncated={state.data.truncated} />}
           {state.data.kind === 'markdown' && <MarkdownView text={state.data.text} truncated={state.data.truncated} />}
+          {state.data.kind === 'video' && (() => {
+            const stream = state.data.stream;
+            const live = stream.mode !== 'direct';
+            return (
+              <div className="h-[calc(100%-2rem)]">
+                <VideoView src={stream.url} name={file.name}
+                  live={live ? { duration: stream.duration, seek: t => (seekPoint ? seekPoint(stream, t) : Promise.resolve(t)) } : undefined}
+                  badge={stream.mode === 'transcode' ? 'Convertido al vuelo' : undefined}
+                  onError={() => setState({ status: 'error', message: videoError(stream) })} />
+              </div>
+            );
+          })()}
+          {state.data.kind === 'image' && (
+            /* Ocupa el alto del lector menos la línea de tipo y tamaño. */
+            <div className="h-[calc(100%-2rem)]">
+              <ImageView src={state.data.url} name={file.name}
+                position={canStep ? { index, total: siblings.length } : undefined}
+                onPrev={canStep ? step(-1) : undefined} onNext={canStep ? step(1) : undefined}
+                onError={() => setState({ status: 'error', message: 'Este formato de imagen no se puede mostrar aquí.' })} />
+            </div>
+          )}
         </Fragment>
       )}
     </Modal>

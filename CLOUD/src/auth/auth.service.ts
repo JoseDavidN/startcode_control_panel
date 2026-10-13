@@ -5,7 +5,12 @@ import { randomUUID } from 'crypto';
 import { cloudError } from '@/common/errors';
 import { CloudConfig } from '@/common/cloud-config';
 import { BCRYPT_ROUNDS, StateStore } from '@/state/state.store';
+import type { Section } from '@/common/sections';
 import type { CloudPrincipal, TokenPayload } from './auth.types';
+
+/* Lo que dura un ticket de reproducción: una película larga con pausas, sin
+   dejar un enlace útil durante días si se filtra. */
+const STREAM_TICKET_TTL = '6h';
 
 /* Hash de relleno: con un usuario que no existe se compara igual, así el
    tiempo de respuesta no delata qué usuarios hay. */
@@ -49,6 +54,49 @@ export class AuthService {
     } catch {
       throw cloudError(UnauthorizedException, 'TOKEN_INVALID', 'La sesión de la nube expiró o no es válida.', 'Vuelve a conectar desde Configuración de Cloud.');
     }
+    /* Un ticket de reproducción no sirve como sesión. */
+    if (payload.typ) {
+      throw cloudError(UnauthorizedException, 'TOKEN_INVALID', 'La sesión de la nube expiró o no es válida.', 'Vuelve a conectar desde Configuración de Cloud.');
+    }
+    return this.activePrincipal(payload);
+  }
+
+  /**
+   * Ticket para reproducir un archivo con `<video src>`, que no puede mandar
+   * `Authorization`. Va en la URL, vale para ese archivo solo y muere con la
+   * sesión que lo pidió.
+   */
+  async streamTicket(
+    principal: CloudPrincipal, section: Section, path: string, extra: Pick<TokenPayload, 'sid' | 'cap'> = {},
+  ): Promise<{ ticket: string; expiresAt: string }> {
+    const ticket = await this.jwt.signAsync(
+      { sub: principal.username, jti: principal.jti, typ: 'stream', sec: section, path, ...extra } satisfies TokenPayload,
+      { expiresIn: STREAM_TICKET_TTL },
+    );
+    const { exp } = this.jwt.decode<TokenPayload>(ticket);
+    return { ticket, expiresAt: new Date((exp ?? 0) * 1000).toISOString() };
+  }
+
+  async verifyStreamTicket(ticket: string): Promise<{ principal: CloudPrincipal; section: Section; path: string; sid: string; cap: NonNullable<TokenPayload['cap']> }> {
+    let payload: TokenPayload;
+    try {
+      payload = await this.jwt.verifyAsync<TokenPayload>(ticket);
+    } catch {
+      throw cloudError(UnauthorizedException, 'TICKET_INVALID', 'El enlace de reproducción expiró.', 'Vuelve a abrir el archivo.');
+    }
+    if (payload.typ !== 'stream' || !payload.sec || payload.path === undefined) {
+      throw cloudError(UnauthorizedException, 'TICKET_INVALID', 'El enlace de reproducción no es válido.', 'Vuelve a abrir el archivo.');
+    }
+    return {
+      principal: this.activePrincipal(payload),
+      section: payload.sec as Section,
+      path: payload.path,
+      sid: payload.sid ?? payload.jti,
+      cap: payload.cap ?? {},
+    };
+  }
+
+  private activePrincipal(payload: TokenPayload): CloudPrincipal {
     const session = this.state.findSession(payload.jti);
     if (!session || session.username !== payload.sub || !this.state.findUser(payload.sub)) {
       throw cloudError(UnauthorizedException, 'TOKEN_REVOKED', 'La sesión de la nube se cerró.', 'Vuelve a conectar desde Configuración de Cloud.');

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { SECTIONS, type Section } from '@/common/sections';
 
 /* Las rutas son relativas a la raíz de la sección (`Documentos/Contratos`);
@@ -13,6 +13,21 @@ export class SectionPathQuery {
   @IsString()
   @MaxLength(4096)
   path?: string;
+}
+
+/** Lo que el webview reproduce por sí mismo (`canPlayType`), además de H.264 y AAC. */
+export class ClientCapsDto {
+  @IsOptional() @IsBoolean() hevc?: boolean;
+  @IsOptional() @IsBoolean() vp9?: boolean;
+  @IsOptional() @IsBoolean() av1?: boolean;
+  @IsOptional() @IsBoolean() webm?: boolean;
+}
+
+export class StreamTicketDto extends SectionPathQuery {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ClientCapsDto)
+  client?: ClientCapsDto;
 }
 
 export class CreateFolderDto {

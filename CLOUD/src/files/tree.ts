@@ -16,6 +16,11 @@ const created = (s: { birthtimeMs: number; ctime: Date; birthtime: Date }) =>
  * carpeta enorme no bloquee al servidor ni al panel.
  */
 export async function buildTree(root: string, name: string, maxEntries: number): Promise<CloudFolderDto> {
+  return (await scanTree(root, name, maxEntries)).tree;
+}
+
+/** Como `buildTree`, diciendo además si se recortó (las estadísticas lo avisan). */
+export async function scanTree(root: string, name: string, maxEntries: number): Promise<{ tree: CloudFolderDto; truncated: boolean }> {
   let count = 0;
   let truncated = false;
 
@@ -56,7 +61,7 @@ export async function buildTree(root: string, name: string, maxEntries: number):
 
   const tree = await walk(root, '', name);
   if (truncated) logger.warn(`El árbol de ${root} superó ${maxEntries} elementos y se recortó.`);
-  return tree;
+  return { tree, truncated };
 }
 
 /** Todos los archivos regulares bajo `dir`, con su ruta relativa (para el zip). */

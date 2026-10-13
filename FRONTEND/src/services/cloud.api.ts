@@ -2,7 +2,7 @@
 import axios, { type AxiosError, type AxiosInstance } from 'axios';
 import type { ApiError } from '@typings/api.types';
 import type {
-	CloudConnection, CloudFolder, CloudPaths, CloudPathsConfig, CloudSection, CloudStorage,
+	CloudConnection, CloudFolder, CloudPaths, CloudPathsConfig, CloudSection, CloudStats, CloudStorage, CloudStream,
 } from '@typings/cloud.types';
 import type { PickedFile } from '@lib/filePicker';
 
@@ -25,6 +25,18 @@ export function normalizeCloudUrl(raw: string): string {
 }
 
 let connection: CloudConnection | null = null;
+
+/** Lo que este webview reproduce por sí mismo, además de H.264 y AAC. */
+function mediaCaps(): { hevc: boolean; vp9: boolean; av1: boolean; webm: boolean } {
+	const v = document.createElement('video');
+	const can = (type: string) => v.canPlayType(type) !== '';
+	return {
+		hevc: can('video/mp4; codecs="hvc1.1.6.L93.B0"'),
+		vp9: can('video/mp4; codecs="vp09.00.10.08"'),
+		av1: can('video/mp4; codecs="av01.0.05M.08"'),
+		webm: can('video/webm; codecs="vp8, vorbis"'),
+	};
+}
 let onSessionLost: ((message: string) => void) | null = null;
 
 /** La conexión activa la fija `useCloudConnection`; sin ella las llamadas fallan. */
@@ -127,6 +139,11 @@ export const cloudApi = {
 		return (await client().get<CloudStorage>('/storage')).data;
 	},
 
+	/** Resumen para el dashboard; la nube recorre el disco y lo guarda un minuto. */
+	async stats(): Promise<CloudStats> {
+		return (await client().get<CloudStats>('/stats', { timeout: 120_000 })).data;
+	},
+
 	async getPaths(): Promise<CloudPathsConfig> {
 		return (await client().get<CloudPathsConfig>('/config/paths')).data;
 	},
@@ -152,6 +169,29 @@ export const cloudApi = {
 
 	async content(section: CloudSection, path: string): Promise<Blob> {
 		return (await client().get<Blob>('/files/content', { params: { section, path }, responseType: 'blob', timeout: 0 })).data;
+	},
+
+	/**
+	 * Cómo reproducir un video. La nube lo analiza con ffprobe y, según lo que
+	 * este webview reproduce (`canPlayType`), lo sirve tal cual a tramos
+	 * (`direct`), re-empaquetado (`remux`) o convertido a H.264 (`transcode`).
+	 * La URL lleva un ticket firmado de ese archivo porque `<video>` no manda
+	 * la cabecera del token.
+	 */
+	async stream(section: CloudSection, path: string): Promise<CloudStream> {
+		const { data } = await client().post<Omit<CloudStream, 'url'> & { url: string }>(
+			'/files/stream-ticket',
+			{ section, path, client: mediaCaps() },
+		);
+		return { ...data, url: `${connection?.url ?? ''}${data.url}` };
+	},
+
+	/** Al saltar en `remux`/`transcode`: segundo real desde el que empezará (fotograma clave). */
+	async seekPoint(stream: CloudStream, t: number): Promise<number> {
+		const url = stream.url.replace('/files/play?', '/files/seek-point?');
+		const res = await fetch(`${url}&t=${t.toFixed(3)}`);
+		if (!res.ok) return t;
+		return ((await res.json()) as { start: number }).start;
 	},
 
 	async zip(section: CloudSection, path: string): Promise<Blob> {

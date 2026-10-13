@@ -1,4 +1,4 @@
-import { copyText } from '@lib/clipboard';
+import { copyText, readClipboardText } from '@lib/clipboard';
 
 /* Copiar, cortar y pegar para el menú contextual propio: lo que hacía el
    menú del sistema sobre el texto seleccionado y los campos de texto. */
@@ -61,10 +61,9 @@ export async function cutSelection(sel: FieldSelection): Promise<void> {
 	replaceSelection(sel, '');
 }
 
-/** Lee el portapapeles; el webview puede negarlo y entonces queda Ctrl + V. */
-export async function readClipboard(): Promise<string> {
-	if (!navigator.clipboard?.readText) throw new Error('El portapapeles no está disponible');
-	return navigator.clipboard.readText();
+/** Texto del portapapeles del sistema. */
+export function readClipboard(): Promise<string> {
+	return readClipboardText();
 }
 
 export async function pasteInto(sel: FieldSelection): Promise<void> {

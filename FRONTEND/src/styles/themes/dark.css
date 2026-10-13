@@ -26,6 +26,7 @@ html[data-theme="dark"],
   --glass-soft-alpha: 0.40;
   --glass-input-alpha: 0.30;
   --glass-float-alpha: 0.88;
+  --glass-media-alpha: 0.42;
   --sheen-1: rgba(255,255,255,0.06);
   --sheen-2: rgba(255,255,255,0.02);
   --sheen-soft-1: rgba(255,255,255,0.05);

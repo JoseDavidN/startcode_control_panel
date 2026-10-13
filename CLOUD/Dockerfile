@@ -33,6 +33,12 @@ ENV NODE_ENV=production \
     CLOUD_ALLOWED_ROOTS=/storage
 WORKDIR /app
 
+# ffmpeg/ffprobe: reproducir cualquier formato de video (re-empaquetar o
+# convertir a H.264 al vuelo). Sin ellos solo se ven MP4/H.264 y WebM.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 # package.json: /health lee de aquí la versión.

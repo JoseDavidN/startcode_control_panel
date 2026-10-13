@@ -6,8 +6,9 @@ import { FileViewerModal } from '@components/cloud/FileViewerModal';
 import { CloudSettingsModal, type CloudSettingsTab } from '@components/cloud/CloudSettingsModal';
 import { DeleteEntryModal, MoveEntryModal, RenameEntryModal } from '@components/cloud/EntryActionModals';
 import { EntryDetailsModal } from '@components/cloud/EntryDetailsModal';
+import { ShareSftpModal } from '@components/cloud/ShareSftpModal';
 import {
-  CLOUD_FILE_TYPE_LABELS, CLOUD_SECTIONS, DEFAULT_CLOUD_FILTERS, describeDrop, findFolderPath, isPreviewable, resolvePath,
+  CLOUD_FILE_TYPE_LABELS, CLOUD_SECTIONS, DEFAULT_CLOUD_FILTERS, describeDrop, describeEntries, findFolderPath, isPreviewable, resolvePath, visibleEntries,
 } from '@utils/cloud';
 import { downloadBlob } from '@lib/download';
 import { ROUTES } from '@utils/constants';
@@ -80,6 +81,11 @@ export const Cloud: React.FC = () => {
     [previewSection],
   );
 
+  const streamOf = useCallback(
+    (file: CloudFile) => cloudApi.stream(previewSection ?? 'home', file.id),
+    [previewSection],
+  );
+
   /* Archivos: tal cual. Carpetas: la nube las comprime en .zip. */
   const downloadFrom = (sec: CloudSection, entry: CloudEntry) => {
     if (entry.kind === 'folder') {
@@ -90,6 +96,13 @@ export const Cloud: React.FC = () => {
     cloudApi.content(sec, entry.id).then(blob => downloadBlob(blob, entry.name)).catch(fail('No se pudo descargar'));
   };
   const download = (entry: CloudEntry) => downloadFrom(section, entry);
+
+  /* Imágenes de la carpeta abierta, como se ven (filtros y orden): el lector las recorre con las flechas. */
+  const folderImages = useMemo(
+    () => visibleEntries(trail[trail.length - 1].children, filters)
+      .filter((e): e is CloudFile => e.kind === 'file' && e.type === 'image'),
+    [trail, filters],
+  );
 
   const openFile = (file: CloudFile) => {
     if (isPreviewable(file.type)) setPreview({ file, section });
@@ -134,9 +147,16 @@ export const Cloud: React.FC = () => {
       .then(() => info('Carpeta creada', `«${name}» en ${where}.`), fail('No se pudo crear la carpeta'))
       .finally(() => { void refresh(); });
   };
-  /* ── Mover, cambiar nombre y eliminar: siempre sobre un elemento de la
-     carpeta abierta, así su sección y su ruta son las actuales. ── */
-  const [action, setAction] = useState<{ kind: 'move' | 'rename' | 'delete' | 'details'; entry: CloudEntry } | null>(null);
+  /* ── Mover, cambiar nombre, eliminar y compartir: siempre sobre elementos
+     de la carpeta abierta, así su sección y su ruta son las actuales. Mover,
+     eliminar y compartir admiten varios (selección múltiple). ── */
+  const [action, setAction] = useState<
+    | { kind: 'rename' | 'details'; entry: CloudEntry }
+    | { kind: 'move' | 'delete' | 'sftp'; entries: CloudEntry[] }
+    | null
+  >(null);
+  /* El explorador vacía su selección cuando una acción en lote termina. */
+  const [batchDone, setBatchDone] = useState(0);
   /* Detalles: la ruta en el servidor sale de la configuración (en caché). */
   const pathsConfig = useCloudPathsConfig(connection, connected);
   const closeAction = () => setAction(null);
@@ -146,21 +166,42 @@ export const Cloud: React.FC = () => {
       .then(() => info('Nombre cambiado', `«${entry.name}» ahora se llama «${name}».`), fail('No se pudo cambiar el nombre'))
       .finally(() => { void refresh(); });
   };
-  const deleteCurrent = (entry: CloudEntry) => {
+  /* Uno tras otro: si alguno falla, el resto sigue y el aviso cuenta cuántos no se pudieron. */
+  const runBatch = async (entries: CloudEntry[], run: (entry: CloudEntry) => Promise<unknown>) => {
+    const failed: { entry: CloudEntry; error: unknown }[] = [];
+    for (const entry of entries) {
+      try { await run(entry); } catch (error) { failed.push({ entry, error }); }
+    }
+    return failed;
+  };
+  const batchResult = (entries: CloudEntry[], failed: { entry: CloudEntry; error: unknown }[], ok: { title: string; one: (e: CloudEntry) => string; many: string }, failTitle: string) => {
+    if (failed.length === 0) info(entries.length === 1 ? ok.title : `${ok.title} (${entries.length})`, entries.length === 1 ? ok.one(entries[0]) : ok.many);
+    else if (entries.length === 1) info(failTitle, cloudErrorMessage(failed[0].error));
+    else info(failTitle, `${failed.length} de ${entries.length} no se pudieron: «${failed[0].entry.name}»: ${cloudErrorMessage(failed[0].error)}`);
+  };
+  const deleteCurrent = (entries: CloudEntry[]) => {
     closeAction();
     const where = trail[trail.length - 1].name;
-    cloudApi.remove(section, entry.id)
-      .then(() => info(entry.kind === 'folder' ? 'Carpeta eliminada' : 'Archivo eliminado', `«${entry.name}» se eliminó de ${where}.`),
-        fail('No se pudo eliminar'))
-      .finally(() => { void refresh(); });
+    const one = entries.length === 1 ? entries[0] : null;
+    void runBatch(entries, e => cloudApi.remove(section, e.id))
+      .then(failed => batchResult(entries, failed, {
+        title: one ? (one.kind === 'folder' ? 'Carpeta eliminada' : 'Archivo eliminado') : 'Elementos eliminados',
+        one: e => `«${e.name}» se eliminó de ${where}.`,
+        many: `Se eliminaron ${describeEntries(entries)} de ${where}.`,
+      }, 'No se pudo eliminar'))
+      .finally(() => { setBatchDone(n => n + 1); void refresh(); });
   };
-  const moveCurrent = (entry: CloudEntry, to: { section: CloudSection; path: string[] }) => {
+  const moveCurrent = (entries: CloudEntry[], to: { section: CloudSection; path: string[] }) => {
     closeAction();
     const dest = resolvePath(roots[to.section], to.path).at(-1)?.name ?? '';
-    cloudApi.move(section, entry.id, to.section, to.path.at(-1) ?? '')
-      .then(() => info(entry.kind === 'folder' ? 'Carpeta movida' : 'Archivo movido', `«${entry.name}» se movió a «${dest}».`),
-        fail('No se pudo mover'))
-      .finally(() => { void refresh(); });
+    const one = entries.length === 1 ? entries[0] : null;
+    void runBatch(entries, e => cloudApi.move(section, e.id, to.section, to.path.at(-1) ?? ''))
+      .then(failed => batchResult(entries, failed, {
+        title: one ? (one.kind === 'folder' ? 'Carpeta movida' : 'Archivo movido') : 'Elementos movidos',
+        one: e => `«${e.name}» se movió a «${dest}».`,
+        many: `Se movieron ${describeEntries(entries)} a «${dest}».`,
+      }, 'No se pudo mover'))
+      .finally(() => { setBatchDone(n => n + 1); void refresh(); });
   };
 
   const open = (folder: CloudFolder) => setPath(prev => [...prev, folder.id]);
@@ -224,12 +265,15 @@ export const Cloud: React.FC = () => {
         pinnedIds={pinnedFolders[section].map(f => f.id)}
         onTogglePin={togglePin}
         onCreateFolder={createFolder}
-        onMove={entry => setAction({ kind: 'move', entry })}
+        onMove={entries => setAction({ kind: 'move', entries })}
         onRename={entry => setAction({ kind: 'rename', entry })}
-        onDelete={entry => setAction({ kind: 'delete', entry })}
+        onDelete={entries => setAction({ kind: 'delete', entries })}
         onDetails={entry => setAction({ kind: 'details', entry })}
+        onShareSftp={entries => setAction({ kind: 'sftp', entries })}
+        batchDone={batchDone}
         onPickError={() => info('No se pudo cargar', 'El explorador de archivos no se abrió o no dejó leer lo elegido.')}
         onDropFiles={upload}
+        onSkipped={message => info('Carpetas omitidas', message)}
         onDismissNotice={dismiss}
       />
 
@@ -238,15 +282,16 @@ export const Cloud: React.FC = () => {
           onRename={name => renameCurrent(action.entry, name)} onClose={closeAction} />
       )}
       {action?.kind === 'delete' && (
-        <DeleteEntryModal entry={action.entry} onDelete={() => deleteCurrent(action.entry)} onClose={closeAction} />
+        <DeleteEntryModal entries={action.entries} onDelete={() => deleteCurrent(action.entries)} onClose={closeAction} />
       )}
       {action?.kind === 'details' && (
         <EntryDetailsModal entry={action.entry} section={section} location={trail.slice(1).map(f => f.name)}
           serverRoot={pathsConfig.data?.paths[section]} pinned={pinned[section].includes(action.entry.id)} onClose={closeAction} />
       )}
+      {action?.kind === 'sftp' && <ShareSftpModal entries={action.entries} section={section} onClose={closeAction} />}
       {action?.kind === 'move' && (
-        <MoveEntryModal entry={action.entry} from={{ section, path }} roots={roots}
-          onMove={to => moveCurrent(action.entry, to)} onClose={closeAction} />
+        <MoveEntryModal entries={action.entries} from={{ section, path }} roots={roots}
+          onMove={to => moveCurrent(action.entries, to)} onClose={closeAction} />
       )}
 
       {(mustConnect || settings) && (
@@ -254,7 +299,9 @@ export const Cloud: React.FC = () => {
           onPathsSaved={savePaths} onClose={() => setSettings(null)} onLeave={() => navigateTo(ROUTES.DASHBOARD)} />
       )}
 
-      <FileViewerModal file={preview?.file ?? null} getContent={contentOf}
+      <FileViewerModal file={preview?.file ?? null} getContent={contentOf} getStream={streamOf} seekPoint={(stream, t) => cloudApi.seekPoint(stream, t)}
+        siblings={preview?.section === section ? folderImages : undefined}
+        onSelect={file => setPreview(p => (p ? { ...p, file } : p))}
         onDownload={file => downloadFrom(preview?.section ?? section, file)} onClose={() => setPreview(null)} />
     </div>
   );

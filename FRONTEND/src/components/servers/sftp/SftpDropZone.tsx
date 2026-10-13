@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { getFilePicker, type PickedFile } from '@lib/filePicker';
+import { describeSkipped, filesFromDrop, pickDirectory, pickFiles, type PickedFile, type PickResult } from '@lib/filePicker';
+import { notify } from '@services/notification.service';
 import { UploadIcon } from './icons';
 
 interface SftpDropZoneProps {
@@ -15,13 +16,17 @@ export const SftpDropZone: React.FC<SftpDropZoneProps> = ({ destDir, disabled, o
 	   el resaltado parpadea. */
 	const depth = useRef(0);
 
+	/* Lo elegido va a la cola; las carpetas de paquetes omitidas, en un aviso. */
+	const accept = ({ files, skipped }: PickResult) => {
+		const note = describeSkipped(skipped);
+		if (note) notify.info('Carpetas omitidas', note);
+		if (files.length > 0) onFiles(files);
+	};
+
 	const pick = async (kind: 'files' | 'directory') => {
 		setPicking(true);
 		try {
-			const picker = await getFilePicker();
-			const files =
-				kind === 'files' ? await picker.pickFiles() : await picker.pickDirectory();
-			if (files.length > 0) onFiles(files);
+			accept(kind === 'files' ? await pickFiles() : await pickDirectory());
 		} finally {
 			setPicking(false);
 		}
@@ -33,11 +38,8 @@ export const SftpDropZone: React.FC<SftpDropZoneProps> = ({ destDir, disabled, o
 		setDragging(false);
 		if (disabled) return;
 
-		void (async () => {
-			const picker = await getFilePicker();
-			const files = await picker.fromDropEvent(event);
-			if (files.length > 0) onFiles(files);
-		})();
+		/* Sin await antes: el DataTransfer se vacía al terminar el manejador. */
+		void filesFromDrop(event).then(accept);
 	};
 
 	return (

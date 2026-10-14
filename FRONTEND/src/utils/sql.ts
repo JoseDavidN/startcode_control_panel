@@ -204,3 +204,47 @@ export function tokenizeSql(text: string, dialect: SqlDialect = 'mysql'): SqlTok
   if (last < text.length) tokens.push({ type: 'text', text: text.slice(last) });
   return tokens;
 }
+
+/**
+ * La sentencia en la que está el cursor, con varias en el editor separadas
+ * por `;`. Los `;` dentro de cadenas, comentarios, identificadores o bloques
+ * `$$` de PostgreSQL no cuentan: se cortan con los tokens del resaltado.
+ * Con el cursor justo tras un `;` en la misma línea, la sentencia que acaba
+ * ahí. En un tramo sin SQL (línea en blanco, comentario), la anterior, o la
+ * siguiente si no hay anterior. Devuelve null si el editor no tiene ninguna.
+ */
+export function statementAt(text: string, caret: number, dialect: SqlDialect = 'mysql'): { start: number; end: number; sql: string } | null {
+  const segments: { start: number; end: number; hasSql: boolean }[] = [];
+  let start = 0;
+  let pos = 0;
+  let hasSql = false;
+  for (const t of tokenizeSql(text, dialect)) {
+    if (t.type === 'operator' && t.text === ';') {
+      segments.push({ start, end: pos + 1, hasSql });
+      start = pos + 1;
+      hasSql = false;
+    } else if (t.type !== 'comment' && t.text.trim()) {
+      hasSql = true;
+    }
+    pos += t.text.length;
+  }
+  segments.push({ start, end: text.length, hasSql });
+
+  let i = segments.findIndex(seg => caret >= seg.start && caret < seg.end);
+  if (i < 0) i = segments.length - 1;
+  /* Justo después de un `;` en la misma línea (`SELECT 1;|`): la que se acaba de escribir. */
+  const before = text.slice(segments[i].start, caret);
+  if (i > 0 && !before.includes('\n') && !before.trim()) i -= 1;
+  let pick = segments[i].hasSql ? i : -1;
+  for (let k = i - 1; pick < 0 && k >= 0; k--) if (segments[k].hasSql) pick = k;
+  for (let k = i + 1; pick < 0 && k < segments.length; k++) if (segments[k].hasSql) pick = k;
+  if (pick < 0) return null;
+
+  const seg = segments[pick];
+  const raw = text.slice(seg.start, seg.end);
+  /* Sin el `;` final ni el espacio de alrededor. */
+  const sql = raw.replace(/;\s*$/, '').trim();
+  const lead = raw.length - raw.trimStart().length;
+  return { start: seg.start + lead, end: seg.start + lead + sql.length, sql };
+}
+

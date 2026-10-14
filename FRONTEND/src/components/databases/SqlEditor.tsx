@@ -17,9 +17,28 @@ interface SqlEditorProps {
 }
 
 const INDENT = '  ';
+
+/**
+ * Tras cambiar el texto desde código (mayúsculas, sangría, sugerencia), deja
+ * el cursor en `pos` y el desplazamiento donde estaba. Al reemplazar el valor,
+ * el navegador lleva el cursor al final y desplaza la vista hasta allí; sin
+ * restaurar el scroll, escribir `as` en una consulta larga saltaba al final.
+ */
+const placeCaret = (el: HTMLTextAreaElement, pos: number) => {
+  const { scrollTop, scrollLeft } = el;
+  requestAnimationFrame(() => {
+    el.selectionStart = el.selectionEnd = pos;
+    el.scrollLeft = scrollLeft;
+    /* Solo lo justo para que la línea del cursor se vea (p. ej. Enter en la última línea visible). */
+    const top = PAD + (el.value.slice(0, pos).split('\n').length - 1) * LINE;
+    el.scrollTop = Math.min(Math.max(scrollTop, top + LINE + PAD + BAR - el.clientHeight), top);
+  });
+};
 /* Caja del texto: padding de 12 px (`p-3`) y alto de línea de 24 px (`leading-6`). */
 const PAD = 12;
 const LINE = 24;
+/* Franja de las barras propias, reservada a la derecha y abajo (pb/pr de 12 px más). */
+const BAR = 12;
 const POPUP_W = 300;
 const POPUP_MAX_H = 248;
 
@@ -99,7 +118,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
       const pos = suggest.from + item.insert.length;
       setSuggest(null);
       onChange(next);
-      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = pos; });
+      placeCaret(el, pos);
     };
 
     /* Sin índice (cambió la base), el menú abierto ya no vale. */
@@ -120,7 +139,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
       const formatted = typedOne ? uppercaseKeywordBefore(next, caret, dialect) : next;
       onChange(formatted);
       /* Mismo largo: el cursor vuelve a donde estaba tras el re-render. */
-      if (formatted !== next) requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = caret; });
+      if (formatted !== next) placeCaret(el, caret);
       /* Se sugiere al escribir un carácter; al borrar uno con el menú abierto, se
          ajusta; pegar o borrar más cierra el menú. */
       const erasedOne = next.length === value.length - 1 && caret === el.selectionEnd;
@@ -173,7 +192,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         /* El salto de línea también cierra una palabra reservada: se pasa a mayúsculas como al escribirla. */
         const broken = uppercaseKeywordBefore(`${value.slice(0, start)}\n${value.slice(end)}`, start + 1, dialect);
         onChange(broken.slice(0, start + 1) + indent + broken.slice(start + 1));
-        requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + insert.length; });
+        placeCaret(el, start + insert.length);
         return;
       }
       /* Tab indenta en vez de sacar el foco del editor. */
@@ -182,7 +201,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         const el = e.currentTarget;
         const { selectionStart: start, selectionEnd: end } = el;
         onChange(value.slice(0, start) + INDENT + value.slice(end));
-        requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + INDENT.length; });
+        placeCaret(el, start + INDENT.length);
       }
     };
 

@@ -43,6 +43,27 @@ interface Active {
   hovered: boolean;
   hideTimer?: number;
   lastSize: string;
+  /** z-index de sus barras: por encima de su zona y por debajo de lo que flota sobre ella. */
+  z: number;
+}
+
+/* Lo mínimo para quedar sobre cabeceras fijas de tablas (z-20) y bajo modales (z-50). */
+const MIN_Z = 40;
+
+/**
+ * Nivel de una zona: el mayor z-index de ella y de sus ancestros, más uno.
+ * Las barras van en `body` sin capa propia que las agrupe, así que compiten
+ * con lo demás por este número: el menú de sugerencias del editor (z-70) o
+ * un modal quedan por encima de las barras del editor, y la lista de un menú
+ * flotante tiene sus barras por encima del menú.
+ */
+function levelOf(el: HTMLElement): number {
+  let max = 0;
+  for (let n: HTMLElement | null = el; n && n !== document.body; n = n.parentElement) {
+    const z = Number.parseInt(getComputedStyle(n).zIndex, 10);
+    if (Number.isFinite(z) && z > max) max = z;
+  }
+  return Math.max(MIN_Z, max + 1);
 }
 
 export function installOverlayScrollbars(): () => void {
@@ -68,6 +89,7 @@ export function installOverlayScrollbars(): () => void {
     const thumb = document.createElement('div');
     thumb.className = 'osb-thumb';
     track.appendChild(thumb);
+    track.style.zIndex = String(a.z);
     layer.appendChild(track);
     const bar: Bar = { axis, track, thumb, trackLen: 0, thumbLen: 0 };
 
@@ -176,7 +198,7 @@ export function installOverlayScrollbars(): () => void {
   const activate = (el: HTMLElement) => {
     let a = active.get(el);
     if (!a) {
-      a = { el, bars: {}, hovered: false, lastSize: '' };
+      a = { el, bars: {}, hovered: false, lastSize: '', z: levelOf(el) };
       active.set(el, a);
     }
     window.clearTimeout(a.hideTimer);

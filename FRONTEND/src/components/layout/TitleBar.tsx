@@ -86,7 +86,7 @@ export const TitleBar = () => {
       {/* macOS: hueco de los semáforos nativos (x 16 + tres botones). */}
       {PLATFORM === 'mac' && <div data-tauri-drag-region className="w-[78px] shrink-0" />}
       <div data-tauri-drag-region className={`flex-1 min-w-0 flex items-center ${PLATFORM === 'mac' ? 'justify-center' : 'px-4'}`}>
-        <span data-tauri-drag-region className="text-xs font-medium tracking-tight text-white/50 truncate">StartCode Panel</span>
+        <span data-tauri-drag-region className="text-xs font-medium tracking-tight text-white/75 truncate">StartCode Panel</span>
       </div>
       {PLATFORM === 'mac' && <div data-tauri-drag-region className="w-[78px] shrink-0" />}
       {PLATFORM === 'windows' && <WindowsControls maximized={maximized} />}

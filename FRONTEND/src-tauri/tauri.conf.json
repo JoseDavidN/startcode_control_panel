@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "StartCode Panel",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "identifier": "com.startcode.panel",
   "build": {
     "frontendDist": "../dist",

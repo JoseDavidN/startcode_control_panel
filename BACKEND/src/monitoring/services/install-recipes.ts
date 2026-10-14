@@ -1270,25 +1270,27 @@ export interface Recipe {
   supports?: (os: RemoteOs) => string | null;
   plan: (os: RemoteOs) => InstallPlan | null;
   uninstall: (os: RemoteOs) => UninstallPlan | null;
+  /** Unidades de systemd del servicio: al terminar se actualizan en el inventario guardado (las pestañas Docker y Kubernetes dependen de él). */
+  units?: string[];
 }
 
 export const INSTALLABLE = {
-  nginx: { label: 'Nginx', plan: nginx, uninstall: nginxUninstall },
-  docker: { label: 'Docker', plan: docker, uninstall: dockerUninstall },
-  postgresql: { label: 'PostgreSQL', plan: postgresql, uninstall: postgresqlUninstall },
-  mysql: { label: 'MySQL', group: 'mysql', supports: mysqlSupport, plan: mysql, uninstall: (os: RemoteOs) => mysqlFamilyUninstall(os, 'mysql') },
-  mariadb: { label: 'MariaDB', group: 'mysql', plan: mariadb, uninstall: (os: RemoteOs) => mysqlFamilyUninstall(os, 'mariadb') },
-  mongodb: { label: 'MongoDB', supports: mongodbSupport, plan: mongodb, uninstall: mongodbUninstall },
-  redis: { label: 'Redis', plan: redis, uninstall: redisUninstall },
+  nginx: { label: 'Nginx', plan: nginx, uninstall: nginxUninstall, units: ['nginx'] },
+  docker: { label: 'Docker', plan: docker, uninstall: dockerUninstall, units: ['docker', 'containerd'] },
+  postgresql: { label: 'PostgreSQL', plan: postgresql, uninstall: postgresqlUninstall, units: ['postgresql'] },
+  mysql: { label: 'MySQL', group: 'mysql', supports: mysqlSupport, plan: mysql, uninstall: (os: RemoteOs) => mysqlFamilyUninstall(os, 'mysql'), units: ['mysql', 'mysqld'] },
+  mariadb: { label: 'MariaDB', group: 'mysql', plan: mariadb, uninstall: (os: RemoteOs) => mysqlFamilyUninstall(os, 'mariadb'), units: ['mariadb'] },
+  mongodb: { label: 'MongoDB', supports: mongodbSupport, plan: mongodb, uninstall: mongodbUninstall, units: ['mongod'] },
+  redis: { label: 'Redis', plan: redis, uninstall: redisUninstall, units: ['redis-server', 'redis', 'redis@default', 'valkey'] },
   nodejs: { label: 'Node.js', plan: nodejs, uninstall: nodejsUninstall },
-  tailscale: { label: 'Tailscale', plan: tailscale, uninstall: tailscaleUninstall },
-  wireguard: { label: 'WireGuard', plan: wireguard, uninstall: wireguardUninstall },
-  fail2ban: { label: 'Fail2ban', plan: fail2ban, uninstall: fail2banUninstall },
+  tailscale: { label: 'Tailscale', plan: tailscale, uninstall: tailscaleUninstall, units: ['tailscaled'] },
+  wireguard: { label: 'WireGuard', plan: wireguard, uninstall: wireguardUninstall, units: ['wg-quick@wg0'] },
+  fail2ban: { label: 'Fail2ban', plan: fail2ban, uninstall: fail2banUninstall, units: ['fail2ban'] },
   restic: { label: 'restic', plan: restic, uninstall: resticUninstall },
-  k3s: { label: 'K3s', group: 'kubernetes', plan: k3s, uninstall: k3sUninstall },
-  microk8s: { label: 'MicroK8s', group: 'kubernetes', supports: microk8sSupport, plan: microk8s, uninstall: microk8sUninstall },
-  k0s: { label: 'k0s', group: 'kubernetes', plan: k0s, uninstall: k0sUninstall },
-  rke2: { label: 'RKE2', group: 'kubernetes', supports: needsSystemd('RKE2'), plan: rke2, uninstall: rke2Uninstall },
+  k3s: { label: 'K3s', group: 'kubernetes', plan: k3s, uninstall: k3sUninstall, units: ['k3s'] },
+  microk8s: { label: 'MicroK8s', group: 'kubernetes', supports: microk8sSupport, plan: microk8s, uninstall: microk8sUninstall, units: ['snap.microk8s.daemon-kubelite'] },
+  k0s: { label: 'k0s', group: 'kubernetes', plan: k0s, uninstall: k0sUninstall, units: ['k0scontroller'] },
+  rke2: { label: 'RKE2', group: 'kubernetes', supports: needsSystemd('RKE2'), plan: rke2, uninstall: rke2Uninstall, units: ['rke2-server'] },
 } satisfies Record<string, Recipe>;
 
 export type InstallableService = keyof typeof INSTALLABLE;

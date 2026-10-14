@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useSync
 import type { ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TokenManager } from '@utils/tokenManager';
+import { apiService } from '@services/api.service';
 import { useAuth } from '@hooks/useAuth';
 
 // Tipos para las métricas en tiempo real
@@ -129,14 +130,35 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     /* El token identifica al panel y lo mete en la room de su usuario: antes el
        gateway emitía en difusión y este cliente recibía las métricas de todos
        los servidores, incluidos los de otras cuentas. */
+    /* `auth` como función: cada intento de conexión lleva el token vigente. Con
+       un objeto fijo, tras reiniciarse el backend (en desarrollo, con cada
+       cambio) el socket volvía con el token de cuando se creó; si ya había
+       caducado (30 min), el gateway lo rechazaba y no llegaba ningún evento en
+       vivo: ni el progreso de las instalaciones, ni avisos, ni métricas.
+       Sin límite de intentos: el backend puede tardar en volver. */
     const newSocket = io(`${backendUrl}/agent`, {
       transports: ['websocket'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      auth: { token: TokenManager.getAccessToken() },
+      reconnectionDelayMax: 10_000,
+      auth: cb => cb({ token: TokenManager.getAccessToken() }),
     });
+
+    /* El gateway cierra la conexión si el token caducó («io server disconnect»)
+       y socket.io no reintenta por sí solo en ese caso. Una petición autenticada
+       renueva el token (el interceptor de apiService lo refresca al recibir 401)
+       y se vuelve a conectar con el nuevo. */
+    let renewTimer: ReturnType<typeof setTimeout> | undefined;
+    const reconnectWithFreshToken = () => {
+      clearTimeout(renewTimer);
+      renewTimer = setTimeout(() => {
+        void apiService.get('/auth/me')
+          .catch(() => undefined)
+          .finally(() => { if (!newSocket.connected) newSocket.connect(); });
+      }, 1500);
+    };
 
     // Eventos de conexión
     newSocket.on('connect', () => {
@@ -144,9 +166,10 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
       setConnected(true);
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('❌ Desconectado de WebSocket');
+    newSocket.on('disconnect', (reason) => {
+      console.log('❌ Desconectado de WebSocket:', reason);
       setConnected(false);
+      if (reason === 'io server disconnect') reconnectWithFreshToken();
     });
 
     newSocket.on('connect_error', (error) => {
@@ -246,6 +269,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
 
     // Cleanup al desmontar
     return () => {
+      clearTimeout(renewTimer);
       console.log('🔌 Cerrando conexión WebSocket');
       newSocket.close();
     };

@@ -400,6 +400,41 @@ export class AgentDataService {
    * Devuelve la lista resultante, o `null` si el servidor todavía no tiene
    * inventario (nada que parchear).
    */
+  /**
+   * Tras instalar o desinstalar un servicio: pone al día sus unidades en el
+   * inventario guardado sin esperar al agente (hasta cinco minutos). Las de
+   * `present` se añaden o actualizan; las de `absent` se quitan.
+   */
+  async syncServiceUnits(serverId: string, present: ServicePayload[], absent: string[]): Promise<ServicePayload[]> {
+    const metrics = await this.metricsRepository.findOne({
+      where: { server_id: serverId },
+      select: ['server_id', 'services_list'],
+    });
+    const list: ServicePayload[] = Array.isArray(metrics?.services_list)
+      ? (metrics.services_list as ServicePayload[])
+      : [];
+
+    const touched = [...present.map((s) => s.name), ...absent];
+    const services = [
+      ...list.filter((s) => !touched.some((name) => sameUnit(s?.name, name))),
+      ...present,
+    ].sort((a, b) => a.name.localeCompare(b.name));
+    const counted = (state: string) => services.filter((s) => s.state === state).length;
+
+    await this.metricsRepository.upsert(
+      {
+        server_id: serverId,
+        timestamp: new Date(),
+        services_list: services,
+        services_count: services.length,
+        services_active: counted('active'),
+        services_failed: counted('failed'),
+      },
+      { conflictPaths: ['server_id'] },
+    );
+    return services;
+  }
+
   async patchServiceState(
     serverId: string,
     patch: {

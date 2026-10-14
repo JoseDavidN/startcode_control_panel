@@ -3,6 +3,8 @@ import type { Client as SSHClient } from 'ssh2';
 import { ServersService } from '@servers/servers.service';
 import { AgentGateway } from '../gateways/agent.gateway';
 import { SSHService, SSHExecResult } from './ssh.service';
+import { AgentDataService } from './agent-data.service';
+import type { ServicePayload } from '../dto/agent-payload';
 import { ServiceControlService, SudoStrategy } from './service-control.service';
 import {
   DETECT_OS_COMMAND, INSTALL_GROUPS, INSTALLABLE, SSH_CLIENT_IP, isInstallGroup, isInstallable, parseOs,
@@ -94,7 +96,50 @@ export class ServiceInstallService {
     private readonly serversService: ServersService,
     private readonly serviceControl: ServiceControlService,
     private readonly gateway: AgentGateway,
+    private readonly agentData: AgentDataService,
   ) {}
+
+  /**
+   * Pone al día las unidades del servicio en el inventario guardado y avisa al
+   * panel, para que la vista de detalle (y sus pestañas Docker o Kubernetes)
+   * cambie sin esperar al siguiente inventario del agente. Sin privilegios
+   * (`systemctl show`). Si falla, no estropea la operación: el agente lo
+   * corregirá en su siguiente inventario.
+   */
+  private async syncInventory(conn: SSHClient, server: { id: string; ownerId: string }, recipe: Recipe, os: RemoteOs): Promise<void> {
+    if (!recipe.units?.length || os.init !== 'systemd') return;
+    try {
+      const props = 'Id,LoadState,ActiveState,SubState,MainPID,UnitFileState,Description';
+      const out = (await this.sshService.execOnClient(
+        conn,
+        `systemctl show ${recipe.units.map((u) => `${u}.service`).join(' ')} --no-pager -p ${props}`,
+        { timeoutMs: SHORT_TIMEOUT_MS },
+      )).stdout;
+      const present: ServicePayload[] = [];
+      const absent: string[] = [];
+      /* Un bloque `Clave=valor` por unidad, separados por una línea en blanco. */
+      for (const block of out.split(/\n\s*\n/)) {
+        const kv = new Map(block.split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()] as const));
+        const id = kv.get('Id');
+        if (!id) continue;
+        if (kv.get('LoadState') !== 'loaded') { absent.push(id); continue; }
+        const pid = Number(kv.get('MainPID') ?? 0);
+        present.push({
+          name: id,
+          displayName: kv.get('Description') || id,
+          state: kv.get('ActiveState') || 'unknown',
+          subState: kv.get('SubState') || '',
+          enabled: kv.get('UnitFileState') === 'enabled',
+          pid: Number.isFinite(pid) && pid > 0 ? pid : null,
+          memory: 0,
+        });
+      }
+      const services = await this.agentData.syncServiceUnits(server.id, present, absent);
+      this.gateway.emitToOwner(server.ownerId, 'server:services:updated', { serverId: server.id, services });
+    } catch (error) {
+      this.logger.warn(`No se pudo actualizar el inventario tras ${recipe.label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   /**
    * ¿Está instalado? Sin privilegios: decide si el panel ofrece instalar o
@@ -283,6 +328,7 @@ export class ServiceInstallService {
           set('access', 'done', access.url ? 'abre el enlace para vincular' : access.info[0]);
         }
 
+        await this.syncInventory(conn, server, recipe, os);
         this.logger.log(`📦 ${recipe.label} ${already ? 'ya estaba' : 'instalado'} en ${server.name} (${server.host})`);
         return result({ ok: true, version: installedVersion, alreadyInstalled: already, access });
       }
@@ -325,6 +371,7 @@ export class ServiceInstallService {
           [stillThere ? 'el ejecutable sigue instalado' : '', ...left].filter(Boolean).join('\n'));
       }
       set('verify', 'done', 'sin rastro en el servidor');
+      await this.syncInventory(conn, server, recipe, os);
 
       this.logger.log(`🧹 ${recipe.label} desinstalado por completo de ${server.name} (${server.host})`);
       return result({ ok: true, version, alreadyInstalled: already });

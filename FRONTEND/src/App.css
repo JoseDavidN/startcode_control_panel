@@ -67,6 +67,14 @@ html, body, #root {
 /* ── Interactive cursor ───────────────────────────────────────────── */
 button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
 
+/* ── Barra de título propia (components/layout/TitleBar.tsx) ─────────
+   Transparente: deja ver el fondo del tema (auroras) y se separa del
+   contenido con la línea fina del tema, como el resto de cabeceras. */
+.titlebar {
+  background: transparent;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
 /* ── Scrollbars ───────────────────────────────────────────────────────
    Las nativas se ocultan: WebKit no deja cambiar su cursor (siempre la
    flecha, o la I en un textarea). Las dibuja `utils/overlayScrollbars.ts`

@@ -220,9 +220,10 @@ export const AssistantPanel: React.FC = () => {
     return next;
   });
 
+  /* top-[58px]: 20 px bajo la barra de título propia (38 px, TitleBar). */
   const panel = open && (
     <aside aria-label="Asistente IA"
-      className="fixed top-5 right-5 bottom-5 z-[60] w-[440px] max-w-[calc(100vw-40px)] glass glass-float elev-modal rounded-2xl flex flex-col overflow-hidden animate-slideUp">
+      className="fixed top-[58px] right-5 bottom-5 z-[60] w-[440px] max-w-[calc(100vw-40px)] glass glass-float elev-modal rounded-2xl flex flex-col overflow-hidden animate-slideUp">
       {/* Cabecera */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-line shrink-0">
         <span className="w-9 h-9 rounded-xl grad-brand flex items-center justify-center elev-brand-sm text-white shrink-0">

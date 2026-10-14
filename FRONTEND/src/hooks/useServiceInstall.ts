@@ -13,6 +13,8 @@ export function useServiceInstall(serverId: string) {
   const { socket } = useRealtimeSocket();
   const [steps, setSteps] = useState<InstallStep[]>([]);
   const active = useRef<string | null>(null);
+  /* Algo se instaló o desinstaló desde que se abrió el modal: al cerrarlo se recarga el detalle. */
+  const changed = useRef(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -39,11 +41,22 @@ export function useServiceInstall(serverId: string) {
     onSuccess: result => {
       /* Los pasos de la respuesta mandan: cubren los que el socket no trajo. */
       setSteps(result.steps);
-      /* El inventario de servicios lo manda el agente; se pide de nuevo el detalle. */
-      void queryClient.invalidateQueries({ queryKey: ['server', serverId] });
-      void queryClient.invalidateQueries({ queryKey: ['servers'] });
+      if (result.ok) changed.current = true;
     },
   });
+
+  /**
+   * Al cerrar el modal: si algo cambió, se recarga el detalle del servidor. El
+   * backend ya dejó el inventario de servicios al día al terminar, así que
+   * aparecen (o se van) pestañas como Docker o Kubernetes sin esperar al agente.
+   */
+  const refreshDetail = useCallback(() => {
+    if (!changed.current) return;
+    changed.current = false;
+    void queryClient.invalidateQueries({ queryKey: ['serverDetail', serverId] });
+    void queryClient.invalidateQueries({ queryKey: ['server', serverId] });
+    void queryClient.invalidateQueries({ queryKey: ['servers'] });
+  }, [queryClient, serverId]);
 
   const reset = useCallback(() => {
     active.current = null;
@@ -51,5 +64,5 @@ export function useServiceInstall(serverId: string) {
     mutation.reset();
   }, [mutation]);
 
-  return { ...mutation, steps, reset };
+  return { ...mutation, steps, reset, refreshDetail };
 }

@@ -276,6 +276,7 @@ export const InstallServiceModal = ({ serverId, serverName, isOpen, onClose }: {
     setVariant(null);
     setSudoPassword(undefined);
     reset();
+    install.refreshDetail();
     onClose();
   };
   /* Volver: de la confirmación de una distribución, a elegir otra; si no, al catálogo. */

@@ -27,6 +27,9 @@
         ],
         "changed": [
           "Barras de desplazamiento más visibles en toda la app, con la manito para agarrarlas y arrastrarlas",
+          "Al cerrar el modal de instalar servicios, el detalle del servidor se actualiza al momento: aparecen o se quitan pestañas como Docker o Kubernetes sin esperar al agente",
+          "Los enlaces al navegador vuelven a abrirse, como el de «Vincular a tu red» de Tailscale",
+          "La instalación de servicios vuelve a mostrar cada paso a medida que avanza, y los avisos y métricas en vivo no se pierden tras un corte de conexión",
           "Barra de título propia con los colores del tema y los botones de ventana de tu sistema (los semáforos de macOS se mantienen)",
           "Cloud: al descargar un archivo o carpeta, el diálogo para elegir dónde guardarlo se abre al instante y un aviso muestra el progreso de la descarga, que se puede cancelar en cualquier momento. La descarga corre en segundo plano: la app sigue respondiendo y puedes navegar aunque el archivo sea grande",
           "Cada inicio de sesión en tu cuenta te avisa en tus otros equipos con una notificación del sistema: nombre del equipo, app, sistema e IP",

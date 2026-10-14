@@ -3,9 +3,9 @@
 //! nombre en Ajustes del Sistema → Notificaciones.
 //!
 //! Solo se puede usar en la app empaquetada (.app con `CFBundleIdentifier`).
-//! Con `tauri dev` el binario no es un bundle y no hay identificador (Tauri
-//! solo incrusta nombre y versión en el Info.plist de desarrollo):
-//! `currentNotificationCenter` abortaría el proceso. Tampoco se puede si el
+//! Con `tauri dev` el binario no está dentro de una .app (aunque el Info.plist
+//! que Tauri incrusta dé un identificador): `currentNotificationCenter` lanzaría
+//! una NSException que aborta el proceso, así que se comprueba antes. Tampoco se puede si el
 //! sistema no deja a la app pedir permiso (error al pedirlo, típico de una
 //! app sin firmar). En esos casos los comandos devuelven un error que empieza
 //! por `UNAVAILABLE:` y el frontend usa `tauri-plugin-notification`, la vía
@@ -71,8 +71,14 @@ static DELEGATE: OnceLock<Retained<Delegate>> = OnceLock::new();
 /* El sistema no dejó a esta app pedir permiso: no se vuelve a intentar en esta ejecución. */
 static UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
+/* Corre desde una .app de verdad. No basta con `bundleIdentifier`: en
+   `tauri dev` el Info.plist incrustado en el binario lo da igual, y entonces
+   `currentNotificationCenter` lanza una NSException («bundleProxyForCurrentProcess
+   is nil») que aborta la app. Fuera de una .app, `bundlePath` es la carpeta del
+   ejecutable (target/debug). */
 fn has_bundle() -> bool {
-    NSBundle::mainBundle().bundleIdentifier().is_some()
+    let bundle = NSBundle::mainBundle();
+    bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app")
 }
 
 fn center() -> Result<Retained<UNUserNotificationCenter>, String> {

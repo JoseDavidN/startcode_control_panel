@@ -26,12 +26,16 @@ import { AgentDataService } from './services/agent-data.service';
 import { ServersService } from '@servers/servers.service';
 import { ServiceControlService } from './services/service-control.service';
 import { DockerService } from './services/docker.service';
+import { KubernetesService } from './services/kubernetes.service';
+import { ServiceInstallService } from './services/service-install.service';
 import { CommandService } from './services/command.service';
 import { Throttle } from '@nestjs/throttler';
 import {
   DockerContainersDto,
   ExecCommandDto,
+  InstallServiceDto,
   KillProcessDto,
+  KubernetesPodsDto,
   PinnedServicesDto,
   ServiceActionDto,
   ServiceLogsDto,
@@ -60,6 +64,8 @@ export class AgentDataController {
     private readonly serversService: ServersService,
     private readonly serviceControlService: ServiceControlService,
     private readonly dockerService: DockerService,
+    private readonly kubernetesService: KubernetesService,
+    private readonly serviceInstall: ServiceInstallService,
     private readonly commandService: CommandService,
   ) {}
 
@@ -385,6 +391,89 @@ export class AgentDataController {
   ) {
     await this.verifyServerAccess(serverId, req.user.id);
     return this.dockerService.listContainers(serverId, req.user.id, dto.sudoPassword);
+  }
+
+  /**
+   * Instala un servicio (nginx…) en el servidor
+   */
+  @Post('servers/:id/services/install')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Instalar un servicio en el servidor',
+    description:
+      'Por SSH: detecta el sistema y el gestor de paquetes (apt, dnf, yum, zypper, apk, pacman), instala, arranca, habilita y comprueba. El progreso llega por el socket (`service:install:progress`); el resultado con todos los pasos, en la respuesta. Una instalación a la vez por servidor.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: '`ok` y los pasos; si falla, `error` con el motivo y las últimas líneas de la salida' })
+  @ApiResponse({ status: 403, description: 'Hace falta la contraseña de sudo (SUDO_REQUIRED)' })
+  async installService(
+    @Param('id') serverId: string,
+    @Body() dto: InstallServiceDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.serviceInstall.install(serverId, req.user.id, dto.service, dto.sudoPassword);
+  }
+
+  /**
+   * ¿Está instalado un servicio del catálogo? (decide instalar o desinstalar)
+   */
+  @Post('servers/:id/services/install-status')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Saber si un servicio del catálogo ya está instalado', description: 'Por SSH y sin privilegios: sistema, gestor de paquetes, si está instalado y su versión.' })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  async serviceInstallStatus(
+    @Param('id') serverId: string,
+    @Body() dto: InstallServiceDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.serviceInstall.status(serverId, req.user.id, dto.service);
+  }
+
+  /**
+   * Desinstala por completo un servicio del catálogo
+   */
+  @Post('servers/:id/services/uninstall')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Desinstalar por completo un servicio',
+    description:
+      'Por SSH: detiene y deshabilita el servicio, purga sus paquetes y las dependencias que quedan sin uso, borra configuración, registros, caché, unidades y el usuario de sistema propio, y comprueba que no quede rastro. Progreso por el socket (`service:install:progress`).',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: '`ok` y los pasos; si queda algún resto, `error` RESIDUE_LEFT con la lista' })
+  @ApiResponse({ status: 403, description: 'Hace falta la contraseña de sudo (SUDO_REQUIRED)' })
+  async uninstallService(
+    @Param('id') serverId: string,
+    @Body() dto: InstallServiceDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.serviceInstall.uninstall(serverId, req.user.id, dto.service, dto.sudoPassword);
+  }
+
+  /**
+   * Pods de Kubernetes del servidor
+   */
+  @Post('servers/:id/kubernetes/pods')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Listar los pods de Kubernetes',
+    description:
+      'Lee `kubectl get pods -A -o json` y, si hay metrics-server, `kubectl top pods` por SSH, con el CLI que haya (kubectl, k3s, microk8s o rke2). Solo lectura. POST porque puede llevar la contraseña de sudo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor' })
+  @ApiResponse({ status: 200, description: 'Pods de todos los namespaces con estado y consumo' })
+  @ApiResponse({ status: 403, description: 'El kubeconfig solo lo lee root y sudo pide contraseña (SUDO_REQUIRED)' })
+  @ApiResponse({ status: 503, description: 'Sin kubectl o el clúster no responde (KUBERNETES_UNAVAILABLE)' })
+  async listKubernetesPods(
+    @Param('id') serverId: string,
+    @Body() dto: KubernetesPodsDto,
+    @Request() req: AuthedRequest,
+  ) {
+    await this.verifyServerAccess(serverId, req.user.id);
+    return this.kubernetesService.listPods(serverId, req.user.id, dto.sudoPassword);
   }
 
   /**

@@ -107,3 +107,26 @@ export class PinnedServicesDto {
   @MaxLength(128, { each: true })
   services: string[];
 }
+
+export class KubernetesPodsDto {
+  @ApiPropertyOptional({
+    description: 'Contraseña de sudo, si el kubeconfig solo lo puede leer root (k3s, microk8s). No se guarda en ninguna parte.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  sudoPassword?: string;
+}
+
+export class InstallServiceDto {
+  @ApiProperty({ example: 'nginx', description: 'Servicio a instalar' })
+  @IsString()
+  @MaxLength(40)
+  service: string;
+
+  @ApiPropertyOptional({ description: 'Contraseña de sudo, si el usuario SSH no es root y sudo la pide. No se guarda.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  sudoPassword?: string;
+}

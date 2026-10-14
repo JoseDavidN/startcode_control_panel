@@ -8,9 +8,11 @@ import type {
 	DatabaseQueryAuditEntry,
 	DatabaseSchema,
 	DatabaseTestResult,
+	InsertColumn,
 	QueryResult,
 	SchemaSection,
 	SchemaSections,
+	TableRef,
 } from '@typings/database.types';
 
 /** El backend responde el objeto directo; axios lo envuelve en `data`. */
@@ -113,6 +115,35 @@ export const databasesApi = {
 	): Promise<{ affectedRows: number }> {
 		return unwrap<{ affectedRows: number }>(
 			await apiService.post<{ affectedRows: number }>(`${BASE}/${id}/rows/update`, { ...input, sessionId })
+		);
+	},
+
+	/** Columnas de la tabla con su tipo y valor por defecto, para una fila nueva. */
+	async tableColumns(id: string, sessionId: string, ref: TableRef): Promise<InsertColumn[]> {
+		return unwrap<InsertColumn[]>(
+			await apiService.post<InsertColumn[]>(`${BASE}/${id}/tables/columns`, { ...ref, sessionId })
+		);
+	},
+
+	/** INSERT con las columnas indicadas; las demás toman su valor por defecto. */
+	async insertRow(
+		id: string,
+		sessionId: string,
+		input: TableRef & { values: Record<string, unknown> },
+	): Promise<{ affectedRows: number; insertId: number | null; row: Record<string, unknown> | null }> {
+		return unwrap<{ affectedRows: number; insertId: number | null; row: Record<string, unknown> | null }>(
+			await apiService.post<{ affectedRows: number; insertId: number | null; row: Record<string, unknown> | null }>(`${BASE}/${id}/rows/insert`, { ...input, sessionId })
+		);
+	},
+
+	/** Borra filas por su clave primaria completa (en una transacción; queda en la auditoría). */
+	async deleteRows(
+		id: string,
+		sessionId: string,
+		input: TableRef & { keys: Record<string, unknown>[] },
+	): Promise<{ affectedRows: number }> {
+		return unwrap<{ affectedRows: number }>(
+			await apiService.post<{ affectedRows: number }>(`${BASE}/${id}/rows/delete`, { ...input, sessionId })
 		);
 	},
 

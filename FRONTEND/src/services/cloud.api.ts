@@ -5,6 +5,7 @@ import type {
 	CloudConnection, CloudFolder, CloudPaths, CloudPathsConfig, CloudSection, CloudStats, CloudStorage, CloudStream,
 } from '@typings/cloud.types';
 import type { PickedFile } from '@lib/filePicker';
+import { create, remove } from '@tauri-apps/plugin-fs';
 
 /**
  * Cliente del backend de StartCode Cloud (`CLOUD/`). Es otro servidor que el
@@ -194,8 +195,77 @@ export const cloudApi = {
 		return ((await res.json()) as { start: number }).start;
 	},
 
-	async zip(section: CloudSection, path: string): Promise<Blob> {
-		return (await client().get<Blob>('/files/zip', { params: { section, path }, responseType: 'blob', timeout: 0 })).data;
+	/**
+	 * Descarga un archivo (o una carpeta como .zip) directo a `dest`, por
+	 * partes: no se carga entero en memoria ni se espera a tenerlo para
+	 * guardarlo. Escribe en bloques de 4 MB (pocas llamadas al plugin) y avisa
+	 * del progreso como mucho cada 150 ms. Si falla o se cancela, borra lo escrito.
+	 */
+	async download(
+		section: CloudSection, path: string, folder: boolean, dest: string,
+		onProgress: (loaded: number, total: number | null) => void, signal: AbortSignal,
+	): Promise<void> {
+		if (!connection) throw new CloudApiError('La nube no está conectada.', 0, 'NOT_CONNECTED');
+		const query = new URLSearchParams({ section, path });
+		let res: Response;
+		try {
+			res = await fetch(`${connection.url}${PREFIX}/files/${folder ? 'zip' : 'content'}?${query.toString()}`, {
+				headers: { Authorization: `Bearer ${connection.token}` },
+				signal,
+			});
+		} catch (error) {
+			if (signal.aborted) throw error;
+			throw new CloudApiError('No se pudo contactar con la nube.', 0, 'UNREACHABLE', 'Comprueba que el servidor de la nube esté encendido y accesible.');
+		}
+		if (!res.ok || !res.body) {
+			const body = (await res.json().catch(() => ({}))) as { message?: string | string[]; code?: string; hint?: string };
+			const message = Array.isArray(body.message) ? body.message.join('. ') : body.message;
+			const error = new CloudApiError(message || 'La nube respondió con un error.', res.status, body.code, body.hint);
+			if (res.status === 401 && body.code?.startsWith('TOKEN_')) onSessionLost?.(error.message);
+			throw error;
+		}
+
+		/* Las carpetas se comprimen mientras se envían: sin tamaño total. */
+		const total = Number(res.headers.get('content-length')) || null;
+		const FLUSH_BYTES = 4 * 1024 * 1024;
+		const file = await create(dest);
+		const reader = res.body.getReader();
+		let pending: Uint8Array[] = [];
+		let pendingBytes = 0;
+		let loaded = 0;
+		let lastReport = 0;
+		const flush = async () => {
+			if (!pendingBytes) return;
+			const chunk = new Uint8Array(pendingBytes);
+			let offset = 0;
+			for (const part of pending) { chunk.set(part, offset); offset += part.length; }
+			pending = [];
+			pendingBytes = 0;
+			await file.write(chunk);
+		};
+		try {
+			onProgress(0, total);
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				pending.push(value);
+				pendingBytes += value.length;
+				loaded += value.length;
+				if (pendingBytes >= FLUSH_BYTES) await flush();
+				const now = performance.now();
+				if (now - lastReport > 150) { lastReport = now; onProgress(loaded, total); }
+			}
+			await flush();
+			await file.close();
+			onProgress(loaded, total);
+		} catch (error) {
+			await reader.cancel().catch(() => undefined);
+			await file.close().catch(() => undefined);
+			await remove(dest).catch(() => undefined);
+			if (signal.aborted) throw error;
+			throw error instanceof CloudApiError ? error
+				: new CloudApiError('Se cortó la descarga.', 0, 'DOWNLOAD_INTERRUPTED', error instanceof Error ? error.message : undefined);
+		}
 	},
 
 	async rename(section: CloudSection, path: string, name: string): Promise<void> {

@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { AuthService } from '@auth/auth.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { User } from '@auth/entities/user.entity';
@@ -66,7 +67,7 @@ const METRIC_RULES: Record<
 };
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
 
   /** Retención: acordada con el usuario. */
@@ -90,7 +91,22 @@ export class NotificationsService {
     private readonly repo: Repository<Notification>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    private readonly authService: AuthService,
   ) {}
+
+  /* Cada inicio de sesión deja un aviso de seguridad: los demás equipos del
+     usuario lo reciben como notificación del sistema. */
+  onModuleInit(): void {
+    this.authService.onLogin((userId, event) => {
+      void this.create(userId, {
+        type: NotificationType.SECURITY,
+        severity: NotificationSeverity.INFO,
+        title: 'Nuevo inicio de sesión',
+        body: `${event.device} · IP ${event.ip ?? 'desconocida'}. Si no fuiste tú, cierra esa sesión en Configuración → Seguridad y cambia tu contraseña.`,
+        metadata: { ip: event.ip, device: event.device, sessionId: event.sessionId },
+      }).catch(err => this.logger.warn(`Aviso de inicio de sesión no guardado: ${err instanceof Error ? err.message : String(err)}`));
+    });
+  }
 
   setBroadcaster(fn: (userId: string) => void): void {
     this.broadcast = fn;

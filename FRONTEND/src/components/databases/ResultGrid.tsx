@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { DbIcon } from '@components/databases/icons';
 import { ExportMenu } from '@components/databases/ExportMenu';
 import { databasesApi } from '@services/databases.api';
@@ -7,7 +8,9 @@ import type { ExportTable } from '@lib/tableExport';
 import type { ExportSource } from '@components/databases/ExportMenu';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
 import type { SensitiveKind } from '@utils/sensitiveColumns';
-import type { QueryResult } from '@typings/database.types';
+import type { InsertColumn, QueryResult, TableRef } from '@typings/database.types';
+import { DeleteRowsModal, type DeleteTarget } from '@components/databases/DeleteRowsModal';
+import { notify } from '@services/notification.service';
 
 interface ResultGridProps {
   result: QueryResult;
@@ -19,6 +22,8 @@ interface ResultGridProps {
   query?: { sql: string; schema: string | null };
   /** Resumen de la consulta (filas, truncado) para la barra. */
   status: React.ReactNode;
+  /** Vuelve a ejecutar la consulta (tras insertar una fila, para verla). */
+  onRerun?: () => void;
 }
 
 /** Celdas cambiadas y sin guardar: fila → columna → valor nuevo. */
@@ -61,10 +66,12 @@ const MaskedCell = ({ kind, value }: { kind: SensitiveKind; value: unknown }) =>
 };
 
 /* ── Editor de una celda ───────────────────────────────────────────── */
-const CellEditor = ({ initial, onCommit, onCancel }: {
+const CellEditor = ({ initial, onCommit, onCancel, onDefault }: {
   initial: string;
   onCommit: (value: string | null) => void;
   onCancel: () => void;
+  /** Solo en filas nuevas con valor por defecto: volver a «Por defecto». */
+  onDefault?: () => void;
 }) => {
   const [draft, setDraft] = useState(initial);
   /* Enter, Escape y «NULL» ya resolvieron: el blur que viene detrás no debe volver a confirmar. */
@@ -95,8 +102,38 @@ const CellEditor = ({ initial, onCommit, onCancel }: {
       >
         NULL
       </button>
+      {onDefault && (
+        <button
+          type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => finish(onDefault)}
+          title="Dejar que la base ponga su valor por defecto"
+          className="h-6 px-1.5 rounded text-[10px] font-semibold text-white/50 hover:text-white hover:bg-tint-hover whitespace-nowrap"
+        >
+          DEFECTO
+        </button>
+      )}
     </div>
   );
+};
+
+/* ── Filas nuevas (borradores) ─────────────────────────────────────── */
+type DraftMode = 'default' | 'null' | 'value';
+interface DraftCell { mode: DraftMode; value: string }
+interface Draft { id: number; cells: Record<number, DraftCell>; saving: boolean; error: string | null }
+
+/* Tipos donde un texto vacío es un valor válido. */
+const TEXT_TYPE = /char|text|json|uuid|enum|set|xml|inet|cidr|bytea|blob|binary/i;
+
+/* Cómo empieza cada celda: por defecto si la columna lo tiene, NULL si lo admite; si no, hay que escribirla. */
+const initialDraftCell = (c: InsertColumn): DraftCell =>
+  c.auto || c.defaultValue !== null ? { mode: 'default', value: '' }
+    : c.nullable ? { mode: 'null', value: '' }
+      : { mode: 'value', value: '' };
+
+const defaultText = (c: InsertColumn) => {
+  const shown = c.defaultValue ?? c.autoLabel;
+  return `Por defecto${shown !== null ? ` (${shown === '' ? 'texto vacío' : shown})` : ''}`;
 };
 
 /**
@@ -109,9 +146,9 @@ const CellEditor = ({ initial, onCommit, onCancel }: {
  * - Doble clic en una celda editable la edita; la fila muestra guardar y
  *   cancelar, y guardar hace un UPDATE por clave primaria de esa fila.
  */
-export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, sessionId, fileName, query, status }) => {
+export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, sessionId, fileName, query, status, onRerun }) => {
   const columns = useMemo(() => result.columns ?? [], [result.columns]);
-  const meta = result.columnMeta ?? [];
+  const meta = useMemo(() => result.columnMeta ?? [], [result.columnMeta]);
   const sensitive = useMemo(() => columns.map(sensitiveKind), [columns]);
 
   /* Copia local: las filas guardadas se actualizan aquí sin volver a consultar. */
@@ -261,7 +298,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
         });
         saved.push(...cols);
       }
-      say(`Fila ${r + 1} guardada`);
+      notify.success(`Fila ${r + 1} guardada`);
     } catch (err) {
       setRowErrors(prev => ({ ...prev, [r]: errorText(err) }));
     } finally {
@@ -305,6 +342,112 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
 
   const errorCount = Object.keys(rowErrors).length;
 
+  /* ── Filas nuevas en línea ──
+     Solo con una consulta de una sola tabla (sin JOIN) que traiga todas sus
+     columnas: así cada celda de la fila nueva es una columna de la tabla. */
+  const insertSources = useMemo(() => [...new Set(meta.map(m => m.source).filter((x): x is string => Boolean(x)))], [meta]);
+  const insertRef = useMemo<TableRef | null>(() => {
+    if (insertSources.length !== 1) return null;
+    const m = meta.find(x => x.source === insertSources[0]);
+    return m?.schema && m.table ? { schema: m.schema, table: m.table, ...(m.namespace ? { namespace: m.namespace } : {}) } : null;
+  }, [insertSources, meta]);
+  const tableCols = useQuery({
+    queryKey: ['tableColumns', connectionId, insertRef?.schema, insertRef?.namespace, insertRef?.table],
+    queryFn: () => databasesApi.tableColumns(connectionId, sessionId, insertRef!),
+    enabled: Boolean(insertRef && sessionId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  /* Columna de la tabla que corresponde a cada columna del resultado (las calculadas, ninguna). */
+  const colAt = useMemo(() => {
+    const byName = new Map((tableCols.data ?? []).map(c => [c.name, c]));
+    return columns.map((_, c) => (meta[c]?.source === insertSources[0] && meta[c]?.column ? byName.get(meta[c].column) ?? null : null));
+  }, [tableCols.data, columns, meta, insertSources]);
+  const missingCols = useMemo(() => {
+    const present = new Set(colAt.filter(Boolean).map(c => c!.name));
+    return (tableCols.data ?? []).filter(c => !present.has(c.name)).map(c => c.name);
+  }, [tableCols.data, colAt]);
+  const insertBlock: string | null =
+    insertSources.length > 1 ? 'Solo se agregan filas en consultas de una sola tabla: esta trae columnas de varias (JOIN)'
+      : !insertRef ? 'El resultado no sale directamente de una tabla'
+        : tableCols.isError ? 'No se pudieron leer las columnas de la tabla'
+          : missingCols.length ? `La consulta no trae todas las columnas de ${insertRef.table} (faltan ${missingCols.join(', ')}): usa SELECT * para agregar filas`
+            : null;
+  const canInsert = Boolean(insertRef && tableCols.data && !insertBlock);
+
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const draftSeq = useRef(0);
+  const [draftEditing, setDraftEditing] = useState<{ id: number; c: number; draft: string } | null>(null);
+  const addDraft = () => {
+    const cells: Record<number, DraftCell> = {};
+    colAt.forEach((col, c) => { if (col && !col.generated) cells[c] = initialDraftCell(col); });
+    setDrafts(prev => [{ id: ++draftSeq.current, cells, saving: false, error: null }, ...prev]);
+  };
+  const patchDraft = (id: number, patch: Partial<Draft>) => setDrafts(prev => prev.map(d => (d.id === id ? { ...d, ...patch } : d)));
+  const setDraftCell = (id: number, c: number, cell: DraftCell) =>
+    setDrafts(prev => prev.map(d => (d.id === id ? { ...d, cells: { ...d.cells, [c]: cell }, error: null } : d)));
+
+  /* Una fila nueva arriba desplaza los índices de todo lo que va por fila. */
+  const shiftRowState = () => {
+    const shiftKeys = <T,>(o: Record<number, T>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [Number(k) + 1, v])) as Record<number, T>;
+    setPending(prev => shiftKeys(prev));
+    setRowErrors(prev => shiftKeys(prev));
+    setSaving(prev => new Set([...prev].map(r => r + 1)));
+    setSelected(prev => new Set([...prev].map(r => r + 1)));
+    setAnchor(prev => (prev === null ? null : prev + 1));
+    setEditing(prev => (prev ? { ...prev, r: prev.r + 1 } : prev));
+  };
+
+  const saveDraft = async (d: Draft) => {
+    if (!insertRef) return;
+    const missing = colAt.flatMap((col, c) => {
+      const cell = d.cells[c];
+      if (!col || !cell || col.nullable || col.auto || col.defaultValue !== null) return [];
+      return cell.mode !== 'value' || (cell.value === '' && !TEXT_TYPE.test(col.type)) ? [col.name] : [];
+    });
+    if (missing.length) { patchDraft(d.id, { error: `Falta un valor para ${missing.join(', ')}` }); return; }
+    const values: Record<string, unknown> = {};
+    colAt.forEach((col, c) => {
+      const cell = d.cells[c];
+      if (!col || !cell || cell.mode === 'default') return;
+      values[col.name] = cell.mode === 'null' ? null : cell.value;
+    });
+    patchDraft(d.id, { saving: true, error: null });
+    try {
+      const res = await databasesApi.insertRow(connectionId, sessionId, { ...insertRef, values });
+      setDrafts(prev => prev.filter(x => x.id !== d.id));
+      if (res.row) {
+        const inserted = res.row;
+        shiftRowState();
+        setRows(prev => [columns.map((_, c) => (colAt[c] ? inserted[colAt[c].name] ?? null : null)), ...prev]);
+        notify.success('Fila creada');
+      } else {
+        /* Sin clave para leerla de vuelta: se repite la consulta. */
+        notify.success('Fila creada');
+        onRerun?.();
+      }
+    } catch (err) {
+      patchDraft(d.id, { saving: false, error: errorText(err) });
+    }
+  };
+
+  /* Borrar las filas seleccionadas: en cada tabla con su clave primaria en el resultado,
+     la clave de cada fila sale de sus valores (los guardados, no los cambios pendientes). */
+  const [deleting, setDeleting] = useState<DeleteTarget[] | null>(null);
+  const deleteTargets = (): DeleteTarget[] => {
+    const indices = [...selected].sort((a, b) => a - b);
+    return Object.entries(result.tableKeys ?? {}).flatMap(([source, keyIdx]) => {
+      const first = meta[keyIdx[0]];
+      if (!first?.schema || !first.table || keyIdx.some(k => !meta[k]?.column)) return [];
+      return [{
+        id: source,
+        ref: { schema: first.schema, table: first.table, ...(first.namespace ? { namespace: first.namespace } : {}) },
+        keys: indices.map(r => Object.fromEntries(keyIdx.map(k => [meta[k].column!, rows[r][k]]))),
+      }];
+    });
+  };
+  const canDelete = Object.keys(result.tableKeys ?? {}).length > 0;
+
   return (
     <>
       {/* ── Barra ── */}
@@ -324,12 +467,28 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
           {flash && <span className="text-emerald-300 shrink-0 animate-fadeIn">· {flash}</span>}
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {selected.size > 0 && canDelete && (
+            <button type="button" onClick={() => setDeleting(deleteTargets())}
+              title="Eliminar las filas seleccionadas de su tabla"
+              className="mo-tab inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-medium">
+              <DbIcon name="trash" className="w-3.5 h-3.5" />
+              Eliminar {selected.size} {selected.size === 1 ? 'fila' : 'filas'}
+            </button>
+          )}
           {selected.size > 0 && (
             <button type="button" onClick={() => void copySelection()}
               title="Copiar las filas seleccionadas (Ctrl + C)"
               className="mo-tab inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg grad-brand-soft border border-hairline text-white/85 hover:text-white text-xs font-medium">
               <DbIcon name="copy" className="w-3.5 h-3.5" />
               Copiar {selected.size} {selected.size === 1 ? 'fila' : 'filas'}
+            </button>
+          )}
+          {insertRef && (
+            <button type="button" onClick={addDraft} disabled={!canInsert}
+              title={insertBlock ?? (tableCols.isLoading ? 'Leyendo las columnas de la tabla…' : `Agregar una fila en ${insertRef.table}`)}
+              className="mo-tab inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg glass-soft row-hit text-white/75 hover:text-white text-xs font-medium disabled:opacity-40">
+              <span className="text-sm leading-none">+</span>
+              Nueva fila
             </button>
           )}
           <span className="font-mono tabular-nums text-white/40">{result.durationMs} ms</span>
@@ -384,6 +543,61 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
             </tr>
           </thead>
           <tbody>
+            {drafts.map(d => (
+              <tr key={`draft-${d.id}`} className="row-new">
+                <td className="sticky left-0 sticky-cell p-0 h-8 border-b border-r border-line">
+                  <div className="flex items-center justify-end h-full gap-0.5 pl-1.5 pr-2">
+                    <button type="button" onClick={() => void saveDraft(d)} disabled={d.saving}
+                      title={d.error ? `Error: ${d.error}. Reintentar` : 'Guardar la fila nueva'}
+                      className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors disabled:opacity-40
+                        ${d.error ? 'text-rose-300 hover:bg-rose-500/15' : 'text-emerald-300 hover:bg-emerald-500/15'}`}>
+                      {d.saving
+                        ? <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        : <DbIcon name={d.error ? 'alert' : 'check'} className="w-3.5 h-3.5" />}
+                    </button>
+                    <button type="button" onClick={() => setDrafts(prev => prev.filter(x => x.id !== d.id))} disabled={d.saving}
+                      title="Descartar la fila nueva"
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-white/45 hover:text-white hover:bg-tint-hover transition-colors disabled:opacity-40">
+                      <DbIcon name="close" className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-300 pl-1" title={d.error ?? 'Fila nueva sin guardar'}>nueva</span>
+                  </div>
+                </td>
+                {columns.map((_, c) => {
+                  const col = colAt[c];
+                  const cell = d.cells[c];
+                  const isEditing = draftEditing?.id === d.id && draftEditing.c === c;
+                  if (!col || !cell) {
+                    return (
+                      <td key={c} className="px-3 h-8 text-white/30 italic whitespace-nowrap border-b border-line"
+                        title={col?.generated ? 'Columna generada: la calcula la base' : 'Columna calculada: no se escribe'}>
+                        {col?.generated ? 'generada' : '—'}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={c}
+                      onDoubleClick={() => setDraftEditing({ id: d.id, c, draft: cell.mode === 'value' ? cell.value : col.defaultValue ?? '' })}
+                      title={`${col.name} · ${col.type}${!col.nullable && !col.auto && col.defaultValue === null ? ' · obligatoria' : ''}`}
+                      className={`px-3 h-8 whitespace-nowrap border-b border-line cursor-text ${cell.mode === 'value' ? 'cell-dirty text-white/85' : 'text-white/40'}`}>
+                      {isEditing ? (
+                        <CellEditor initial={draftEditing.draft}
+                          onCommit={v => { setDraftCell(d.id, c, v === null ? { mode: 'null', value: '' } : { mode: 'value', value: v }); setDraftEditing(null); }}
+                          onCancel={() => setDraftEditing(null)}
+                          onDefault={col.auto || col.defaultValue !== null ? () => { setDraftCell(d.id, c, { mode: 'default', value: '' }); setDraftEditing(null); } : undefined} />
+                      ) : (
+                        <div className="max-w-[320px] truncate">
+                          {cell.mode === 'default' ? <span className="italic">{defaultText(col)}</span>
+                            : cell.mode === 'null' ? <Cell value={null} />
+                              : cell.value === '' ? <span className="italic text-rose-300/70">{TEXT_TYPE.test(col.type) ? '(texto vacío)' : '(obligatoria)'}</span>
+                                : cell.value}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
             {rows.map((row, r) => {
               const dirty = pending[r];
               const rowError = rowErrors[r];
@@ -441,6 +655,17 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
           </tbody>
         </table>
       </div>
+      {deleting && deleting.length > 0 && (
+        <DeleteRowsModal targets={deleting} pendingRows={pendingRows} onClose={() => setDeleting(null)}
+          onConfirm={async target => {
+            const res = await databasesApi.deleteRows(connectionId, sessionId, { ...target.ref, keys: target.keys });
+            setDeleting(null);
+            setSelected(new Set());
+            notify.success(res.affectedRows === 1 ? 'Fila eliminada' : `${res.affectedRows} filas eliminadas`,
+              res.affectedRows < target.keys.length ? `${target.keys.length - res.affectedRows} ya no existían.` : undefined);
+            onRerun?.();
+          }} />
+      )}
     </>
   );
 };

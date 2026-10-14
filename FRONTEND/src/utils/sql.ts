@@ -24,6 +24,30 @@ const BOUNDARY = /[\s(),;]/;
 const WORD_CHAR = /[A-Za-z_]/;
 
 /**
+ * Sangría de la línea nueva al pulsar Enter en `caret`. Las consultas se
+ * separan por `;`: mientras la consulta siga (lo anterior no termina en `;`),
+ * la línea nueva va un nivel más adentro que la primera línea de la consulta,
+ * o conserva la sangría actual si ya es mayor; tras un `(` abierto, un nivel
+ * más. Tras `;` o sin consulta empezada, vuelve al margen.
+ */
+export function newlineIndent(text: string, caret: number, unit = '  '): string {
+  const before = text.slice(0, caret);
+  const trimmed = before.trimEnd();
+  if (!trimmed || trimmed.endsWith(';')) return '';
+  const indentOf = (pos: number) => {
+    const start = text.lastIndexOf('\n', pos - 1) + 1;
+    return /^[ \t]*/.exec(text.slice(start))?.[0] ?? '';
+  };
+  /* Primera línea con texto de la consulta: la sangría base. */
+  const stmtStart = trimmed.lastIndexOf(';') + 1;
+  const firstChar = stmtStart + (before.slice(stmtStart).search(/\S/));
+  const base = indentOf(firstChar) + unit;
+  const current = indentOf(caret);
+  const level = current.length > base.length ? current : base;
+  return trimmed.endsWith('(') ? level + unit : level;
+}
+
+/**
  * Si justo antes de `pos` se acaba de cerrar una palabra reservada, la
  * devuelve en mayúsculas. Fuera de cadenas, identificadores entre comillas
  * invertidas y comentarios. Devuelve el mismo texto si no hay nada que cambiar;

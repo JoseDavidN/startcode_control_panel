@@ -23,9 +23,22 @@ import {
   type SchemaTableColumn,
   type SchemaTrigger,
   type UpdateRowInput,
+  type InsertColumn,
+  type InsertRowInput,
+  type TableRef,
+  type DeleteRowsInput,
+  type InsertRowResult,
+  MAX_DELETE_ROWS,
+  assertPrimaryKeys,
+  unquoteDefault,
 } from './explorer.common';
 
 export type {
+  DeleteRowsInput,
+  InsertRowResult,
+  InsertColumn,
+  InsertRowInput,
+  TableRef,
   DatabaseListItem,
   QueryResult,
   ResultColumnMeta,
@@ -383,6 +396,137 @@ export class DatabaseExplorerService {
         return { affectedRows: res.affectedRows };
       } catch (err) {
         if (err instanceof BadRequestException) throw err;
+        throw new BadRequestException(describeSqlError(err));
+      }
+    });
+  }
+
+  /**
+   * Columnas de una tabla con su tipo, si admiten NULL y su valor por
+   * defecto, para el formulario de fila nueva. MySQL da el valor tal cual y
+   * MariaDB como literal SQL ('abc', NULL, current_timestamp()): se unifica.
+   */
+  async tableColumns(t: ProbeTarget, ref: TableRef): Promise<InsertColumn[]> {
+    if (this.isPg(t)) return this.pg.tableColumns(t, ref);
+    this.assertSupported(t);
+    this.assertSchemaAllowed(t, ref.schema);
+    return this.withMysql(t, null, async (conn) => {
+      const [rows] = await conn.query<RowDataPacket[]>(
+        `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable, COLUMN_DEFAULT AS def,
+                EXTRA AS extra, COLUMN_KEY AS k
+           FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+          ORDER BY ORDINAL_POSITION`,
+        [ref.schema, ref.table],
+      );
+      if (rows.length === 0) throw new BadRequestException(`La tabla ${ref.table} no existe`);
+      const mariadb = t.engine === DatabaseEngine.MARIADB;
+      return rows.map((r): InsertColumn => {
+        const extra = String(r.extra ?? '').toLowerCase();
+        const raw = r.def === null || r.def === undefined ? null : String(r.def);
+        const generated = /virtual generated|stored generated|persistent/.test(extra);
+        /* MariaDB: NULL como texto y literales entre comillas; lo demás es una expresión. */
+        const literal = raw === null || (mariadb && raw === 'NULL') ? null
+          : mariadb ? unquoteDefault(raw) ?? (/^-?\d+(\.\d+)?$/.test(raw) ? raw : null)
+            : extra.includes('default_generated') ? null : raw;
+        const expression = raw !== null && literal === null && !(mariadb && raw === 'NULL') ? raw : null;
+        const autoIncrement = extra.includes('auto_increment');
+        return {
+          name: String(r.name),
+          type: String(r.type),
+          nullable: r.nullable === 'YES',
+          defaultValue: literal,
+          auto: autoIncrement || expression !== null,
+          autoLabel: autoIncrement ? 'auto_increment' : expression,
+          generated,
+          primaryKey: r.k === 'PRI',
+        };
+      });
+    });
+  }
+
+  /**
+   * Inserta una fila. Solo se escriben las columnas recibidas (las demás
+   * toman su valor por defecto); se validan contra la tabla y los valores van
+   * como parámetros. Devuelve la fila tal como quedó (con el id y lo que
+   * calculó la base), leída por su clave primaria: la enviada o, si es un
+   * autoincremento, el `insertId`. Sin forma de identificarla, `row` es null.
+   */
+  async insertRow(t: ProbeTarget, input: InsertRowInput): Promise<InsertRowResult> {
+    if (this.isPg(t)) return this.pg.insertRow(t, input);
+    const columns = await this.tableColumns(t, input);
+    const cols = Object.keys(input.values);
+    const known = new Map(columns.map(c => [c.name, c]));
+    const unknown = cols.filter(c => !known.has(c));
+    if (unknown.length) throw new BadRequestException(`Columnas desconocidas: ${unknown.join(', ')}`);
+    const generated = cols.filter(c => known.get(c)?.generated);
+    if (generated.length) throw new BadRequestException(`Columnas generadas, no se pueden escribir: ${generated.join(', ')}`);
+
+    return this.withMysql(t, null, async (conn) => {
+      const target = `${conn.escapeId(input.schema)}.${conn.escapeId(input.table)}`;
+      const sql = cols.length
+        ? `INSERT INTO ${target} (${cols.map(c => conn.escapeId(c)).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
+        : `INSERT INTO ${target} () VALUES ()`;
+      let res: ResultSetHeader;
+      try {
+        [res] = await conn.query<ResultSetHeader>({ sql, values: cols.map(c => input.values[c]), timeout: QUERY_TIMEOUT_MS });
+      } catch (err) {
+        throw new BadRequestException(describeSqlError(err));
+      }
+      const insertId = res.insertId || null;
+
+      const pk = columns.filter(c => c.primaryKey).map(c => c.name);
+      let key: Record<string, unknown> | null = null;
+      if (pk.length && pk.every(c => c in input.values)) key = Object.fromEntries(pk.map(c => [c, input.values[c]]));
+      else if (pk.length === 1 && insertId !== null && known.get(pk[0])?.auto) key = { [pk[0]]: insertId };
+      let row: Record<string, unknown> | null = null;
+      if (key) {
+        const [found] = await conn.query<RowDataPacket[]>({
+          sql: `SELECT * FROM ${target} WHERE ${Object.keys(key).map(c => `${conn.escapeId(c)} <=> ?`).join(' AND ')} LIMIT 1`,
+          values: Object.values(key),
+          timeout: QUERY_TIMEOUT_MS,
+        });
+        if (found[0]) row = Object.fromEntries(Object.entries(found[0]).map(([k, v]) => [k, serializeValue(v)]));
+      }
+      return { affectedRows: res.affectedRows, insertId, row };
+    });
+  }
+
+  /**
+   * Borra filas por su clave primaria completa, en una transacción: o se
+   * borran todas o ninguna. Cada DELETE lleva LIMIT 1 y valores parametrizados.
+   */
+  async deleteRows(t: ProbeTarget, input: DeleteRowsInput): Promise<{ affectedRows: number }> {
+    if (this.isPg(t)) return this.pg.deleteRows(t, input);
+    this.assertSupported(t);
+    this.assertSchemaAllowed(t, input.schema);
+    if (input.keys.length === 0) throw new BadRequestException('No hay filas que borrar');
+    if (input.keys.length > MAX_DELETE_ROWS) throw new BadRequestException(`Se pueden borrar hasta ${MAX_DELETE_ROWS} filas de una vez`);
+
+    return this.withMysql(t, null, async (conn) => {
+      const [pkRows] = await conn.query<RowDataPacket[]>(
+        `SELECT COLUMN_NAME AS col FROM information_schema.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
+          ORDER BY ORDINAL_POSITION`,
+        [input.schema, input.table],
+      );
+      const pk = pkRows.map(r => String(r.col));
+      assertPrimaryKeys(pk, input.keys);
+      const sql =
+        `DELETE FROM ${conn.escapeId(input.schema)}.${conn.escapeId(input.table)} WHERE ` +
+        pk.map(c => `${conn.escapeId(c)} <=> ?`).join(' AND ') + ' LIMIT 1';
+
+      let affected = 0;
+      try {
+        await conn.beginTransaction();
+        for (const key of input.keys) {
+          const [res] = await conn.query<ResultSetHeader>({ sql, values: pk.map(c => key[c]), timeout: QUERY_TIMEOUT_MS });
+          affected += res.affectedRows;
+        }
+        await conn.commit();
+        return { affectedRows: affected };
+      } catch (err) {
+        await conn.rollback().catch(() => undefined);
         throw new BadRequestException(describeSqlError(err));
       }
     });

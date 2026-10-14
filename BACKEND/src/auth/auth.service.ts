@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Not, Repository } from 'typeorm';
+import { In, LessThan, Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import * as speakeasy from 'speakeasy';
@@ -33,6 +33,36 @@ import { ConfigService } from '@nestjs/config';
 export interface ClientContext {
   userAgent?: string | null;
   ip?: string | null;
+  /** Nombre del equipo que manda la app de escritorio (`X-StartCode-Device`). */
+  device?: string | null;
+}
+
+/** Inicio de sesión nuevo, para el aviso de seguridad. */
+export interface LoginEvent {
+  sessionId: string;
+  ip: string | null;
+  /** «MacBook de Ana · StartCode Panel 0.7.0 en macOS». */
+  device: string;
+}
+
+/** Sistema operativo según el user-agent. */
+function osOf(ua: string): string | null {
+  if (/iPhone|iPad/i.test(ua)) return 'iOS';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'macOS';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/CrOS/i.test(ua)) return 'ChromeOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return null;
+}
+
+/** Descripción legible del dispositivo: nombre del equipo, app (o navegador) y sistema. */
+export function describeDevice(client: ClientContext): string {
+  const ua = client.userAgent ?? '';
+  const app = /StartCodePanel\/([\w.+-]+)/.exec(ua);
+  const os = osOf(ua);
+  const what = `${app ? `StartCode Panel ${app[1]}` : 'Navegador'}${os ? ` en ${os}` : ''}`;
+  return client.device ? `${client.device} · ${what}` : what;
 }
 
 /** Campos mínimos para operar con el usuario en los flujos de login. */
@@ -42,6 +72,9 @@ const LOGIN_FIELDS = [
   'failedLoginAttempts', 'lockedUntil', 'lastLogin', 'passwordChangedAt',
   'preferences', 'createdAt',
 ] as const;
+
+/** Dispositivos con sesión iniciada a la vez por usuario. */
+const MAX_ACTIVE_SESSIONS = 3;
 
 @Injectable()
 export class AuthService {
@@ -72,6 +105,14 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
+
+  /* Quien quiera enterarse de cada inicio de sesión (el aviso de seguridad de
+     NotificationsService, que importa este módulo: así no hay dependencia circular). */
+  private readonly loginListeners: ((userId: string, event: LoginEvent) => void)[] = [];
+
+  onLogin(fn: (userId: string, event: LoginEvent) => void): void {
+    this.loginListeners.push(fn);
+  }
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
     const { firstname, lastname, email, password } = registerDto;
@@ -556,16 +597,16 @@ export class AuthService {
   /**
    * Emite una sesión nueva: fila en tbl_sessions + tokens sellados con su `sid`.
    *
-   * Sesión única por usuario: entrar desde otro dispositivo revoca la anterior,
-   * así que el equipo desplazado recibe 401 en su siguiente petición y vuelve
-   * al login.
+   * Hasta MAX_ACTIVE_SESSIONS por usuario: al entrar desde un dispositivo más,
+   * se revoca la que lleva más tiempo sin usarse, así que ese equipo recibe 401
+   * en su siguiente petición y vuelve al login.
    */
   private async buildAuthResponse(
     user: User,
     client: ClientContext,
     persistent = false,
   ): Promise<AuthResponseDto> {
-    await this.revokeOtherSessions(user.id);
+    await this.makeRoomForSession(user.id);
 
     const session = await this.sessionsRepository.save(
       this.sessionsRepository.create({
@@ -579,6 +620,14 @@ export class AuthService {
         persistent,
       }),
     );
+
+    /* Aviso de seguridad (no en el registro, que no trae dispositivo). Un fallo aquí no impide entrar. */
+    if (client.ip || client.userAgent) {
+      const event: LoginEvent = { sessionId: session.id, ip: client.ip ?? null, device: describeDevice(client) };
+      for (const fn of this.loginListeners) {
+        try { fn(user.id, event); } catch { /* el aviso no bloquea el login */ }
+      }
+    }
 
     const token = this.generateToken(user, session.id);
     const refreshToken = this.generateRefreshToken(user, session.id, persistent);
@@ -910,6 +959,23 @@ export class AuthService {
     const session = await this.sessionsRepository.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Sesión no encontrada');
     await this.sessionsRepository.update(session.id, { revoked: true });
+  }
+
+  /** Deja sitio para una sesión nueva: revoca las menos usadas por encima del límite (y las caducadas). */
+  private async makeRoomForSession(userId: string): Promise<void> {
+    const active = await this.sessionsRepository.find({
+      where: { userId, revoked: false },
+      order: { lastUsed: 'DESC' },
+    });
+    const now = Date.now();
+    const live = active.filter((s) => s.expiresAt.getTime() > now);
+    const stale = [
+      ...active.filter((s) => s.expiresAt.getTime() <= now),
+      ...live.slice(MAX_ACTIVE_SESSIONS - 1),
+    ];
+    if (stale.length) {
+      await this.sessionsRepository.update({ id: In(stale.map((s) => s.id)) }, { revoked: true });
+    }
   }
 
   /** Cierra las demás sesiones del usuario (o todas si no se pasa `keepSid`). */

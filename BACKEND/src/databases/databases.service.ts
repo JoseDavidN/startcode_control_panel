@@ -23,6 +23,11 @@ import {
   SchemaTable,
   SchemaTrigger,
   UpdateRowInput,
+  InsertColumn,
+  InsertRowInput,
+  TableRef,
+  DeleteRowsInput,
+  InsertRowResult,
 } from './services/database-explorer.service';
 import { findDangerousQuery, isReadOnlyQuery } from './services/query-policy';
 import { DatabaseSessionService } from './services/database-session.service';
@@ -185,6 +190,57 @@ export class DatabasesService {
       `[${conn.name}] fila editada en ${input.schema}.${input.namespace ? `${input.namespace}.` : ''}${input.table} (${Object.keys(input.changes).join(', ')}) por el usuario ${userId}`,
     );
     return result;
+  }
+
+  /** Columnas de una tabla con su tipo y valor por defecto, para el formulario de fila nueva. */
+  async tableColumns(userId: string, id: string, ref: TableRef, sessionId?: string): Promise<InsertColumn[]> {
+    return this.explorer.tableColumns(await this.target(userId, id, sessionId), ref);
+  }
+
+  /** Fila nueva desde la tabla de resultados. */
+  async insertRow(
+    userId: string,
+    id: string,
+    input: InsertRowInput,
+    sessionId?: string,
+  ): Promise<InsertRowResult> {
+    const conn = await this.findOwned(userId, id);
+    const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
+    const result = await this.explorer.insertRow(target, input);
+    this.logger.log(
+      `[${conn.name}] fila nueva en ${input.schema}.${input.namespace ? `${input.namespace}.` : ''}${input.table} (${Object.keys(input.values).join(', ') || 'valores por defecto'}) por el usuario ${userId}`,
+    );
+    return result;
+  }
+
+  /**
+   * Borra filas desde los resultados, por su clave primaria. Queda en la
+   * auditoría de la conexión como las consultas peligrosas confirmadas.
+   */
+  async deleteRows(userId: string, id: string, input: DeleteRowsInput, sessionId?: string): Promise<{ affectedRows: number }> {
+    const conn = await this.findOwned(userId, id);
+    const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
+    const where = `${input.schema}.${input.namespace ? `${input.namespace}.` : ''}${input.table}`;
+    const shown = input.keys.slice(0, 20).map(k => JSON.stringify(k)).join(', ');
+    const query = `DELETE FROM ${where} — ${input.keys.length} ${input.keys.length === 1 ? 'fila' : 'filas'} por clave primaria: ${shown}${input.keys.length > 20 ? '…' : ''}`;
+    const started = Date.now();
+    const audit = (status: DatabaseQueryAuditStatus, extra: Partial<DatabaseQueryAudit>) =>
+      this.auditRepo
+        .save(this.auditRepo.create({
+          userId, connectionId: conn.id, schema: input.schema, query, reason: 'borra filas desde los resultados',
+          status, durationMs: Date.now() - started, ...extra,
+        }))
+        .catch(err => this.logger.error(`No se pudo auditar el borrado: ${(err as Error).message}`));
+    try {
+      const result = await this.explorer.deleteRows(target, input);
+      await audit(DatabaseQueryAuditStatus.OK, { affectedRows: result.affectedRows });
+      this.logger.warn(`[${conn.name}] ${result.affectedRows} filas borradas de ${where} por el usuario ${userId}`);
+      return result;
+    } catch (err) {
+      const message = err instanceof HttpException ? describeHttpError(err) : (err as Error).message;
+      await audit(DatabaseQueryAuditStatus.ERROR, { error: message });
+      throw err;
+    }
   }
 
   /** Últimas consultas peligrosas confirmadas sobre una conexión del usuario. */

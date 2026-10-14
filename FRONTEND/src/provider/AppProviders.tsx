@@ -24,7 +24,7 @@ import { TokenManager } from '@utils/tokenManager';
 const InactivityWatcher = () => {
   const { logout, isAuthenticated } = useAuth();
   const { settings } = useSecuritySettings();
-  const handleLogout = useCallback(() => { if (isAuthenticated) logout(); }, [isAuthenticated, logout]);
+  const handleLogout = useCallback(() => { if (isAuthenticated) void logout(); }, [isAuthenticated, logout]);
   const timeout = isAuthenticated && !TokenManager.isPersistent() ? settings.sessionTimeout : 0;
   useInactivityLogout(timeout, handleLogout);
   return null;
@@ -57,17 +57,10 @@ export const AppProviders = ({ children }: AppProvidersProps) => {
       </PreferencesProvider>
       </ContextMenuProvider>
       <Toaster
-        position="bottom-right"
+        position="bottom-center"
         expand
         richColors
-        toastOptions={{
-          style: {
-            background: 'rgb(var(--surface-rgb) / 0.92)',
-            border: '1px solid var(--hairline)',
-            color: 'var(--ink)',
-            fontFamily: 'var(--font-ui)',
-          },
-        }}
+        className="toaster-themed"
       />
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>

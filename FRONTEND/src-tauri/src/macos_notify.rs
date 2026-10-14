@@ -5,10 +5,16 @@
 //! descarta la notificación sin avisar. Esta API es la actual: pide el
 //! permiso con el diálogo del sistema y entrega la notificación.
 //!
-//! Solo funciona en la app empaquetada (.app con identificador). Con
-//! `tauri dev` el binario no tiene bundle y `currentNotificationCenter`
-//! abortaría el proceso, así que se comprueba antes y el frontend usa el plugin.
+//! `UNUserNotificationCenter` solo funciona en la app empaquetada (.app con
+//! identificador) y firmada: sin bundle (`tauri dev`) `currentNotificationCenter`
+//! abortaría el proceso, y una app sin firmar recibe «Notifications are not
+//! allowed for this application» al pedir permiso. En esos casos, y si el
+//! sistema rechaza una notificación concreta, se entrega con `osascript`
+//! (`display notification`), que funciona siempre. Si el usuario dijo «No
+//! permitir», se respeta y no se usa el respaldo.
 
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -63,6 +69,32 @@ impl Delegate {
 /* El delegado del centro es una referencia débil: hay que mantenerlo vivo. */
 static DELEGATE: OnceLock<Retained<Delegate>> = OnceLock::new();
 
+/* El sistema no deja usar UNUserNotificationCenter a esta app (sin firma): todo va por osascript. */
+static SCRIPT_ONLY: AtomicBool = AtomicBool::new(false);
+
+/// Respaldo: `display notification` de AppleScript. Título y texto van como
+/// argumentos del script (`argv`), nunca dentro del código: no hay que escapar nada.
+fn notify_script(title: &str, body: &str) -> Result<(), String> {
+    let out = Command::new("/usr/bin/osascript")
+        .args([
+            "-e",
+            "on run argv",
+            "-e",
+            "display notification (item 2 of argv) with title (item 1 of argv) sound name \"default\"",
+            "-e",
+            "end run",
+            title,
+            body,
+        ])
+        .output()
+        .map_err(|e| format!("osascript no disponible: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 fn has_bundle() -> bool {
     NSBundle::mainBundle().bundleIdentifier().is_some()
 }
@@ -103,28 +135,60 @@ fn label(status: UNAuthorizationStatus) -> &'static str {
 
 /// Estado del permiso: `granted`, `denied` o `default` (aún no se preguntó).
 /// Con `request`, si no se preguntó todavía se muestra el diálogo del sistema.
+/// Sin bundle o si el sistema no deja pedirlo, `granted`: se entrega con osascript.
 fn permission(request: bool) -> Result<String, String> {
-    let center = center()?;
+    if SCRIPT_ONLY.load(Ordering::Relaxed) {
+        return Ok("granted".into());
+    }
+    let Ok(center) = center() else {
+        SCRIPT_ONLY.store(true, Ordering::Relaxed);
+        return Ok("granted".into());
+    };
     let current = status(&center)?;
     if !request || current != UNAuthorizationStatus::NotDetermined {
         return Ok(label(current).into());
     }
 
+    /* (concedido, el sistema devolvió un error: la app no puede pedir permiso). */
     let (tx, rx) = mpsc::channel();
-    let block = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
-        let _ = tx.send(granted.as_bool());
+    let block = RcBlock::new(move |granted: Bool, error: *mut NSError| {
+        let _ = tx.send((granted.as_bool(), !error.is_null()));
     });
     center.requestAuthorizationWithOptions_completionHandler(
         UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
         &block,
     );
-    let granted = rx
+    let (granted, failed) = rx
         .recv_timeout(PROMPT_TIMEOUT)
         .map_err(|_| "No hubo respuesta al permiso de notificaciones".to_string())?;
-    Ok(if granted { "granted" } else { "denied" }.into())
+    if granted {
+        return Ok("granted".into());
+    }
+    if failed {
+        /* No fue el usuario: el sistema no deja a esta app (sin firmar) usar el centro. */
+        SCRIPT_ONLY.store(true, Ordering::Relaxed);
+        return Ok("granted".into());
+    }
+    Ok("denied".into())
 }
 
+/// Entrega una notificación: con el centro de notificaciones si se puede;
+/// si no (sin bundle, sin firma, o el sistema la rechaza), con osascript.
+/// Si el usuario denegó el permiso, no se notifica.
 fn notify(title: &str, body: &str) -> Result<(), String> {
+    match permission(true)?.as_str() {
+        "denied" => return Err("Permiso de notificaciones denegado en Ajustes del Sistema".into()),
+        _ if SCRIPT_ONLY.load(Ordering::Relaxed) => return notify_script(title, body),
+        _ => {}
+    }
+    match notify_center(title, body) {
+        Ok(()) => Ok(()),
+        Err(center_error) => notify_script(title, body)
+            .map_err(|script_error| format!("{center_error}; respaldo: {script_error}")),
+    }
+}
+
+fn notify_center(title: &str, body: &str) -> Result<(), String> {
     let center = center()?;
 
     let content = UNMutableNotificationContent::new();

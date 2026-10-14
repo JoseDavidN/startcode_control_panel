@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useRef, useState } from 'react';
 import { type ServerData } from '@typings/DashboardTypes';
-import { Modal } from '@components/common/Modal';
 import { SftpIcon } from '@components/servers/sftp/icons';
 import { AgentCard } from '@components/servers/AgentCard';
 import { CommandBar, type CommandBarHandle } from '@components/servers/CommandBar';
@@ -13,6 +12,7 @@ import { ProcessKillModal } from '@components/servers/ProcessKillModal';
 import { ServiceLogsModal } from '@components/servers/ServiceLogsModal';
 import { ServiceCard } from '@components/servers/ServiceCard';
 import { unitName } from '@utils/services';
+import { InstallServiceModal } from '@components/servers/InstallServiceModal';
 import { notify } from '@services/notification.service';
 import type { ServiceAction } from '@services/service-control.service';
 import { MetricBar } from '@components/common/MetricBar';
@@ -29,8 +29,6 @@ const ChevronLeft  = ({ className='w-5 h-5' }) => <svg {...sp} className={classN
 const PlusIcon     = ({ className='w-4 h-4' }) => <svg {...sp} className={className}><path d="M12 5v14M5 12h14"/></svg>;
 const ChartIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M4 20V10M10 20V4M16 20v-6M22 20H2"/></svg>;
 const PackageIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
-const GlobeIcon    = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>;
-const DbIcon       = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>;
 const TerminalIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
 const NetworkIcon  = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 011-1h12a1 1 0 011 1v3M12 8v5"/></svg>;
 const ActivityIcon = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
@@ -38,6 +36,7 @@ const CloseIcon    = ({ className='w-4 h-4' }) => <svg {...sp} className={classN
 const MemoryIcon   = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="2" y="7" width="20" height="10" rx="1.5"/><path d="M6 11v2M10 11v2M14 11v2M18 11v2M6 17v3M18 17v3"/></svg>;
 const CpuIcon      = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
 const CodeIcon     = ({ className='w-5 h-5' }) => <svg {...sp} className={className}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>;
+const HelmIcon     = ({ className='w-8 h-8' }) => <svg {...sp} className={className}><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>;
 const CubeIcon     = ({ className='w-8 h-8' }) => <svg {...sp} className={className}><path d="M21 7.5l-9-4.5-9 4.5v9l9 4.5 9-4.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>;
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -102,7 +101,7 @@ interface ServerDetailProps {
   onBack: () => void;
 }
 
-/* Bajo demanda: xterm, el cliente SFTP y Docker solo se descargan al abrirlos,
+/* Bajo demanda: xterm, el cliente SFTP, Docker y Kubernetes solo se descargan al abrirlos,
    no con el detalle (xterm solo pesa más que el resto de la vista). */
 const ServerTerminal = lazy(() =>
   import('@components/servers/ServerTerminal').then(m => ({ default: m.ServerTerminal })));
@@ -110,6 +109,8 @@ const SftpModal = lazy(() =>
   import('@components/servers/sftp/SftpModal').then(m => ({ default: m.SftpModal })));
 const DockerTab = lazy(() =>
   import('@components/servers/DockerTab').then(m => ({ default: m.DockerTab })));
+const KubernetesTab = lazy(() =>
+  import('@components/servers/KubernetesTab').then(m => ({ default: m.KubernetesTab })));
 const CommandsTab = lazy(() =>
   import('@components/servers/CommandsTab').then(m => ({ default: m.CommandsTab })));
 
@@ -118,7 +119,15 @@ const TABS = [
   { id: 'services',   label: 'Servicios',       icon: PackageIcon },
   { id: 'commands',   label: 'Comandos',        icon: CodeIcon },
   { id: 'docker',     label: 'Docker',          icon: CubeIcon },
+  { id: 'kubernetes', label: 'Kubernetes',      icon: HelmIcon },
 ] as const;
+
+/* Unidades de systemd que delatan un nodo de Kubernetes, de la distribución más
+   concreta a la genérica: la primera que aparezca en el inventario manda. */
+const KUBERNETES_UNITS = [
+  'k3s', 'k3s-agent', 'snap.microk8s.daemon-kubelite', 'snap.microk8s.daemon-kubelet',
+  'rke2-server', 'rke2-agent', 'k0scontroller', 'k0sworker', 'kubelet',
+];
 
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
@@ -169,7 +178,9 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const services = React.useMemo(() => detail?.services.list ?? [], [detail]);
   /* El tab Docker solo aparece si el inventario trae la unidad docker.service. */
   const dockerUnit = services.find(s => unitName(s.name) === 'docker');
-  const visibleTabs = TABS.filter(t => t.id !== 'docker' || dockerUnit);
+  /* El tab Kubernetes, si el inventario trae una unidad de k3s, microk8s, rke2, k0s o kubelet. */
+  const kubeUnit = KUBERNETES_UNITS.map(u => services.find(s => unitName(s.name) === u)).find(Boolean);
+  const visibleTabs = TABS.filter(t => (t.id !== 'docker' || dockerUnit) && (t.id !== 'kubernetes' || kubeUnit));
 
   const primaryIface = detail?.network.primary ?? null;
   const otherIfaces = (detail?.network.interfaces ?? []).filter(i => i.iface !== primaryIface?.iface);
@@ -758,6 +769,13 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </Suspense>
       )}
 
+      {/* ── Kubernetes ──────────────────────────────────────────────── */}
+      {activeTab === 'kubernetes' && kubeUnit && (
+        <Suspense fallback={<div className="glass rounded-2xl grain p-5 text-sm text-white/45">Cargando…</div>}>
+          <KubernetesTab serverId={server.id} unit={{ name: unitName(kubeUnit.name), state: kubeUnit.state }} />
+        </Suspense>
+      )}
+
       {/* ── Cerrar un proceso ────────────────────────────────────────── */}
       {killPrompt && (
         <ProcessKillModal
@@ -807,29 +825,8 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
         </Suspense>
       )}
 
-      {/* ── Install Modal ────────────────────────────────────────────── */}
-      <Modal isOpen={installOpen} onClose={() => setInstallOpen(false)} title="Instalar Nuevo Servicio" size="md">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {[
-            { name: 'Nginx',      type: 'nginx',      icon: <GlobeIcon />,   desc: 'Servidor web y proxy' },
-            { name: 'Apache',     type: 'apache',     icon: <GlobeIcon />,   desc: 'Servidor web HTTP' },
-            { name: 'MySQL',      type: 'mysql',      icon: <DbIcon />,      desc: 'Base de datos relacional' },
-            { name: 'PostgreSQL', type: 'postgresql', icon: <DbIcon />,      desc: 'Base de datos avanzada' },
-            { name: 'Redis',      type: 'redis',      icon: <DbIcon />,      desc: 'Cache en memoria' },
-            { name: 'MongoDB',    type: 'mongodb',    icon: <DbIcon />,      desc: 'Base de datos NoSQL' },
-            { name: 'WordPress',  type: 'wordpress',  icon: <CodeIcon />,    desc: 'CMS popular' },
-            { name: 'Node.js',    type: 'nodejs',     icon: <TerminalIcon />,desc: 'Runtime JavaScript' },
-            { name: 'Docker',     type: 'docker',     icon: <CubeIcon className="w-5 h-5" />, desc: 'Contenedores' },
-          ].map(({ name, type, icon, desc }) => (
-            <button key={type}
-              className="p-4 rounded-xl glass-soft row-hit hover:border-violet-400/25 transition text-left">
-              <div className="w-8 h-8 text-white/60 mb-2">{icon}</div>
-              <p className="text-sm font-semibold text-white mb-0.5">{name}</p>
-              <p className="text-xs text-white/45">{desc}</p>
-            </button>
-          ))}
-        </div>
-      </Modal>
+      {/* ── Instalar servicios ───────────────────────────────────────── */}
+      <InstallServiceModal serverId={server.id} serverName={server.name} isOpen={installOpen} onClose={() => setInstallOpen(false)} />
 
       {/* ── Línea de comandos flotante: visible en cualquier tab ─────── */}
       <CommandBar ref={commandBarRef} serverId={server.id} serverName={server.name} />

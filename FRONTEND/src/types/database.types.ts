@@ -182,3 +182,25 @@ export interface DatabaseQueryAuditEntry {
   durationMs: number;
   createdAt: string;
 }
+
+/** Tabla concreta: base (en MySQL, el esquema) y, en PostgreSQL, su esquema. */
+export interface TableRef {
+  schema: string;
+  namespace?: string;
+  table: string;
+}
+
+/** Columna de una tabla para el formulario de fila nueva. */
+export interface InsertColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  /** Valor por defecto literal, para precargar. */
+  defaultValue: string | null;
+  /** Lo calcula la base si se deja vacío (autoincremento, identidad, now()…). */
+  auto: boolean;
+  autoLabel: string | null;
+  /** Generada: no se puede escribir. */
+  generated: boolean;
+  primaryKey: boolean;
+}

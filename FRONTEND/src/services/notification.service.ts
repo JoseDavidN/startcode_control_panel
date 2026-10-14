@@ -13,7 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 /* macOS: el plugin usa NSUserNotificationCenter, que nunca pide permiso,
    dice que está concedido y el sistema descarta la notificación sin avisar.
    Ahí van los comandos propios (src-tauri/src/macos_notify.rs), con
-   UNUserNotificationCenter. Fallan sin bundle (`tauri dev`): entonces, el plugin. */
+   UNUserNotificationCenter y respaldo a osascript. Windows y Linux siguen con el plugin. */
 const IS_MAC = /Mac/i.test(navigator.userAgent);
 
 /** `granted`, `denied` o `default` (aún no se preguntó). */
@@ -33,8 +33,8 @@ async function macPermission(request: boolean): Promise<NativePermission | null>
 /** Estado del permiso del sistema; con `request` se pide si aún no se preguntó. */
 export async function nativePermission(request = false): Promise<NativePermission> {
   if (IS_MAC) {
-    const mac = await macPermission(request);
-    if (mac) return mac;
+    /* Sin respuesta del comando (no debería pasar): «default», nunca el plugin. */
+    return (await macPermission(request)) ?? 'default';
   }
   try {
     let granted = await invokeTauri<boolean | null>('plugin:notification|is_permission_granted');
@@ -48,19 +48,19 @@ export async function nativePermission(request = false): Promise<NativePermissio
 }
 
 async function sendNativeTauri(title: string, body: string): Promise<boolean> {
+  /* macOS nunca usa el plugin (NSUserNotificationCenter: el sistema descarta
+     sin avisar). `macos_notify` pide el permiso si hace falta y, si el centro
+     de notificaciones no se puede usar (sin firma, sin bundle en desarrollo o
+     una entrega rechazada), entrega con osascript. Solo falla si el usuario
+     denegó el permiso. */
   if (IS_MAC) {
-    const permission = await macPermission(true);
-    if (permission === 'denied') return false;
-    if (permission === 'granted') {
-      try {
-        await invokeTauri('macos_notify', { title, body });
-        return true;
-      } catch (error) {
-        console.warn('Notificación de macOS no entregada:', error);
-        return false;
-      }
+    try {
+      await invokeTauri('macos_notify', { title, body });
+      return true;
+    } catch (error) {
+      console.warn('Notificación de macOS no entregada:', error);
+      return false;
     }
-    /* null: sin bundle (desarrollo); se intenta con el plugin. */
   }
   try {
     let granted = await invokeTauri<boolean | null>('plugin:notification|is_permission_granted');
@@ -76,16 +76,8 @@ async function sendNativeTauri(title: string, body: string): Promise<boolean> {
   }
 }
 
-/* ── Toast styles compartidos ─────────────────────────────────────── */
-const BASE = {
-  style: {
-    background: 'rgb(var(--surface-rgb) / 0.92)',
-    border: '1px solid var(--hairline)',
-    backdropFilter: 'blur(28px)',
-    color: 'var(--ink)',
-  } as React.CSSProperties,
-  duration: 5000,
-};
+/* ── Toast: los colores salen del tema (`.toaster-themed` en App.css) ── */
+const BASE = { duration: 5000 };
 
 /* ── API pública ──────────────────────────────────────────────────── */
 export const notify = {

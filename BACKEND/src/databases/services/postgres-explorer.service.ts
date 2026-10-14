@@ -15,6 +15,14 @@ import {
   type SchemaTableColumn,
   type SchemaTrigger,
   type UpdateRowInput,
+  type InsertColumn,
+  type InsertRowInput,
+  type TableRef,
+  type DeleteRowsInput,
+  type InsertRowResult,
+  MAX_DELETE_ROWS,
+  assertPrimaryKeys,
+  unquoteDefault,
 } from './explorer.common';
 
 /* Esquemas internos de PostgreSQL: no se listan en el árbol. */
@@ -347,6 +355,120 @@ export class PostgresExplorerService {
         return { affectedRows: res.rowCount };
       } catch (err) {
         if (err instanceof BadRequestException) throw err;
+        throw new BadRequestException(describePgError(err));
+      }
+    });
+  }
+
+  /**
+   * Columnas de una tabla para el formulario de fila nueva. `column_default`
+   * es una expresión: un literal ('abc'::text, 0, true) se precarga; lo demás
+   * (nextval, now(), gen_random_uuid()…) lo calcula la base.
+   */
+  async tableColumns(t: ProbeTarget, ref: TableRef): Promise<InsertColumn[]> {
+    this.assertDatabaseAllowed(t, ref.schema);
+    const namespace = ref.namespace || 'public';
+    return this.withPg(t, ref.schema, async (client) => {
+      const res = await client.query<{
+        name: string; type: string; nullable: string; def: string | null; identity: string; generated: string; pk: boolean;
+      }>(
+        `SELECT c.column_name AS name,
+                format_type(a.atttypid, a.atttypmod) AS type,
+                c.is_nullable AS nullable, c.column_default AS def,
+                c.is_identity AS identity, c.is_generated AS generated,
+                EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = a.attrelid AND i.indisprimary AND a.attnum = ANY (i.indkey)) AS pk
+           FROM information_schema.columns c
+           JOIN pg_attribute a ON a.attrelid = format('%I.%I', c.table_schema, c.table_name)::regclass AND a.attname = c.column_name
+          WHERE c.table_schema = $1 AND c.table_name = $2
+          ORDER BY c.ordinal_position`,
+        [namespace, ref.table],
+      );
+      if (res.rows.length === 0) throw new BadRequestException(`La tabla ${namespace}.${ref.table} no existe`);
+      return res.rows.map((r): InsertColumn => {
+        const raw = r.def;
+        const literal = raw === null || /^NULL(::|$)/i.test(raw) ? null
+          : unquoteDefault(raw) ?? (/^-?\d+(\.\d+)?(::[\w ]+)?$|^(true|false)$/i.test(raw) ? raw.replace(/::.*$/, '') : null);
+        const expression = raw !== null && literal === null && !/^NULL(::|$)/i.test(raw) ? raw : null;
+        const identity = r.identity === 'YES';
+        return {
+          name: r.name,
+          type: r.type,
+          nullable: r.nullable === 'YES',
+          defaultValue: literal,
+          auto: identity || expression !== null,
+          autoLabel: identity ? 'identity' : expression,
+          generated: r.generated === 'ALWAYS',
+          primaryKey: r.pk,
+        };
+      });
+    });
+  }
+
+  /** Inserta una fila con las columnas recibidas; las demás toman su valor por defecto. Devuelve la fila (RETURNING *). */
+  async insertRow(t: ProbeTarget, input: InsertRowInput): Promise<InsertRowResult> {
+    const columns = await this.tableColumns(t, input);
+    const namespace = input.namespace || 'public';
+    const cols = Object.keys(input.values);
+    const known = new Map(columns.map(c => [c.name, c]));
+    const unknown = cols.filter(c => !known.has(c));
+    if (unknown.length) throw new BadRequestException(`Columnas desconocidas: ${unknown.join(', ')}`);
+    const generated = cols.filter(c => known.get(c)?.generated);
+    if (generated.length) throw new BadRequestException(`Columnas generadas, no se pueden escribir: ${generated.join(', ')}`);
+
+    return this.withPg(t, input.schema, async (client) => {
+      const id = (name: string) => client.escapeIdentifier(name);
+      const target = `${id(namespace)}.${id(input.table)}`;
+      const sql = cols.length
+        ? `INSERT INTO ${target} (${cols.map(id).join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`
+        : `INSERT INTO ${target} DEFAULT VALUES RETURNING *`;
+      try {
+        const res = await client.query<Record<string, unknown>>(sql, cols.map(c => input.values[c]));
+        const inserted = res.rows[0];
+        return {
+          affectedRows: res.rowCount ?? 0,
+          insertId: null,
+          row: inserted ? Object.fromEntries(Object.entries(inserted).map(([k, v]) => [k, serializeValue(v)])) : null,
+        };
+      } catch (err) {
+        throw new BadRequestException(describePgError(err));
+      }
+    });
+  }
+
+  /** Borra filas por su clave primaria completa, en una transacción. */
+  async deleteRows(t: ProbeTarget, input: DeleteRowsInput): Promise<{ affectedRows: number }> {
+    this.assertDatabaseAllowed(t, input.schema);
+    if (input.keys.length === 0) throw new BadRequestException('No hay filas que borrar');
+    if (input.keys.length > MAX_DELETE_ROWS) throw new BadRequestException(`Se pueden borrar hasta ${MAX_DELETE_ROWS} filas de una vez`);
+    const namespace = input.namespace || 'public';
+
+    return this.withPg(t, input.schema, async (client) => {
+      const rel = await client.query<{ pk: string[] | null }>(
+        `SELECT ARRAY(SELECT a.attname::text FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+                       WHERE i.indrelid = c.oid AND i.indisprimary) AS pk
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p')`,
+        [namespace, input.table],
+      );
+      if (!rel.rows[0]) throw new BadRequestException(`La tabla ${namespace}.${input.table} no existe`);
+      /* ::text[]: con name[] el driver devuelve el texto «{id}» en vez de una lista. */
+      const pk = rel.rows[0].pk ?? [];
+      assertPrimaryKeys(pk, input.keys);
+      const id = (name: string) => client.escapeIdentifier(name);
+      const sql = `DELETE FROM ${id(namespace)}.${id(input.table)} WHERE ` +
+        pk.map((c, i) => `${id(c)} IS NOT DISTINCT FROM $${i + 1}`).join(' AND ');
+
+      let affected = 0;
+      try {
+        await client.query('BEGIN');
+        for (const key of input.keys) {
+          const res = await client.query(sql, pk.map(c => key[c]));
+          affected += res.rowCount ?? 0;
+        }
+        await client.query('COMMIT');
+        return { affectedRows: affected };
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
         throw new BadRequestException(describePgError(err));
       }
     });

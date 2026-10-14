@@ -4,6 +4,7 @@ import axios, {
 	AxiosError,
 	type InternalAxiosRequestConfig,
 } from 'axios';
+import { invoke } from '@tauri-apps/api/core';
 import { API_CONFIG } from '@utils/constants';
 import { TokenManager } from '@utils/tokenManager';
 import type { ApiError, ApiResponse } from '@typings/api.types';
@@ -14,6 +15,15 @@ import type { ApiError, ApiResponse } from '@typings/api.types';
 const CLIENT_HEADERS: Record<string, string> = {
 	'X-StartCode-Client': `desktop/${import.meta.env.VITE_APP_VERSION ?? '0.0.0'}`,
 };
+
+/* Nombre del equipo (comando `device_name` de Tauri). Solo viaja en las
+   peticiones de inicio de sesión: alimenta el aviso de seguridad «Nuevo
+   inicio de sesión» que reciben los demás equipos del usuario. Codificado
+   porque una cabecera no admite tildes («MacBook de Andrés»). */
+let deviceName: string | null = null;
+void invoke<string | null>('device_name')
+	.then((name) => { deviceName = name; })
+	.catch(() => undefined);
 
 /** Endpoints cuyo 401 hay que devolver tal cual a quien llamó. */
 const AUTH_ENDPOINTS = [
@@ -55,6 +65,10 @@ class ApiService {
 		this.api.interceptors.request.use(
 			(config: InternalAxiosRequestConfig) => {
 				const token = TokenManager.getAccessToken();
+
+				if (deviceName && config.headers && isAuthEndpoint(config.url)) {
+					config.headers['X-StartCode-Device'] = encodeURIComponent(deviceName);
+				}
 
 				if (token && config.headers) {
 					config.headers.Authorization = `Bearer ${token}`;

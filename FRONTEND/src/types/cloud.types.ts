@@ -79,6 +79,20 @@ export type CloudNotice =
       /** 0 a 1. */
       progress: number;
       status: 'uploading' | 'done';
+    }
+  | {
+      id: string;
+      kind: 'download';
+      /** Nombre del archivo guardado (una carpeta, como .zip). */
+      label: string;
+      /** Ruta donde se guarda, la elegida en el diálogo. */
+      destination: string;
+      /** Tamaño total; null si no se conoce (una carpeta se comprime mientras se descarga). */
+      total: number | null;
+      loaded: number;
+      status: 'downloading' | 'done';
+      /** Detiene la descarga y borra lo que se había escrito. */
+      cancel: () => void;
     };
 
 /** Dónde vive cada sección en el almacenamiento de la nube (rutas absolutas). */

@@ -67,21 +67,47 @@ html, body, #root {
 /* ── Interactive cursor ───────────────────────────────────────────── */
 button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
 
-/* ── Scrollbars ───────────────────────────────────────────────────── */
-.scroll-area::-webkit-scrollbar { width: 10px; height: 10px; }
-.scroll-area::-webkit-scrollbar-track { background: transparent; }
-.scroll-area::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
+/* ── Scrollbars ───────────────────────────────────────────────────────
+   Las nativas se ocultan: WebKit no deja cambiar su cursor (siempre la
+   flecha, o la I en un textarea). Las dibuja `utils/overlayScrollbars.ts`
+   en una capa fija, con la manito para agarrar, solo en la zona bajo el
+   mouse o que se está desplazando. */
+.scroll-area, .scroll-thin, .modal-scroll { scrollbar-width: none; }
+.scroll-area::-webkit-scrollbar,
+.scroll-thin::-webkit-scrollbar,
+.modal-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.osb-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+.osb-track {
+  position: fixed;
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 180ms ease;
+}
+.osb-track.osb-on { opacity: 1; pointer-events: auto; }
+/* El thumb pegado al borde: a la derecha (vertical) o abajo (horizontal). */
+.osb-y { justify-content: flex-end; align-items: flex-start; }
+.osb-x { flex-direction: column; justify-content: flex-end; align-items: flex-start; }
+.osb-thumb {
   border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: color-mix(in oklab, var(--ink) 30%, transparent);
+  cursor: grab;
+  will-change: transform;
+  transition: width 140ms ease, height 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
-.scroll-area::-webkit-scrollbar-thumb:hover {
-  background: var(--scroll-thumb-hover);
-  background-clip: padding-box;
+.osb-y .osb-thumb { width: 6px; margin-right: 2px; }
+.osb-x .osb-thumb { height: 6px; margin-bottom: 2px; }
+.osb-track:hover .osb-thumb,
+.osb-track.osb-dragging .osb-thumb {
+  background: linear-gradient(135deg, rgb(var(--brand-1-rgb) / 0.85), rgb(var(--brand-2-rgb) / 0.85));
+  box-shadow: 0 0 0 1px var(--hairline-strong);
 }
-.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: var(--scroll-thumb-thin); border-radius: 999px; }
+.osb-y:hover .osb-thumb, .osb-y.osb-dragging .osb-thumb { width: 10px; margin-right: 1px; }
+.osb-x:hover .osb-thumb, .osb-x.osb-dragging .osb-thumb { height: 10px; margin-bottom: 1px; }
+/* Mientras se arrastra, la mano cerrada en toda la ventana y sin seleccionar texto. */
+.osb-grabbing, .osb-grabbing * { cursor: grabbing !important; user-select: none !important; }
 
 /* ── Superficies ──────────────────────────────────────────────────────
    Todo esto va en @layer components a propósito: una regla fuera de capa
@@ -330,18 +356,6 @@ input[type="checkbox"].chk:checked::after {
   transform: rotate(45deg);
 }
 
-/* ── Modal scrollbar ──────────────────────────────────────────────── */
-.modal-scroll { scrollbar-gutter: stable; }
-.modal-scroll::-webkit-scrollbar { width: 4px; }
-.modal-scroll::-webkit-scrollbar-track { background: transparent; }
-.modal-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgb(var(--brand-1-rgb) / 0.45) 0%, rgb(var(--brand-2-rgb) / 0.45) 100%);
-  border-radius: 999px;
-}
-.modal-scroll::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgb(var(--brand-1-rgb) / 0.7) 0%, rgb(var(--brand-2-rgb) / 0.7) 100%);
-}
-
 /* ── Sidebar colapsable ───────────────────────────────────────────── */
 .sidebar {
   --sb-expanded: 240px;
@@ -445,6 +459,11 @@ input[type="checkbox"].chk:checked::after {
   .data-table tbody tr.row-selected > td.sticky-cell {
     background-image: linear-gradient(rgb(var(--brand-1-rgb) / 0.22), rgb(var(--brand-1-rgb) / 0.22));
   }
+  /* Fila nueva sin guardar, arriba del resultado. */
+  .data-table tbody tr.row-new > td { background-color: rgb(var(--brand-2-rgb) / 0.10); }
+  .data-table tbody tr.row-new > td.sticky-cell {
+    background-image: linear-gradient(rgb(var(--brand-2-rgb) / 0.16), rgb(var(--brand-2-rgb) / 0.16));
+  }
   .data-table tbody tr > td.cell-dirty {
     background-color: color-mix(in oklab, var(--color-amber-400) 16%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-amber-400) 45%, transparent);
@@ -465,3 +484,38 @@ input[type="checkbox"].chk:checked::after {
     contain: paint;
   }
 }
+
+/* ── Notificaciones (sonner) ──────────────────────────────────────────
+   Sonner pinta con sus variables `--normal-*`, `--success-*`, `--info-*`,
+   `--warning-*` y `--error-*`; aquí se derivan del tema activo: fondo de la
+   superficie teñido con la marca (normal e info) o con el color semántico,
+   borde del mismo tono y texto mezclado con la tinta, que se lee igual en
+   los temas oscuros y en Solar. El selector repetido gana a los valores por
+   defecto de sonner, que se inyectan después de esta hoja. */
+:root .toaster-themed[data-sonner-toaster] {
+  --toast-surface: rgb(var(--surface-rgb));
+  --normal-bg: color-mix(in oklab, rgb(var(--brand-1-rgb)) 14%, var(--toast-surface));
+  --normal-border: color-mix(in oklab, rgb(var(--brand-1-rgb)) 35%, var(--hairline));
+  --normal-text: var(--ink);
+  --info-bg: color-mix(in oklab, rgb(var(--brand-2-rgb)) 16%, var(--toast-surface));
+  --info-border: color-mix(in oklab, rgb(var(--brand-2-rgb)) 40%, transparent);
+  --info-text: color-mix(in oklab, rgb(var(--brand-2-rgb)) 45%, var(--ink));
+  --success-bg: color-mix(in oklab, var(--color-emerald-500) 16%, var(--toast-surface));
+  --success-border: color-mix(in oklab, var(--color-emerald-500) 40%, transparent);
+  --success-text: color-mix(in oklab, var(--color-emerald-500) 45%, var(--ink));
+  --warning-bg: color-mix(in oklab, var(--color-amber-500) 16%, var(--toast-surface));
+  --warning-border: color-mix(in oklab, var(--color-amber-500) 42%, transparent);
+  --warning-text: color-mix(in oklab, var(--color-amber-500) 45%, var(--ink));
+  --error-bg: color-mix(in oklab, var(--color-rose-500) 16%, var(--toast-surface));
+  --error-border: color-mix(in oklab, var(--color-rose-500) 42%, transparent);
+  --error-text: color-mix(in oklab, var(--color-rose-500) 45%, var(--ink));
+  font-family: var(--font-ui);
+}
+:root .toaster-themed[data-sonner-toaster] [data-sonner-toast] {
+  box-shadow: var(--shadow-float);
+}
+:root .toaster-themed[data-sonner-toaster] [data-sonner-toast] [data-description] {
+  color: var(--ink);
+  opacity: 0.72;
+}
+

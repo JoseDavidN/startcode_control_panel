@@ -3,6 +3,40 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.7.0",
+      "type": "minor",
+      "date": "2026-10-13",
+      "title": "Pods de Kubernetes en el detalle del servidor",
+      "changes": {
+        "added": [
+          "Bases de datos: sangría automática al saltar de línea dentro de una misma consulta; después de `;` la siguiente empieza en el margen",
+          "Bases de datos: el editor SQL predice tablas, vistas y columnas mientras escribes (Ctrl + Espacio para abrir las sugerencias), sin pedir nada nuevo al servidor",
+          "Bases de datos: hasta 6 consolas SQL en pestañas junto al editor; cada una conserva su consulta y sus resultados al cambiar de pestaña, y se renombra con doble clic",
+          "Bases de datos: «Nueva fila» agrega filas directamente en la tabla de resultados de un SELECT * de una sola tabla, con los valores por defecto ya marcados; al guardar aparecen como el primer registro",
+          "Bases de datos: selecciona filas de un resultado por su índice y elimínalas con «Eliminar filas»; se pide confirmación, se borran todas o ninguna y queda en la auditoría",
+          "Nueva pestaña Kubernetes en el detalle de los servidores que lo tienen (k3s, microk8s, rke2, k0s o kubelet): los pods de todos los namespaces con su estado, contenedores listos, reinicios, edad y, si el clúster tiene metrics-server, CPU y memoria",
+          "Filtros por namespace y texto, y vistas Activos, Con problemas y Todos; los pods que fallan salen primero. Al abrir un pod se ven su nodo, su IP y cada contenedor con su imagen y estado. La lista se lee al abrir la pestaña y se actualiza con el botón Actualizar",
+          "Instalar servicios desde el detalle del servidor: catálogo con el logo real de cada servicio. Ya se puede instalar Nginx en cualquier Linux con apt, dnf, yum, zypper, apk o pacman: lo instala, lo arranca, lo deja habilitado y muestra cada paso; los demás servicios llegan pronto",
+          "Si el servicio ya está instalado, el mismo botón ofrece desinstalarlo por completo, previa confirmación: quita paquetes, configuración, registros y usuario del sistema, y comprueba que no quede rastro",
+          "Instalar Kubernetes desde el detalle del servidor eligiendo la distribución: K3s, MicroK8s, k0s o RKE2. La desinstalación borra todo lo del clúster (datos, imágenes, configuración, red y reglas del cortafuegos) sin tocar Docker ni Podman",
+          "Instalar Docker (Engine, CLI, containerd, buildx y compose) desde el detalle del servidor; si ya está, el mismo botón lo desinstala por completo, con imágenes, contenedores, volúmenes y redes",
+          "Instalar bases de datos desde el detalle del servidor: PostgreSQL, MySQL o MariaDB, MongoDB y Redis. Si ya están, el mismo botón las desinstala por completo, con todas sus bases de datos",
+          "Instalar Fail2ban (protege SSH sin bloquear nunca al panel) y restic (copias de seguridad cifradas, versión oficial verificada) desde el detalle del servidor; también se desinstalan por completo",
+          "Instalar Tailscale (con el enlace para unir el servidor a tu red) y WireGuard (interfaz wg0 lista, con su clave pública para copiar) desde el detalle del servidor; también se desinstalan por completo, salvo si el panel entra al servidor por esa misma VPN",
+          "Instalar Node.js (versión LTS, con npm) desde el detalle del servidor; si ya está, el mismo botón lo desinstala por completo, con los paquetes globales de npm y sus cachés"
+        ],
+        "changed": [
+          "Barras de desplazamiento más visibles en toda la app, con la manito para agarrarlas y arrastrarlas",
+          "Cloud: al descargar un archivo o carpeta, el diálogo para elegir dónde guardarlo se abre al instante y un aviso muestra el progreso de la descarga, que se puede cancelar",
+          "Cada inicio de sesión en tu cuenta te avisa en tus otros equipos con una notificación del sistema: nombre del equipo, app, sistema e IP",
+          "Notificaciones del sistema en macOS más fiables: si macOS no deja usar su centro de notificaciones, se entregan igualmente",
+          "Puedes tener la sesión abierta en hasta 3 equipos a la vez; al entrar desde un cuarto se cierra la que lleva más tiempo sin usarse",
+          "Las notificaciones salen abajo al centro de la app con los colores del tema elegido, y ahora avisan al guardar o crear una fila desde los resultados",
+          "Docker: la lista de contenedores se lee al entrar a la pestaña y después solo con el botón Actualizar, en lugar de refrescarse sola cada 15 s"
+        ]
+      }
+    },
+    {
       "version": "0.6.0",
       "type": "minor",
       "date": "2026-10-13",

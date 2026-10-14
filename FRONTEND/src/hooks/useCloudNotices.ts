@@ -19,9 +19,18 @@ export interface UploadNoticeControl {
   fail: (message: string) => void;
 }
 
+/** Lo que la descarga va informando al aviso. */
+export interface DownloadNoticeControl {
+  progress: (loaded: number, total: number | null) => void;
+  done: () => void;
+  fail: (message: string) => void;
+  /** El usuario la canceló: el aviso se va sin error. */
+  cancelled: () => void;
+}
+
 /**
- * Avisos de la vista Cloud: informativos (5 s) y de carga, con el progreso
- * real que va reportando la subida a la nube.
+ * Avisos de la vista Cloud: informativos (5 s), de carga y de descarga, con
+ * el progreso real que va reportando la transferencia.
  */
 export function useCloudNotices() {
   const [notices, setNotices] = useState<CloudNotice[]>([]);
@@ -67,5 +76,30 @@ export function useCloudNotices() {
     };
   }, [later, dismiss, info]);
 
-  return { notices, info, startUpload, dismiss };
+  /** Abre el aviso de una descarga (ya con su destino elegido) y devuelve con qué actualizarlo. */
+  const startDownload = useCallback((
+    download: { label: string; destination: string; cancel: () => void },
+  ): DownloadNoticeControl => {
+    const id = newId();
+    setNotices(prev => [...prev, { id, kind: 'download', ...download, total: null, loaded: 0, status: 'downloading' }]);
+    const update = (change: (n: Extract<CloudNotice, { kind: 'download' }>) => CloudNotice) =>
+      setNotices(prev => prev.map(n => (n.id === id && n.kind === 'download' ? change(n) : n)));
+    return {
+      progress: (loaded, total) => update(n => ({ ...n, loaded, total })),
+      done: () => {
+        update(n => ({ ...n, status: 'done', total: n.total ?? n.loaded }));
+        later(() => dismiss(id), DONE_MS);
+      },
+      fail: message => {
+        dismiss(id);
+        info('No se pudo completar la descarga', message);
+      },
+      cancelled: () => {
+        dismiss(id);
+        info('Descarga cancelada', `No se guardó «${download.label}».`);
+      },
+    };
+  }, [later, dismiss, info]);
+
+  return { notices, info, startUpload, startDownload, dismiss };
 }

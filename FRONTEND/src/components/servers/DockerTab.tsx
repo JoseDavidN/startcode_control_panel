@@ -105,7 +105,7 @@ const ContainerRow = ({ c }: { c: DockerContainer }) => {
 
 /**
  * Contenedores Docker en ejecución. Se leen por SSH al abrir el tab (no los
- * manda el agente), así que la lista es una foto que se refresca cada 15 s.
+ * manda el agente), así que la lista es una foto: se vuelve a leer con Actualizar.
  */
 export const DockerTab: React.FC<Props> = ({ serverId, dockerState }) => {
   const [filter, setFilter] = useState('');

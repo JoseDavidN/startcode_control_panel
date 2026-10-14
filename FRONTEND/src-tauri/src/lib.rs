@@ -1,3 +1,4 @@
+mod cloud_download;
 mod device;
 #[cfg(target_os = "macos")]
 mod macos_notify;
@@ -7,12 +8,18 @@ pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        cloud_download::cloud_download,
+        cloud_download::cloud_download_cancel,
         device::device_name,
         macos_notify::macos_notification_permission,
         macos_notify::macos_notify,
     ]);
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![device::device_name]);
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        cloud_download::cloud_download,
+        cloud_download::cloud_download_cancel,
+        device::device_name,
+    ]);
     builder
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())

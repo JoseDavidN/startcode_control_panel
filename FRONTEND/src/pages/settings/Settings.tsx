@@ -25,7 +25,7 @@ import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { useServers } from '@hooks/useServers';
 import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
 import { queryClient } from '@lib/queryClient';
-import { notify } from '@services/notification.service';
+import { IS_MAC, notify } from '@services/notification.service';
 import { timeAgo } from '@utils/time';
 import { Card } from '@components/common/Card';
 import { Select, type SelectOption } from '@components/common/Select';
@@ -551,6 +551,12 @@ const NotifPane = () => {
                   ? 'El sistema no permite notificaciones de StartCode Panel. Actívalas en los ajustes de notificaciones del sistema operativo; mientras tanto, las alertas salen dentro de la app.'
                   : 'Activo en este equipo. El sistema operativo pedirá permiso para mostrar notificaciones.'}
               {' '}Este ajuste se guarda solo en este equipo.
+              {/* `tauri dev` no es una .app: macOS atribuye las notificaciones a Terminal. */}
+              {IS_MAC && import.meta.env.DEV && (
+                <span className="block mt-1">
+                  En desarrollo, macOS las muestra como notificaciones de Terminal: permítelas en Ajustes del Sistema → Notificaciones → Terminal y revisa que no esté activo «No molestar».
+                </span>
+              )}
             </p>
             {permission === 'default' && (
               <button onClick={() => void requestPermission()}

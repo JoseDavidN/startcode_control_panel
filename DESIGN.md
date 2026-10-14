@@ -397,6 +397,14 @@ fixed background (z:-1)
 
 El sidebar incluye siempre: brand, nav workspace, nav cuenta, tarjeta de estado de servidor, chip de usuario con logout.
 
+### Barra de título propia (`components/layout/TitleBar.tsx`)
+
+Encima de todo (también del login), 38 px de alto, transparente sobre el fondo del tema y con `border-bottom: 1px solid var(--hairline-soft)` (`.titlebar` en `App.css`). Solo lleva el nombre de la app en `text-white/50`. Toda la barra es zona de arrastre (`data-tauri-drag-region` en cada elemento que no sea un botón) y el doble clic maximiza. Va en `z-[90]`, por encima de modales y paneles. Lo que se fije arriba con `fixed` empieza 20 px por debajo (`top-[58px]`). En pantalla completa no se muestra.
+
+- **macOS**: semáforos nativos con `titleBarStyle: "Overlay"`, `hiddenTitle` y `trafficLightPosition` `{ x: 16, y: 12 }` (`tauri.macos.conf.json`, centrados en los 38 px). La barra deja 78 px libres a cada lado y centra el nombre.
+- **Windows**: `decorations: false`; botones de 46 px a todo el alto, iconos de trazo de 1 px, `hover:bg-tint-hover` y cerrar en `#c42b1c`, el rojo de Windows 11. Nombre a la izquierda.
+- **Linux**: botones redondos de 24 px con `bg-tint-active`, como los de GNOME.
+
 ---
 
 ## Tipografía

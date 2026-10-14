@@ -27,7 +27,8 @@
         ],
         "changed": [
           "Barras de desplazamiento más visibles en toda la app, con la manito para agarrarlas y arrastrarlas",
-          "Cloud: al descargar un archivo o carpeta, el diálogo para elegir dónde guardarlo se abre al instante y un aviso muestra el progreso de la descarga, que se puede cancelar",
+          "Barra de título propia con los colores del tema y los botones de ventana de tu sistema (los semáforos de macOS se mantienen)",
+          "Cloud: al descargar un archivo o carpeta, el diálogo para elegir dónde guardarlo se abre al instante y un aviso muestra el progreso de la descarga, que se puede cancelar en cualquier momento. La descarga corre en segundo plano: la app sigue respondiendo y puedes navegar aunque el archivo sea grande",
           "Cada inicio de sesión en tu cuenta te avisa en tus otros equipos con una notificación del sistema: nombre del equipo, app, sistema e IP",
           "Notificaciones del sistema en macOS más fiables: si macOS no deja usar su centro de notificaciones, se entregan igualmente",
           "Puedes tener la sesión abierta en hasta 3 equipos a la vez; al entrar desde un cuarto se cierra la que lleva más tiempo sin usarse",

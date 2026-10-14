@@ -9,6 +9,25 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.7.1] — 2026-10-14
+
+Versión de **parche** sobre 0.7.0.
+
+### Añadido
+- Resultados de consultas: al pasar el mouse por una celda cortada («…»), un globo (`CellTip` en `ResultGrid.tsx`) muestra el valor completo con saltos de línea, tras 350 ms. Es uno para toda la tabla, con manejadores delegados en el contenedor y nada por celda. Solo sale si el texto no cabe (`scrollWidth`), se queda mientras el mouse está en la celda o en el globo (se puede desplazar y copiar) y se cierra al desplazar la tabla. Va debajo de la celda, o encima si no cabe. No sale en columnas sensibles ocultas. Sustituye al `title` nativo de más de 60 caracteres
+
+### Cambiado
+- Editor SQL: Ejecutar y Ctrl + Enter corren la sentencia donde está el cursor, no todo el editor, así que se pueden tener varias separadas por `;` (`statementAt` en `utils/sql.ts`). Corta con los tokens del resaltado: los `;` dentro de cadenas, comentarios, identificadores o bloques `$$` de PostgreSQL no cuentan. Con el cursor justo tras un `;` en la misma línea, la que acaba ahí; en una línea en blanco o un comentario, la anterior (o la siguiente). Con texto seleccionado se sigue ejecutando la selección
+
+### Corregido
+- Resultados de consultas (`ResultGrid.tsx`): las barras de desplazamiento propias tapaban la última fila y la última columna; el contenedor reserva sus 12 px abajo y a la derecha (`pb-3 pr-3`)
+- Terminal del servidor (`ServerTerminal.tsx`): al cerrarla queda oculta con `display: none`; el `ResizeObserver` disparaba `fit()` con el contenedor a 0, que la dejaba en 2 columnas y mandaba ese tamaño a la shell remota, que redibujaba el prompt a ese ancho. Al reabrirla, el cursor quedaba corrido sobre el prompt (lo escrito no se veía hasta pasarlo) hasta un `clear`. Ahora, oculta no se ajusta, y el tamaño solo se envía al servidor si cambió
+- Barra de título: el nombre de la app pasa de `text-white/50` a `text-white/75`; en algunos temas apenas se leía
+- Barras de desplazamiento propias por encima de todo: iban en una capa fija con `z-index: 100` y tapaban el menú de sugerencias del editor SQL (z-70) y lo que flotara sobre su zona. Ahora cada barra toma el z-index de su zona más uno, con un mínimo de 40 (`levelOf` en `utils/overlayScrollbars.ts`); `.osb-layer` pasa a `display: contents`
+- Editor SQL: al pasar a mayúsculas una palabra reservada (`as` → `AS`), al sangrar o al aceptar una sugerencia, la vista saltaba al final de la consulta. Al reemplazar el valor, el navegador lleva el cursor al final; ahora `placeCaret` devuelve el cursor y también el desplazamiento, moviéndolo solo lo justo para que la línea del cursor se vea
+
+---
+
 ## [App de escritorio 0.7.0] — 2026-10-13
 
 Versión **menor** sobre 0.6.0: Kubernetes en el detalle del servidor. Va junto con el backend 0.9.0.

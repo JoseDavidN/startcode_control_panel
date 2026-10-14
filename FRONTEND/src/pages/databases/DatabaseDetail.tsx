@@ -23,6 +23,7 @@ import type { DatabaseSessionStatus } from '@hooks/useDatabases';
 import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES } from '@typings/database.types';
 import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
+import { statementAt } from '@utils/sql';
 import type { ApiError } from '@typings/api.types';
 import type { QueryResult } from '@typings/database.types';
 
@@ -248,11 +249,11 @@ export const DatabaseDetail: React.FC = () => {
 
   const run = () => {
     const el = editorRefs.current.get(active.id);
-    /* Con texto seleccionado se ejecuta solo la selección. */
-    const selected = el && el.selectionEnd > el.selectionStart
-      ? sql.slice(el.selectionStart, el.selectionEnd)
-      : sql;
-    const statement = selected.trim();
+    /* Con texto seleccionado se ejecuta solo la selección; si no, la sentencia
+       donde está el cursor (varias en el editor, separadas por `;`). */
+    const statement = el && el.selectionEnd > el.selectionStart
+      ? sql.slice(el.selectionStart, el.selectionEnd).trim()
+      : statementAt(sql, el?.selectionStart ?? sql.length, engineDialect(conn?.engine ?? 'mysql'))?.sql ?? '';
     if (!statement || active.run.running) return;
     void execute(active.id, { sql: statement, schema: activeSchema });
   };
@@ -391,7 +392,7 @@ export const DatabaseDetail: React.FC = () => {
                   <span className="font-mono">{activeSchema ?? 'Sin base seleccionada'}</span>
                 </span>
                 <span className="flex-1" />
-                <span className="text-[11px] text-white/35 hidden lg:inline">Ctrl + Enter ejecuta (o la selección) · Ctrl + Espacio sugiere</span>
+                <span className="text-[11px] text-white/35 hidden lg:inline">Ctrl + Enter ejecuta la consulta del cursor (o la selección) · Ctrl + Espacio sugiere</span>
                 <button type="button" onClick={() => setAuditOpen(true)}
                   title="Consultas peligrosas confirmadas sobre esta conexión"
                   className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg glass-soft row-hit text-white/70 hover:text-white text-xs font-medium shrink-0">

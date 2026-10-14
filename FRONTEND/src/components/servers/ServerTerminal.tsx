@@ -192,12 +192,20 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
     const onData = term.onData(data => socket.emit('terminal:input', data));
 
     /* El tamaño de la shell remota debe seguir al del contenedor, o el
-       redibujado de programas a pantalla completa (htop, vim) sale partido. */
+       redibujado de programas a pantalla completa (htop, vim) sale partido.
+       Oculta (al cerrarla queda con display: none) no se ajusta: el contenedor
+       mide 0, fit la dejaba en 2 columnas y la shell redibujaba el prompt a
+       ese ancho; al reabrir, el cursor quedaba corrido sobre el prompt hasta
+       un `clear`. Y solo se avisa al servidor si el tamaño cambió de verdad. */
+    let sent = { cols: term.cols, rows: term.rows };
     const resize = () => {
+      if (host.clientWidth === 0 || host.clientHeight === 0) return;
       try {
         fit.fit();
-        socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
-      } catch { /* el contenedor aún no tiene tamaño */ }
+      } catch { return; /* el contenedor aún no tiene tamaño */ }
+      if (term.cols === sent.cols && term.rows === sent.rows) return;
+      sent = { cols: term.cols, rows: term.rows };
+      socket.emit('terminal:resize', sent);
     };
     fitRef.current = resize;
     const observer = new ResizeObserver(resize);

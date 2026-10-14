@@ -3,9 +3,30 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.7.1",
+      "type": "patch",
+      "date": "2026-10-14",
+      "title": "Correcciones",
+      "changes": {
+        "added": [
+          "Bases de datos: al pasar el mouse por una celda cortada con puntos suspensivos, un globo muestra su contenido completo"
+        ],
+        "changed": [
+          "Editor SQL: con varias consultas separadas por `;`, Ejecutar (o Ctrl + Enter) corre solo la consulta donde está el cursor; con texto seleccionado, la selección"
+        ],
+        "fixed": [
+          "Bases de datos: la barra de desplazamiento ya no tapa la última fila ni la última columna de los resultados",
+          "Editor SQL: las sugerencias de tablas y columnas ya no quedan debajo de la barra de desplazamiento",
+          "Editor SQL: al pasar a mayúsculas una palabra reservada (como AS), el editor ya no salta al final de la consulta",
+          "El nombre de la app en la barra de título se lee mejor en todos los temas",
+          "Terminal del servidor: al cerrarla y volver a abrirla, el cursor ya no queda corrido sobre el texto del prompt"
+        ]
+      }
+    },
+    {
       "version": "0.7.0",
       "type": "minor",
-      "date": "2026-10-13",
+      "date": "2026-10-14",
       "title": "Pods de Kubernetes en el detalle del servidor",
       "changes": {
         "added": [

@@ -399,7 +399,7 @@ El sidebar incluye siempre: brand, nav workspace, nav cuenta, tarjeta de estado 
 
 ### Barra de título propia (`components/layout/TitleBar.tsx`)
 
-Encima de todo (también del login), 38 px de alto, transparente sobre el fondo del tema y con `border-bottom: 1px solid var(--hairline-soft)` (`.titlebar` en `App.css`). Solo lleva el nombre de la app en `text-white/50`. Toda la barra es zona de arrastre (`data-tauri-drag-region` en cada elemento que no sea un botón) y el doble clic maximiza. Va en `z-[90]`, por encima de modales y paneles. Lo que se fije arriba con `fixed` empieza 20 px por debajo (`top-[58px]`). En pantalla completa no se muestra.
+Encima de todo (también del login), 38 px de alto, transparente sobre el fondo del tema y con `border-bottom: 1px solid var(--hairline-soft)` (`.titlebar` en `App.css`). Solo lleva el nombre de la app en `text-white/75` (con menos, en Solar y Aurora se perdía). Toda la barra es zona de arrastre (`data-tauri-drag-region` en cada elemento que no sea un botón) y el doble clic maximiza. Va en `z-[90]`, por encima de modales y paneles. Lo que se fije arriba con `fixed` empieza 20 px por debajo (`top-[58px]`). En pantalla completa no se muestra.
 
 - **macOS**: semáforos nativos con `titleBarStyle: "Overlay"`, `hiddenTitle` y `trafficLightPosition` `{ x: 16, y: 12 }` (`tauri.macos.conf.json`, centrados en los 38 px). La barra deja 78 px libres a cada lado y centra el nombre.
 - **Windows**: `decorations: false`; botones de 46 px a todo el alto, iconos de trazo de 1 px, `hover:bg-tint-hover` y cerrar en `#c42b1c`, el rojo de Windows 11. Nombre a la izquierda.
@@ -445,7 +445,7 @@ A las tres se suma **Symbols Nerd Font Mono** (MIT, `ryanoasis/nerd-fonts`), que
 
 ## Scrollbars
 
-Toda zona con scroll lleva `.scroll-area`, `.scroll-thin` o `.modal-scroll`; sin una de ellas no tiene barra. Las barras nativas de esas clases están ocultas: WebKit no deja cambiarles el cursor (siempre la flecha, y la I dentro de un textarea). Las dibuja `utils/overlayScrollbars.ts`, instalado una vez en `main.tsx`, en una capa fija (`.osb-layer`, z-index 100) encima de la zona.
+Toda zona con scroll lleva `.scroll-area`, `.scroll-thin` o `.modal-scroll`; sin una de ellas no tiene barra. Las barras nativas de esas clases están ocultas: WebKit no deja cambiarles el cursor (siempre la flecha, y la I dentro de un textarea). Las dibuja `utils/overlayScrollbars.ts`, instalado una vez en `main.tsx`, en fijo sobre la zona. Cada barra toma el z-index de su zona (el mayor de ella y sus ancestros) más uno, con un mínimo de 40 (`levelOf`). `.osb-layer` solo las agrupa (`display: contents`), sin crear un nivel propio. Así lo que flota sobre una zona (el menú de sugerencias del editor, un modal) tapa sus barras, y una lista flotante muestra las suyas por encima.
 
 - Solo aparecen en la zona bajo el mouse (y en las que la contienen) o que se está desplazando, y se desvanecen al salir. No ocupan espacio: el contenido no se corre.
 - Thumb de 6 px en tinta al 30 % (`color-mix(in oklab, var(--ink) 30%, transparent)`), legible en los tres temas. Al pasar el mouse por su franja (12 px), sube a 10 px con el gradiente de marca y `--hairline-strong`.

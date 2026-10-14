@@ -85,7 +85,8 @@ button, [role="button"], [role="tab"], label[for], select { cursor: pointer; }
 .scroll-thin::-webkit-scrollbar,
 .modal-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-.osb-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+/* `display: contents`: agrupa las barras sin crear un nivel propio; cada barra lleva el z-index de su zona (`levelOf`). */
+.osb-layer { display: contents; }
 .osb-track {
   position: fixed;
   display: flex;

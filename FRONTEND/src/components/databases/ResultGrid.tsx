@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { DbIcon } from '@components/databases/icons';
 import { ExportMenu } from '@components/databases/ExportMenu';
@@ -51,9 +52,23 @@ const errorText = (err: unknown) => (err as { message?: string })?.message ?? 'N
 
 const Cell = ({ value }: { value: unknown }) => {
   if (value === null || value === undefined) return <span className="italic text-white/30">NULL</span>;
-  const text = display(value);
-  return <span title={text.length > 60 ? text : undefined}>{text}</span>;
+  /* Si no cabe, el globo de la tabla (`CellTip`) muestra el valor completo. */
+  return <span>{display(value)}</span>;
 };
+
+/* ── Globo con el contenido completo de una celda cortada (…) ──────── */
+interface Tip { text: string; left: number; top?: number; bottom?: number }
+const TIP_DELAY = 350;
+const TIP_W = 560;
+
+const CellTip = ({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onLeave: () => void }) => createPortal(
+  <div role="tooltip" onMouseEnter={onEnter} onMouseLeave={onLeave}
+    className="fixed z-[75] p-3 rounded-xl glass-float elev-float border border-hairline animate-fadeIn max-h-[320px] overflow-auto scroll-thin"
+    style={{ left: tip.left, top: tip.top, bottom: tip.bottom, maxWidth: `min(${TIP_W}px, calc(100vw - 16px))` }}>
+    <pre className="m-0 text-xs font-mono text-white/85 whitespace-pre-wrap break-words select-text">{tip.text}</pre>
+  </div>,
+  document.body,
+);
 
 /** Celda de una columna sensible mientras está oculta. */
 const MaskedCell = ({ kind, value }: { kind: SensitiveKind; value: unknown }) => {
@@ -162,6 +177,39 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimer = useRef<number | undefined>(undefined);
+
+  /* Globo de celdas cortadas: uno para toda la tabla, con un manejador delegado
+     en el cuerpo (nada por celda). Sale si el texto no cabe (`scrollWidth`),
+     tras un instante, y se queda mientras el mouse está en la celda o en el
+     globo (para leerlo, desplazarlo o copiar). */
+  const [tip, setTip] = useState<Tip | null>(null);
+  const tipCell = useRef<HTMLElement | null>(null);
+  const tipTimer = useRef<number | undefined>(undefined);
+  const hideTip = (delay = 120) => {
+    window.clearTimeout(tipTimer.current);
+    tipTimer.current = window.setTimeout(() => { tipCell.current = null; setTip(null); }, delay);
+  };
+  const onCellOver = (e: React.MouseEvent) => {
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.cell-clip');
+    if (cell === tipCell.current) { window.clearTimeout(tipTimer.current); return; }
+    if (!cell || cell.scrollWidth <= cell.clientWidth + 1) { if (tipCell.current) hideTip(); return; }
+    window.clearTimeout(tipTimer.current);
+    tipCell.current = cell;
+    setTip(null);
+    tipTimer.current = window.setTimeout(() => {
+      const r = cell.getBoundingClientRect();
+      const left = Math.max(8, Math.min(r.left - 4, window.innerWidth - Math.min(TIP_W, window.innerWidth - 16) - 8));
+      /* Debajo si cabe; si no, encima de la celda. */
+      const below = window.innerHeight - r.bottom > 240;
+      setTip({ text: cell.textContent ?? '', left, ...(below ? { top: r.bottom + 6 } : { bottom: window.innerHeight - r.top + 6 }) });
+    }, TIP_DELAY);
+  };
+  const onCellOut = (e: React.MouseEvent) => {
+    const into = e.relatedTarget as Node | null;
+    if (tipCell.current && into && tipCell.current.contains(into)) return;
+    if (tipCell.current) hideTip();
+  };
+  useEffect(() => () => window.clearTimeout(tipTimer.current), []);
 
   const say = (text: string) => {
     setFlash(text);
@@ -501,10 +549,15 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
         tabIndex={0}
         onKeyDown={handleKeyDown}
         aria-label="Resultados de la consulta"
-        className="flex-1 min-h-0 overflow-auto scroll-area scroll-layer outline-none"
+        onScroll={() => { if (tipCell.current) hideTip(0); }}
+        onMouseOver={onCellOver}
+        onMouseOut={onCellOut}
+        className="flex-1 min-h-0 overflow-auto scroll-area scroll-layer outline-none pb-3 pr-3"
       >
         {/* `w-max`: la tabla mide lo que su contenido, y si no cabe, el contenedor
-            desplaza en horizontal además de en vertical. */}
+            desplaza en horizontal además de en vertical. `pb-3 pr-3`: los 12 px de
+            la franja de las barras propias (overlayScrollbars), para que no tapen
+            la última fila ni la última columna. */}
         <table className="data-table w-max min-w-full text-xs font-mono border-separate border-spacing-0">
           <thead>
             <tr>
@@ -641,8 +694,9 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
                         {isEditing ? (
                           <CellEditor initial={editing.draft} onCommit={commitEdit} onCancel={() => setEditing(null)} />
                         ) : (
-                          /* El tope va en un div: en una celda de tabla max-width no se respeta. */
-                          <div className="max-w-[320px] truncate">
+                          /* El tope va en un div: en una celda de tabla max-width no se respeta.
+                             `cell-clip`: si se corta, el globo muestra el valor entero (no en las ocultas). */
+                          <div className={`max-w-[320px] truncate ${isHidden(c) ? '' : 'cell-clip'}`}>
                             {isHidden(c) ? <MaskedCell kind={sensitive[c]!} value={value} /> : <Cell value={value} />}
                           </div>
                         )}
@@ -666,6 +720,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
             onRerun?.();
           }} />
       )}
+      {tip && <CellTip tip={tip} onEnter={() => window.clearTimeout(tipTimer.current)} onLeave={() => hideTip()} />}
     </>
   );
 };

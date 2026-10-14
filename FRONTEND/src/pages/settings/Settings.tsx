@@ -729,7 +729,7 @@ const SecurityPane = () => {
   const pwdExpired = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration;
   const pwdWarn    = sec.passwordExpiration > 0 && pwdAge !== null && pwdAge >= sec.passwordExpiration * 0.85;
 
-  /* Sesiones reales del servidor (con sesión única, será una) */
+  /* Sesiones reales del servidor (hasta 3 por cuenta) */
   const { data: sessions = [], isLoading: sessionsLoading } = useSessions();
   const revokeSession = useRevokeSession();
 
@@ -1061,8 +1061,8 @@ const SecurityPane = () => {
         </div>
 
         <p className="text-xs text-white/35 mt-3">
-          Solo puede haber una sesión abierta por cuenta: al entrar desde otro equipo, el anterior
-          se cierra al instante. Cerrar sesión revoca sus tokens en el servidor, no solo en este equipo.
+          Puede haber hasta 3 sesiones abiertas por cuenta: al entrar desde un cuarto equipo, se cierra
+          la que lleva más tiempo sin usarse. Cerrar sesión revoca sus tokens en el servidor, no solo en este equipo.
         </p>
       </div>
 

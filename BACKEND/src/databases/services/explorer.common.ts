@@ -1,4 +1,6 @@
 /* Tipos y utilidades comunes a los exploradores de MySQL/MariaDB y PostgreSQL. */
+import { BadRequestException } from '@nestjs/common';
+
 
 import type { Client as PgClient } from 'pg';
 import type { Connection as MysqlConnection } from 'mysql2/promise';
@@ -110,6 +112,65 @@ export interface UpdateRowInput {
   table: string;
   key: Record<string, unknown>;
   changes: Record<string, unknown>;
+}
+
+/** Tabla concreta: base (en MySQL, el esquema) y, en PostgreSQL, su esquema. */
+export interface TableRef {
+  schema: string;
+  namespace?: string;
+  table: string;
+}
+
+/** Columna de una tabla para el formulario de fila nueva. */
+export interface InsertColumn {
+  name: string;
+  /** Tipo tal como lo escribe el motor (varchar(255), integer, timestamp…). */
+  type: string;
+  nullable: boolean;
+  /** Valor por defecto literal, listo para precargar; null si no hay o es una expresión. */
+  defaultValue: string | null;
+  /** Lo calcula la base si se deja vacío: autoincremento, identidad o expresión (now(), uuid…). */
+  auto: boolean;
+  /** La expresión o el motivo de `auto`, para mostrarlo (auto_increment, now()…). */
+  autoLabel: string | null;
+  /** Columna generada: no se puede escribir. */
+  generated: boolean;
+  primaryKey: boolean;
+}
+
+export interface InsertRowInput extends TableRef {
+  /** Columnas a escribir: { columna: valor | null }. Las que no vienen toman su valor por defecto. */
+  values: Record<string, unknown>;
+}
+
+export interface InsertRowResult {
+  affectedRows: number;
+  insertId: number | null;
+  /** La fila tal como quedó en la tabla { columna: valor }; null si no se pudo identificar. */
+  row: Record<string, unknown> | null;
+}
+
+export interface DeleteRowsInput extends TableRef {
+  /** Clave primaria completa de cada fila: [{ columna: valor original }]. */
+  keys: Record<string, unknown>[];
+}
+
+/** Filas que se pueden borrar de una vez desde los resultados. */
+export const MAX_DELETE_ROWS = 1_000;
+
+/* La clave de cada fila tiene que ser exactamente la primaria: con otra cosa el WHERE podría alcanzar otras filas. */
+export function assertPrimaryKeys(pk: string[], keys: Record<string, unknown>[]): void {
+  const want = [...pk].sort().join('\u0000');
+  if (pk.length === 0) throw new BadRequestException('La tabla no tiene clave primaria: no se pueden borrar filas sueltas');
+  if (keys.some(k => Object.keys(k).sort().join('\u0000') !== want)) {
+    throw new BadRequestException('Para borrar hace falta la clave primaria completa de cada fila');
+  }
+}
+
+/* MariaDB y PostgreSQL dan el literal entre comillas ('abc', 'abc'::text): se le quitan. */
+export function unquoteDefault(raw: string): string | null {
+  const m = /^'((?:[^']|'')*)'(?:::[\w\s".[\]]+)?$/s.exec(raw.trim());
+  return m ? m[1].replace(/''/g, "'") : null;
 }
 
 /** Filas que viajan a la app como máximo; el resto se cuenta pero no se envía. */

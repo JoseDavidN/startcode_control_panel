@@ -10,7 +10,7 @@ import { ShareSftpModal } from '@components/cloud/ShareSftpModal';
 import {
   CLOUD_FILE_TYPE_LABELS, CLOUD_SECTIONS, DEFAULT_CLOUD_FILTERS, describeDrop, describeEntries, findFolderPath, isPreviewable, resolvePath, visibleEntries,
 } from '@utils/cloud';
-import { downloadBlob } from '@lib/download';
+import { pickSavePath } from '@lib/download';
 import { ROUTES } from '@utils/constants';
 import { cloudApi, cloudErrorMessage } from '@services/cloud.api';
 import { useCloudNotices } from '@hooks/useCloudNotices';
@@ -56,7 +56,7 @@ export const Cloud: React.FC = () => {
 
   const storageQuery = useCloudStorage(connection, connected);
   const storage = (connected && storageQuery.data) || { used: 0, total: 0 };
-  const { notices, info, startUpload, dismiss } = useCloudNotices();
+  const { notices, info, startUpload, startDownload, dismiss } = useCloudNotices();
 
   const [preview, setPreview] = useState<{ file: CloudFile; section: CloudSection } | null>(null);
 
@@ -86,16 +86,31 @@ export const Cloud: React.FC = () => {
     [previewSection],
   );
 
-  /* Archivos: tal cual. Carpetas: la nube las comprime en .zip. */
-  const downloadFrom = (sec: CloudSection, entry: CloudEntry) => {
-    if (entry.kind === 'folder') {
-      info(`Preparando «${entry.name}.zip»`, 'La descarga empieza cuando la nube termine de comprimir la carpeta.');
-      cloudApi.zip(sec, entry.id).then(blob => downloadBlob(blob, `${entry.name}.zip`)).catch(fail('No se pudo descargar'));
+  /* Archivos: tal cual. Carpetas: la nube las comprime en .zip mientras las envía.
+     Primero el destino (el diálogo sale al instante) y luego la descarga directa
+     al disco, con su aviso de progreso y la opción de cancelarla. */
+  const downloadFrom = async (sec: CloudSection, entry: CloudEntry) => {
+    const folder = entry.kind === 'folder';
+    const name = folder ? `${entry.name}.zip` : entry.name;
+    let dest: string | null;
+    try {
+      dest = await pickSavePath(name);
+    } catch (error) {
+      fail('No se pudo abrir el diálogo para guardar')(error);
       return;
     }
-    cloudApi.content(sec, entry.id).then(blob => downloadBlob(blob, entry.name)).catch(fail('No se pudo descargar'));
+    if (!dest) return;
+    const abort = new AbortController();
+    const notice = startDownload({ label: name, destination: dest, cancel: () => abort.abort() });
+    try {
+      await cloudApi.download(sec, entry.id, folder, dest, notice.progress, abort.signal);
+      notice.done();
+    } catch (error) {
+      if (abort.signal.aborted) notice.cancelled();
+      else notice.fail(cloudErrorMessage(error));
+    }
   };
-  const download = (entry: CloudEntry) => downloadFrom(section, entry);
+  const download = (entry: CloudEntry) => { void downloadFrom(section, entry); };
 
   /* Imágenes de la carpeta abierta, como se ven (filtros y orden): el lector las recorre con las flechas. */
   const folderImages = useMemo(
@@ -302,7 +317,7 @@ export const Cloud: React.FC = () => {
       <FileViewerModal file={preview?.file ?? null} getContent={contentOf} getStream={streamOf} seekPoint={(stream, t) => cloudApi.seekPoint(stream, t)}
         siblings={preview?.section === section ? folderImages : undefined}
         onSelect={file => setPreview(p => (p ? { ...p, file } : p))}
-        onDownload={file => downloadFrom(preview?.section ?? section, file)} onClose={() => setPreview(null)} />
+        onDownload={file => { void downloadFrom(preview?.section ?? section, file); }} onClose={() => setPreview(null)} />
     </div>
   );
 };

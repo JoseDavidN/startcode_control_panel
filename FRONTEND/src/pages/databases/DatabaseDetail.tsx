@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '@components/common/Card';
 import { EngineBadge } from '@components/databases/EngineIcon';
@@ -14,7 +14,9 @@ import {
   useDatabaseConnection,
   useDatabaseSchemas,
   useRunQuery,
+  useSchemaSection,
 } from '@hooks/useDatabases';
+import { buildCompletionIndex } from '@utils/sqlComplete';
 import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
 import type { DatabaseSessionStatus } from '@hooks/useDatabases';
@@ -42,6 +44,7 @@ const SessionBadge = ({ status }: { status: DatabaseSessionStatus }) => {
 
 /** Sentencia que el backend marcó como peligrosa y espera confirmación. */
 interface PendingQuery {
+  consoleId: number;
   sql: string;
   schema: string | null;
   message: string;
@@ -54,6 +57,50 @@ function dangerousQuery(err: unknown): { message: string; hint?: string } | null
   const e = err as Partial<ApiError> | undefined;
   return e?.code === 'DANGEROUS_QUERY' ? { message: e.message ?? 'Consulta peligrosa', hint: e.hint } : null;
 }
+
+/* ── Consolas: cada una con su SQL y su último resultado ── */
+const MAX_CONSOLES = 6;
+interface QueryVars { sql: string; schema: string | null; confirm?: boolean }
+interface ConsoleRun { data?: QueryResult; error: unknown; running: boolean; variables?: QueryVars }
+interface SqlConsole { id: number; n: number; sql: string; run: ConsoleRun; /** Nombre puesto por el usuario; sin él, «Consola n». */ name?: string }
+const consoleName = (c: SqlConsole) => c.name ?? `Consola ${c.n}`;
+const MAX_CONSOLE_NAME = 40;
+const IDLE_RUN: ConsoleRun = { error: null, running: false };
+/* «Consola #»: el número libre más bajo, así al cerrar una se reutiliza. */
+const freeNumber = (list: SqlConsole[]) => {
+  let n = 1;
+  while (list.some(c => c.n === n)) n++;
+  return n;
+};
+
+/* Resultado de una consola. Va con `memo`: escribir en el editor cambia la
+   consola pero no su `run`, y la tabla no debe re-renderizarse con cada tecla. */
+const ConsoleResults = memo(({ consoleId, run, active, connectionId, sessionId, fileName, onRerun }: {
+  consoleId: number;
+  run: ConsoleRun;
+  active: boolean;
+  connectionId: string;
+  sessionId: string | null;
+  fileName: string;
+  onRerun: (consoleId: number) => void;
+}) => {
+  const rerun = useCallback(() => onRerun(consoleId), [onRerun, consoleId]);
+  return (
+    <div className={`flex-1 min-h-0 min-w-0 flex flex-col ${active ? '' : 'hidden'}`}>
+      <QueryResults
+        result={run.data}
+        error={errorMessage(run.error)}
+        running={run.running}
+        connectionId={connectionId}
+        sessionId={sessionId}
+        fileName={fileName}
+        query={run.variables}
+        onRerun={rerun}
+      />
+    </div>
+  );
+});
+ConsoleResults.displayName = 'ConsoleResults';
 
 /** Filas del resultado que lee el asistente. */
 const ASSISTANT_ROWS = 100;
@@ -107,13 +154,56 @@ export const DatabaseDetail: React.FC = () => {
     if (isSessionClosedError(schemasQuery.error)) markClosed();
   }, [schemasQuery.error, markClosed]);
 
-  const [sql, setSql] = useState('');
+  /* Consolas: todas quedan montadas (editor y resultado) y solo se oculta la
+     inactiva, así al volver conservan texto, deshacer, scroll y la tabla. */
+  const [consoles, setConsoles] = useState<SqlConsole[]>([{ id: 1, n: 1, sql: '', run: IDLE_RUN }]);
+  const [activeId, setActiveId] = useState(1);
+  const consoleSeq = useRef(1);
+  const active = consoles.find(c => c.id === activeId) ?? consoles[0];
+  const sql = active.sql;
+  const editorRefs = useRef(new Map<number, HTMLTextAreaElement>());
+  const patchConsole = useCallback((id: number, patch: (c: SqlConsole) => Partial<SqlConsole>) =>
+    setConsoles(prev => prev.map(c => (c.id === id ? { ...c, ...patch(c) } : c))), []);
+  const setConsoleSql = useCallback((id: number, value: string | ((prev: string) => string)) =>
+    patchConsole(id, c => ({ sql: typeof value === 'function' ? value(c.sql) : value })), [patchConsole]);
+  const setSql = (value: string | ((prev: string) => string)) => setConsoleSql(activeId, value);
+  /* Renombrar con doble clic: Enter o salir del campo guarda, Escape cancela; vacío vuelve a «Consola n». */
+  const [renaming, setRenaming] = useState<{ id: number; value: string } | null>(null);
+  const commitRename = () => {
+    if (!renaming) return;
+    const name = renaming.value.trim().slice(0, MAX_CONSOLE_NAME);
+    patchConsole(renaming.id, () => ({ name: name || undefined }));
+    setRenaming(null);
+  };
+  const focusEditor = (id = activeId) => editorRefs.current.get(id)?.focus();
+  const addConsole = () => {
+    if (consoles.length >= MAX_CONSOLES) return;
+    const id = ++consoleSeq.current;
+    setConsoles(prev => [...prev, { id, n: freeNumber(prev), sql: '', run: IDLE_RUN }]);
+    setActiveId(id);
+  };
+  const closeConsole = (id: number) => {
+    if (consoles.length <= 1) return;
+    const i = consoles.findIndex(c => c.id === id);
+    const rest = consoles.filter(c => c.id !== id);
+    setConsoles(rest);
+    if (id === activeId) setActiveId(rest[Math.min(i, rest.length - 1)].id);
+  };
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingQuery | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
-  /* Con base fija en la conexión, el editor siempre corre sobre ella. */
+    /* Con base fija en la conexión, el editor siempre corre sobre ella. */
   const activeSchema = conn?.database ?? selectedSchema;
+
+  /* Predicción del editor: tablas, vistas y columnas de la base activa. Usa la
+     misma caché que el árbol (si ya se abrió, no hay petición) y se arma una vez. */
+  const predictOn = Boolean(manageable && activeSchema && session.sessionId);
+  const predictTables = useSchemaSection(id, session.sessionId ?? '', activeSchema ?? '', 'tables', predictOn);
+  const predictViews = useSchemaSection(id, session.sessionId ?? '', activeSchema ?? '', 'views', predictOn);
+  const completion = useMemo(
+    () => (predictTables.data || predictViews.data ? buildCompletionIndex([...(predictTables.data ?? []), ...(predictViews.data ?? [])]) : null),
+    [predictTables.data, predictViews.data],
+  );
 
   /* ── Asistente: lee el editor, el último resultado y la estructura, que el
      backend saca del motor al preguntar; puede dejar SQL en el editor, nunca ejecutarlo. */
@@ -123,7 +213,7 @@ export const DatabaseDetail: React.FC = () => {
   useAssistantSource(`sql-editor:${id}`, 'sql_editor', `Editor SQL · ${connLabel}`,
     () => (sql.trim() ? `Base activa: ${activeSchema ?? 'ninguna'}\n${sql}` : ''), assistantOn);
   useAssistantSource(`sql-result:${id}`, 'sql_result', `Resultado SQL · ${connLabel}`,
-    () => resultForAssistant(runQuery.data, runQuery.variables?.sql), assistantOn);
+    () => resultForAssistant(active.run.data, active.run.variables?.sql), assistantOn);
   useAssistantSource(`sql-schema:${id}`, 'schema', `Estructura · ${connLabel}`, () => {
     if (!conn) return '';
     const lines = [
@@ -136,32 +226,48 @@ export const DatabaseDetail: React.FC = () => {
   useAssistantTarget(`sql-editor:${id}`, 'sql', 'el editor SQL', text => {
     /* Se añade debajo de lo que haya: no se pierde lo que el usuario escribía. */
     setSql(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${text}` : text));
-    editorRef.current?.focus();
+    focusEditor();
   }, assistantOn);
 
+  /* Cada consola guarda su propio resultado; puede haber varias ejecutando a la vez.
+     Si la consola se cerró mientras corría, el resultado se descarta. */
+  const { mutateAsync } = runQuery;
+  const execute = useCallback(async (consoleId: number, vars: QueryVars) => {
+    patchConsole(consoleId, c => ({ run: { ...c.run, running: true, error: null } }));
+    try {
+      const data = await mutateAsync(vars);
+      patchConsole(consoleId, () => ({ run: { data, error: null, running: false, variables: vars } }));
+    } catch (err) {
+      if (isSessionClosedError(err)) markClosed();
+      /* No es un error de SQL: el backend pide confirmación y no ejecutó nada. */
+      const danger = dangerousQuery(err);
+      patchConsole(consoleId, c => ({ run: danger ? { ...c.run, running: false } : { error: err, running: false, variables: vars } }));
+      if (danger) setPending({ consoleId, sql: vars.sql, schema: vars.schema, ...danger });
+    }
+  }, [mutateAsync, patchConsole, markClosed]);
+
   const run = () => {
-    const el = editorRef.current;
+    const el = editorRefs.current.get(active.id);
     /* Con texto seleccionado se ejecuta solo la selección. */
     const selected = el && el.selectionEnd > el.selectionStart
       ? sql.slice(el.selectionStart, el.selectionEnd)
       : sql;
     const statement = selected.trim();
-    if (!statement || runQuery.isPending) return;
-    runQuery.mutate({ sql: statement, schema: activeSchema }, {
-      onError: err => {
-        if (isSessionClosedError(err)) { markClosed(); return; }
-        /* No es un error de SQL: el backend pide confirmación y no ejecutó nada. */
-        const danger = dangerousQuery(err);
-        if (!danger) return;
-        runQuery.reset();
-        setPending({ sql: statement, schema: activeSchema, ...danger });
-      },
-    });
+    if (!statement || active.run.running) return;
+    void execute(active.id, { sql: statement, schema: activeSchema });
   };
+
+  /* Misma consulta otra vez (tras crear una fila desde los resultados). Estable para el memo de los resultados. */
+  const consolesRef = useRef(consoles);
+  consolesRef.current = consoles;
+  const rerun = useCallback((consoleId: number) => {
+    const last = consolesRef.current.find(c => c.id === consoleId)?.run.variables;
+    if (last) void execute(consoleId, { sql: last.sql, schema: last.schema });
+  }, [execute]);
 
   const confirmPending = () => {
     if (!pending) return;
-    runQuery.mutate({ sql: pending.sql, schema: pending.schema, confirm: true });
+    void execute(pending.consoleId, { sql: pending.sql, schema: pending.schema, confirm: true });
     setPending(null);
   };
 
@@ -169,9 +275,9 @@ export const DatabaseDetail: React.FC = () => {
   /* Estable: el árbol va con `memo` y no debe re-renderizarse con cada tecla. */
   const pickFromTree = useCallback((schema: string, statement: string) => {
     setSelectedSchema(schema);
-    setSql(statement);
-    editorRef.current?.focus();
-  }, []);
+    setConsoleSql(activeId, statement);
+    editorRefs.current.get(activeId)?.focus();
+  }, [activeId, setConsoleSql]);
 
   if (isLoading) {
     return (
@@ -285,7 +391,7 @@ export const DatabaseDetail: React.FC = () => {
                   <span className="font-mono">{activeSchema ?? 'Sin base seleccionada'}</span>
                 </span>
                 <span className="flex-1" />
-                <span className="text-[11px] text-white/35 hidden lg:inline">Ctrl + Enter ejecuta · con selección, solo lo seleccionado</span>
+                <span className="text-[11px] text-white/35 hidden lg:inline">Ctrl + Enter ejecuta (o la selección) · Ctrl + Espacio sugiere</span>
                 <button type="button" onClick={() => setAuditOpen(true)}
                   title="Consultas peligrosas confirmadas sobre esta conexión"
                   className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg glass-soft row-hit text-white/70 hover:text-white text-xs font-medium shrink-0">
@@ -293,31 +399,82 @@ export const DatabaseDetail: React.FC = () => {
                   Auditoría
                 </button>
                 <button type="button" onClick={run}
-                  disabled={runQuery.isPending || !sql.trim() || session.status !== 'open'}
+                  disabled={active.run.running || !sql.trim() || session.status !== 'open'}
                   className="inline-flex items-center gap-2 h-8 px-3.5 rounded-lg grad-brand text-white text-xs font-semibold elev-brand-sm hover:elev-brand transition disabled:opacity-50 shrink-0">
-                  {runQuery.isPending
+                  {active.run.running
                     ? <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     : <DbIcon name="play" className="w-3.5 h-3.5" />}
                   Ejecutar
                 </button>
               </div>
-              <div className="flex-1 min-h-0 flex p-3">
-                <SqlEditor ref={editorRef} value={sql} dialect={engineDialect(conn.engine)} onChange={setSql} onRun={run} />
+              <div className="flex-1 min-h-0 flex">
+                {/* Consolas, a la derecha del editor (`order-last`) */}
+                <nav aria-label="Consolas SQL" className="order-last w-36 shrink-0 flex flex-col gap-1 p-2 border-l border-line">
+                  <div className="flex-1 min-h-0 flex flex-col gap-1 overflow-y-auto scroll-thin">
+                    {consoles.map(c => {
+                      const on = c.id === active.id;
+                      return (
+                        <div key={c.id} className={`mo-tab group flex items-center h-8 rounded-lg border ${on ? 'nav-active' : 'border-transparent row-hit'}`}>
+                          {renaming?.id === c.id ? (
+                            <input autoFocus value={renaming.value} maxLength={MAX_CONSOLE_NAME}
+                              aria-label="Nombre de la consola" placeholder={`Consola ${c.n}`}
+                              onChange={e => setRenaming({ id: c.id, value: e.target.value })}
+                              onFocus={e => e.currentTarget.select()}
+                              onBlur={commitRename}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') commitRename();
+                                else if (e.key === 'Escape') setRenaming(null);
+                              }}
+                              className="flex-1 min-w-0 h-6 ml-1 px-1.5 rounded-md glass-input text-xs font-medium text-white outline-none" />
+                          ) : (
+                          <button type="button" onClick={() => { setActiveId(c.id); focusEditor(c.id); }}
+                            onDoubleClick={() => setRenaming({ id: c.id, value: consoleName(c) })}
+                            title={`${consoleName(c)} · doble clic para renombrar`}
+                            aria-current={on ? 'page' : undefined}
+                            className={`flex-1 min-w-0 h-full flex items-center gap-2 pl-2.5 text-xs font-medium text-left ${on ? 'text-white' : 'text-white/60 hover:text-white'}`}>
+                            {c.run.running
+                              ? <span className="w-3 h-3 shrink-0 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                              : <DbIcon name="play" className="w-3 h-3 shrink-0 opacity-50" />}
+                            <span className="truncate">{consoleName(c)}</span>
+                          </button>
+                          )}
+                          {consoles.length > 1 && (
+                            <button type="button" onClick={() => closeConsole(c.id)}
+                              aria-label={`Cerrar ${consoleName(c)}`} title="Cerrar consola"
+                              className="w-6 h-6 mr-1 shrink-0 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-tint-hover">
+                              <DbIcon name="close" className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button type="button" onClick={addConsole} disabled={consoles.length >= MAX_CONSOLES}
+                    title={consoles.length >= MAX_CONSOLES ? `Máximo ${MAX_CONSOLES} consolas` : 'Agregar consola'}
+                    className="mo-tab shrink-0 h-8 rounded-lg glass-soft row-hit text-white/65 hover:text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
+                    <span className="text-sm leading-none">+</span>
+                    Agregar consola
+                  </button>
+                </nav>
+                {consoles.map(c => (
+                  <div key={c.id} className={`flex-1 min-w-0 min-h-0 flex p-3 ${c.id === active.id ? '' : 'hidden'}`}>
+                    <SqlEditor
+                      ref={el => { if (el) editorRefs.current.set(c.id, el); else editorRefs.current.delete(c.id); }}
+                      value={c.sql} dialect={engineDialect(conn.engine)}
+                      onChange={v => setConsoleSql(c.id, v)} onRun={run} completion={completion} />
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
 
           {/* Fila inferior: resultados a todo el ancho */}
           <Card className="min-h-0 min-w-0 flex flex-col overflow-hidden">
-            <QueryResults
-              result={runQuery.data}
-              error={errorMessage(runQuery.error)}
-              running={runQuery.isPending}
-              connectionId={id}
-              sessionId={session.sessionId}
-              fileName={exportName(conn.name, activeSchema)}
-              query={runQuery.variables}
-            />
+            {consoles.map(c => (
+              <ConsoleResults key={c.id} consoleId={c.id} run={c.run} active={c.id === active.id}
+                connectionId={id} sessionId={session.sessionId}
+                fileName={exportName(conn.name, activeSchema)} onRerun={rerun} />
+            ))}
           </Card>
         </div>
       )}

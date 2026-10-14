@@ -71,6 +71,10 @@ export class Notification {
     serverName?: string;
     value?: number;
     threshold?: number;
+    /** Inicio de sesión: IP, dispositivo y sesión. */
+    ip?: string | null;
+    device?: string;
+    sessionId?: string;
   } | null;
 
   @Column({ type: 'boolean', default: false, name: 'bol_read' })

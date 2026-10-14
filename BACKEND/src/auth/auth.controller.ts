@@ -65,9 +65,18 @@ export class AuthController {
        webview no se distingue de un navegador por el user-agent. */
     const header = req.headers?.['x-startcode-client'];
     const app = typeof header === 'string' ? /^desktop\/([\w.+-]{1,32})$/.exec(header) : null;
+    /* Nombre del equipo (`X-StartCode-Device`, codificado para admitir tildes): solo para el aviso de inicio de sesión. */
+    const rawDevice = req.headers?.['x-startcode-device'];
+    let device: string | null = null;
+    if (typeof rawDevice === 'string') {
+      try { device = decodeURIComponent(rawDevice); } catch { device = null; }
+      /* Sin caracteres de control (códigos < 32 y 127). */
+      device = device ? [...device].filter(ch => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127).join('').trim().slice(0, 64) || null : null;
+    }
     return {
       userAgent: app ? `${userAgent ?? ''} StartCodePanel/${app[1]}`.trim() : userAgent,
       ip: clientIp(req),
+      device,
     };
   }
 

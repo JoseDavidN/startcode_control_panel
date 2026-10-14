@@ -6,7 +6,7 @@ const svg = (className: string) => ({
 
 export type DbIconName =
   | 'database' | 'table' | 'view' | 'column' | 'key' | 'chevron' | 'chevronL'
-  | 'play' | 'refresh' | 'alert' | 'check' | 'download' | 'chevronDown' | 'shield' | 'warn' | 'trigger' | 'index' | 'procedure' | 'search' | 'folder' | 'eyeOff' | 'copy' | 'edit' | 'close';
+  | 'play' | 'refresh' | 'alert' | 'check' | 'download' | 'chevronDown' | 'shield' | 'warn' | 'trigger' | 'index' | 'procedure' | 'search' | 'folder' | 'eyeOff' | 'copy' | 'edit' | 'close' | 'trash';
 
 export const DbIcon = ({ name, className = 'w-4 h-4' }: { name: DbIconName; className?: string }) => {
   const p = svg(className);
@@ -35,5 +35,6 @@ export const DbIcon = ({ name, className = 'w-4 h-4' }: { name: DbIconName; clas
     case 'edit':     return <svg {...p}><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" /><path d="M14 7l3 3" /></svg>;
     case 'close':    return <svg {...p}><path d="M18 6L6 18M6 6l12 12" /></svg>;
     case 'check':    return <svg {...p}><path d="M20 6L9 17l-5-5" /></svg>;
+    case 'trash':    return <svg {...p}><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4h6v3" /></svg>;
   }
 };

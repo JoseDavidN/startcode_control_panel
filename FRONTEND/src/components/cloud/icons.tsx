@@ -7,7 +7,7 @@ const svg = (className: string) => ({
   strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, className,
 });
 
-export type CloudIconName = 'cloud' | 'home' | 'chevron' | 'grid' | 'list' | 'filter' | 'close' | 'folder' | 'info' | 'check' | 'upload' | 'search' | 'folderPlus' | 'backup' | 'gear' | 'user' | 'eye' | 'eyeOff';
+export type CloudIconName = 'cloud' | 'home' | 'chevron' | 'grid' | 'list' | 'filter' | 'close' | 'folder' | 'info' | 'check' | 'upload' | 'search' | 'folderPlus' | 'backup' | 'gear' | 'user' | 'eye' | 'eyeOff' | 'download';
 
 export const CloudIcon = ({ name, className = 'w-4 h-4' }: { name: CloudIconName; className?: string }) => {
   const p = svg(className);
@@ -21,6 +21,7 @@ export const CloudIcon = ({ name, className = 'w-4 h-4' }: { name: CloudIconName
     case 'close':   return <svg {...p}><path d="M18 6L6 18M6 6l12 12" /></svg>;
     case 'info':    return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>;
     case 'check':   return <svg {...p}><path d="M20 6L9 17l-5-5" /></svg>;
+    case 'download': return <svg {...p}><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>;
     case 'upload':  return <svg {...p}><path d="M12 16V5M7 10l5-5 5 5M5 20h14" /></svg>;
     case 'search':  return <svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
     case 'folderPlus': return <svg {...p}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM12 10.5v5M9.5 13h5" /></svg>;

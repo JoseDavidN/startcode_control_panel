@@ -29,12 +29,15 @@ import { UpdateDatabaseConnectionDto } from './dto/update-database-connection.dt
 import { TestDatabaseConnectionDto } from './dto/test-database-connection.dto';
 import { RunQueryDto } from './dto/run-query.dto';
 import { UpdateRowDto } from './dto/update-row.dto';
+import { DeleteRowsDto, InsertRowDto, TableRefDto } from './dto/insert-row.dto';
 import type {
   QueryResult,
   SchemaIndex,
   SchemaProcedure,
   SchemaTable,
   SchemaTrigger,
+  InsertColumn,
+  InsertRowResult,
 } from './services/database-explorer.service';
 import {
   DatabaseConnectionPasswordResponseDto,
@@ -259,6 +262,56 @@ export class DatabasesController {
   ): Promise<{ affectedRows: number }> {
     const { sessionId, ...input } = dto;
     return this.databasesService.updateRow(req.user.id, id, input, sessionId);
+  }
+
+  @Post(':id/tables/columns')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Columnas de una tabla para una fila nueva',
+    description: 'Tipo, si admite NULL, valor por defecto literal (para precargar) y si lo calcula la base (autoincremento, identidad, expresión) o es generada.',
+  })
+  @ApiParam({ name: 'id' })
+  tableColumns(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TableRefDto,
+  ): Promise<InsertColumn[]> {
+    const { sessionId, ...ref } = dto;
+    return this.databasesService.tableColumns(req.user.id, id, ref, sessionId);
+  }
+
+  @Post(':id/rows/insert')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiOperation({
+    summary: 'Insertar una fila',
+    description: 'INSERT con las columnas recibidas (validadas contra la tabla; los valores van parametrizados). Las que no vienen toman su valor por defecto.',
+  })
+  @ApiParam({ name: 'id' })
+  insertRow(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InsertRowDto,
+  ): Promise<InsertRowResult> {
+    const { sessionId, ...input } = dto;
+    return this.databasesService.insertRow(req.user.id, id, input, sessionId);
+  }
+
+  @Post(':id/rows/delete')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @ApiOperation({
+    summary: 'Borrar filas del resultado',
+    description: 'DELETE por la clave primaria completa de cada fila (hasta 1000), en una transacción: o se borran todas o ninguna. Queda en la auditoría de la conexión.',
+  })
+  @ApiParam({ name: 'id' })
+  deleteRows(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeleteRowsDto,
+  ): Promise<{ affectedRows: number }> {
+    const { sessionId, ...input } = dto;
+    return this.databasesService.deleteRows(req.user.id, id, input, sessionId);
   }
 
   @Get(':id/audit')

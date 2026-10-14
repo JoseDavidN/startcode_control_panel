@@ -437,18 +437,13 @@ A las tres se suma **Symbols Nerd Font Mono** (MIT, `ryanoasis/nerd-fonts`), que
 
 ## Scrollbars
 
-### Área principal de contenido (`.scroll-area`)
-- Ancho: 10px
-- Thumb: `rgba(255,255,255,0.06)` con borde transparente 2px (padding-box)
-- Hover: `rgba(255,255,255,0.12)`
+Toda zona con scroll lleva `.scroll-area`, `.scroll-thin` o `.modal-scroll`; sin una de ellas no tiene barra. Las barras nativas de esas clases están ocultas: WebKit no deja cambiarles el cursor (siempre la flecha, y la I dentro de un textarea). Las dibuja `utils/overlayScrollbars.ts`, instalado una vez en `main.tsx`, en una capa fija (`.osb-layer`, z-index 100) encima de la zona.
 
-### Sidebar (`.scroll-thin`)
-- Ancho: 6px (también el alto de la barra horizontal)
-- Thumb: `rgba(255,255,255,0.08)`
-
-### Modal (`.modal-scroll`)
-- Ancho: 4px
-- Thumb: gradiente `rgba(168,85,247,0.45) → rgba(236,72,153,0.45)`
+- Solo aparecen en la zona bajo el mouse (y en las que la contienen) o que se está desplazando, y se desvanecen al salir. No ocupan espacio: el contenido no se corre.
+- Thumb de 6 px en tinta al 30 % (`color-mix(in oklab, var(--ink) 30%, transparent)`), legible en los tres temas. Al pasar el mouse por su franja (12 px), sube a 10 px con el gradiente de marca y `--hairline-strong`.
+- Cursor: `grab` sobre el thumb, `grabbing` en toda la ventana mientras se arrastra (`.osb-grabbing`, que también bloquea la selección de texto) y `pointer` en la pista, donde un clic avanza una página.
+- Rendimiento: un solo gestor en DOM sin React, con escuchas delegadas en el documento (`pointerover` y `scroll` en captura). El thumb se mueve con `transform` dentro de `requestAnimationFrame`. No añadir escuchas de scroll por componente para esto.
+- Las tres clases ya no cambian el aspecto de la barra. `.scroll-area` sigue siendo el área principal y `.modal-scroll` el cuerpo de los modales. La terminal (xterm) tiene su propia barra.
 
 ---
 
@@ -524,4 +519,4 @@ diff <(grep -oE '^  --[a-z0-9-]+' dark.css) <(grep -oE '^  --[a-z0-9-]+' <id>.cs
 9. **Todo componente debe funcionar en los tres temas.** El tema es una preferencia del usuario (Configuración → Aspecto, persistida en la cuenta). Antes de dar por terminado un componente, revisarlo en Nocturno, Aurora y Solar: contraste del texto, badges de estado y tinta sobre botones de marca.
 10. **El fondo fixed con auroras** solo se instancia una vez en `AppLayout`. No duplicar en sub-páginas.
 11. **Toda nueva página** que use `AppLayout` hereda el fondo automáticamente. No aplicar backgrounds adicionales en `<Outlet />` pages.
-12. **Íconos**: usar SVG inline con `stroke="currentColor"`, `strokeWidth={1.75}`, `strokeLinecap="round"`, `strokeLinejoin="round"`. No usar librerías de íconos externas.
+12. **Íconos**: usar SVG inline con `stroke="currentColor"`, `strokeWidth={1.75}`, `strokeLinecap="round"`, `strokeLinejoin="round"`. No usar librerías de íconos externas. **Excepción, logos de marca** (catálogo de servicios instalables): el logotipo real del producto con su color oficial, copiado como trazo SVG de Simple Icons (CC0) en `components/servers/serviceLogos.ts` (o, si el proyecto no tiene logo vectorial, su PNG oficial en `assets/service-logos/`); es contenido, no color de la interfaz, y no se tiñe con el tema.

@@ -6,6 +6,8 @@ import { ServerStatusService } from './services/server-status.service';
 import { SSHService } from './services/ssh.service';
 import { ServiceControlService } from './services/service-control.service';
 import { DockerService } from './services/docker.service';
+import { KubernetesService } from './services/kubernetes.service';
+import { ServiceInstallService } from './services/service-install.service';
 import { CommandService } from './services/command.service';
 import { MetricsRetentionService } from './services/metrics-retention.service';
 import { CommandAudit } from './entities/command-audit.entity';
@@ -37,6 +39,8 @@ import { NotificationsModule } from '@/notifications/notifications.module';
     SSHService,
     ServiceControlService,
     DockerService,
+    KubernetesService,
+    ServiceInstallService,
     CommandService,
     MetricsRetentionService,
   ],

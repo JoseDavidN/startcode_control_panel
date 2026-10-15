@@ -1,7 +1,7 @@
 // src/hooks/useServers.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serverService } from '@services/server.service';
-import type { UpdateServerDto } from '@services/server.service';
+import type { Server, UpdateServerDto } from '@services/server.service';
 
 /**
  * Hook para obtener todos los servidores del usuario
@@ -50,6 +50,36 @@ export function useCreateServer() {
 /**
  * Hook para actualizar un servidor
  */
+/**
+ * Marca o quita un favorito. Se aplica al instante en la lista y, si el
+ * backend lo rechaza (ya hay 3), vuelve a como estaba.
+ */
+export function useSetServerFavorite() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, favorite }: { id: string; favorite: boolean }) => serverService.setFavorite(id, favorite),
+		onMutate: async ({ id, favorite }) => {
+			await queryClient.cancelQueries({ queryKey: ['servers'] });
+			const previous = queryClient.getQueryData<Server[]>(['servers']);
+			queryClient.setQueryData<Server[]>(['servers'], list => list?.map(s =>
+				s.id === id ? { ...s, favoritedAt: favorite ? new Date().toISOString() : null } : s));
+			return { previous };
+		},
+		onError: (_err, _vars, ctx) => {
+			if (ctx?.previous) queryClient.setQueryData(['servers'], ctx.previous);
+		},
+		onSettled: () => { void queryClient.invalidateQueries({ queryKey: ['servers'] }); },
+	});
+}
+
+/** Cambia la llave privada SSH de un servidor. */
+export function useUpdateServerKey() {
+	return useMutation({
+		mutationFn: ({ id, privateKey }: { id: string; privateKey: string }) =>
+			serverService.updatePrivateKey(id, privateKey),
+	});
+}
+
 export function useUpdateServer() {
 	const queryClient = useQueryClient();
 

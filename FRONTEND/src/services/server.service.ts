@@ -68,6 +68,8 @@ export interface Server {
 		};
 	};
 	ownerId: string;
+	/** Cuándo se marcó como favorito (hasta 3 por usuario); null si no lo es. */
+	favoritedAt?: string | null;
 	/** Última vez que el agente reportó; null si nunca lo hizo */
 	lastSeen?: string | null;
 	hostname?: string | null;
@@ -116,6 +118,16 @@ class ServerService {
 		const item =
 			payload && (payload as any).data ? (payload as any).data : payload;
 		return item as Server;
+	}
+
+	/** Cambia la llave privada SSH. El backend la guarda cifrada y nunca la devuelve. */
+	async updatePrivateKey(id: string, privateKey: string): Promise<void> {
+		await apiService.put(`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/private-key`, { privateKey });
+	}
+
+	/** Marca o quita un favorito. Con 3 ya marcados, marcar otro responde 409. */
+	async setFavorite(id: string, favorite: boolean): Promise<void> {
+		await apiService.put(`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/favorite`, { favorite });
 	}
 
 	/** Actualiza los datos editables del servidor (la llave tiene su propio endpoint). */

@@ -8,6 +8,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ServersService } from './servers.service';
 import { Server, ServerOs, ServerStatus } from './entities/server.entity';
 import { User, UserRole } from '@auth/entities/user.entity';
+import { CredentialsCipherService } from '@/databases/services/credentials-cipher.service';
 
 const mockUser: User = {
   id: 'user-uuid-1',
@@ -65,12 +66,22 @@ describe('ServersService', () => {
       save: jest.fn(),
       remove: jest.fn(),
       count: jest.fn(),
+      update: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ServersService,
         { provide: getRepositoryToken(Server), useValue: serversRepo },
+        /* Cifrado de prueba con el mismo prefijo `v1:` que el real. */
+        {
+          provide: CredentialsCipherService,
+          useValue: {
+            ready: true,
+            encrypt: jest.fn((v: string) => `v1:enc:${v}`),
+            decrypt: jest.fn((v: string) => v.replace(/^v1:enc:/, '')),
+          },
+        },
       ],
     }).compile();
 
@@ -86,7 +97,7 @@ describe('ServersService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('crea el servidor con estado OFFLINE', async () => {
+    it('crea el servidor con estado PENDING (aún sin agente)', async () => {
       serversRepo.findOne.mockResolvedValue(null);
       serversRepo.create.mockReturnValue(mockServer);
       serversRepo.save.mockResolvedValue(mockServer);
@@ -94,7 +105,7 @@ describe('ServersService', () => {
       await service.create(createServerDto, mockUser);
 
       expect(serversRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: ServerStatus.OFFLINE }),
+        expect.objectContaining({ status: ServerStatus.PENDING }),
       );
       expect(serversRepo.save).toHaveBeenCalledTimes(1);
     });
@@ -109,6 +120,40 @@ describe('ServersService', () => {
       expect(serversRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ ownerId: mockUser.id }),
       );
+    });
+  });
+
+  describe('llave privada SSH cifrada', () => {
+    it('create guarda la llave cifrada, nunca en claro', async () => {
+      serversRepo.findOne.mockResolvedValue(null);
+      serversRepo.create.mockReturnValue(mockServer);
+      serversRepo.save.mockResolvedValue(mockServer);
+      await service.create(createServerDto, mockUser);
+      expect(serversRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ privateKey: 'v1:enc:---private key---' }),
+      );
+    });
+
+    it('findOneWithPrivateKey la devuelve descifrada para conectar', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, privateKey: 'v1:enc:LLAVE' });
+      const server = await service.findOneWithPrivateKey(mockServer.id, mockUser.id);
+      expect(server.privateKey).toBe('LLAVE');
+    });
+
+    it('una llave antigua en claro se sigue usando tal cual', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----' });
+      const server = await service.findOneWithPrivateKey(mockServer.id, mockUser.id);
+      expect(server.privateKey).toBe('-----BEGIN OPENSSH PRIVATE KEY-----');
+    });
+
+    it('updatePrivateKey escribe solo la llave cifrada', async () => {
+      serversRepo.findOne.mockResolvedValue(mockServer);
+      await service.updatePrivateKey(mockServer.id, { privateKey: 'NUEVA' }, mockUser);
+      expect(serversRepo.update).toHaveBeenCalledWith(
+        { id: mockServer.id },
+        expect.objectContaining({ privateKey: 'v1:enc:NUEVA' }),
+      );
+      expect(serversRepo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -139,6 +184,37 @@ describe('ServersService', () => {
 
       expect(result.id).toBe(mockServer.id);
       expect(result.host).toBe(mockServer.host);
+    });
+  });
+
+  describe('setFavorite', () => {
+    it('marca un favorito si hay menos de 3', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, favoritedAt: null });
+      serversRepo.count.mockResolvedValue(2);
+      const res = await service.setFavorite(mockServer.id, true, mockUser);
+      expect(serversRepo.update).toHaveBeenCalledWith({ id: mockServer.id }, { favoritedAt: expect.any(Date) });
+      expect(res.favoritedAt).toBeInstanceOf(Date);
+    });
+
+    it('rechaza el cuarto favorito con 409', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, favoritedAt: null });
+      serversRepo.count.mockResolvedValue(3);
+      await expect(service.setFavorite(mockServer.id, true, mockUser)).rejects.toThrow(ConflictException);
+      expect(serversRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('quitar un favorito no cuenta los demás', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, favoritedAt: new Date() });
+      const res = await service.setFavorite(mockServer.id, false, mockUser);
+      expect(serversRepo.count).not.toHaveBeenCalled();
+      expect(serversRepo.update).toHaveBeenCalledWith({ id: mockServer.id }, { favoritedAt: null });
+      expect(res.favoritedAt).toBeNull();
+    });
+
+    it('no toca nada si ya está en ese estado', async () => {
+      serversRepo.findOne.mockResolvedValue({ ...mockServer, favoritedAt: new Date() });
+      await service.setFavorite(mockServer.id, true, mockUser);
+      expect(serversRepo.update).not.toHaveBeenCalled();
     });
   });
 

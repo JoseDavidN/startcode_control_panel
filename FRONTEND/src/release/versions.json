@@ -3,6 +3,32 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.8.0",
+      "type": "minor",
+      "date": "2026-10-15",
+      "title": "Varias terminales por servidor",
+      "changes": {
+        "added": [
+          "Servidores: clic derecho en una tarjeta o fila para marcar hasta 3 servidores como favoritos (también editar y eliminar). Los favoritos aparecen siempre primero y llevan una estrella junto al nombre. Los botones de editar y eliminar de las tarjetas pasan a ese menú",
+          "Servidores: en Editar servidor, «Cambiar llave privada» muestra el campo para sustituir la llave SSH, con la misma validación que al darlo de alta. La llave actual nunca se muestra",
+          "Asistente IA: comando /resume en el chat. Guarda la conversación en la memoria del asistente (lo que recuerda en adelante) y deja el chat limpio. Al escribir / aparece la lista de comandos y Tab lo completa",
+          "Bases de datos: un clic en una celda de los resultados la marca y Ctrl + C (o «Copiar valor») copia su contenido (el puntero de mano indica que se puede hacer clic); las flechas mueven la celda marcada y Enter la edita",
+          "Bases de datos: las pestañas del editor SQL y sus consultas se guardan en el equipo para cada conexión y siguen ahí al volver a abrirla, incluso después de cerrar la app. Los resultados no se guardan: se vuelven a ejecutar",
+          "Terminal del servidor: pestañas para abrir hasta 5 terminales a la vez en la misma ventana, cada una con su propia conexión SSH. La pestaña activa sale de la propia consola, como en un navegador; el botón + abre otra y la x de cada pestaña cierra solo esa conexión"
+        ],
+        "changed": [
+          "Agregar servidor y Nueva conexión: la etiqueta va en la misma fila que el nombre",
+          "Editor SQL: más margen a la derecha, el texto ya no queda pegado al borde",
+          "Terminal del servidor: Limpiar y el asistente actúan sobre la pestaña activa; Terminar todas cierra todas las conexiones",
+          "Bases de datos: las pestañas del editor SQL se llaman por defecto «Editor #» en lugar de «Consola #»"
+        ],
+        "fixed": [
+          "Copiar al portapapeles ya no falla con «No se pudo copiar» (por ejemplo en Linux con Wayland)",
+          "Editor SQL: la vista sigue al cursor también en horizontal; al pulsar Enter tras una línea larga vuelve al inicio y muestra el cursor en la fila nueva"
+        ]
+      }
+    },
+    {
       "version": "0.7.1",
       "type": "patch",
       "date": "2026-10-14",

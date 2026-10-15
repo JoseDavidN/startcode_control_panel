@@ -88,6 +88,17 @@ export class AssistantController {
     return this.assistantService.memoryStatus(req.user.id);
   }
 
+  @Post('memory/summarize')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  @ApiOperation({
+    summary: 'Resumir la conversación en la memoria y vaciar el chat (/resume)',
+    description: 'Condensa con el proveedor todos los mensajes aún sin resumir, los añade al resumen a largo plazo y borra la conversación. Si el resumen falla no se borra nada.',
+  })
+  summarizeMemory(@Request() req: AuthedRequest): Promise<{ summary: string; summarized: number }> {
+    return this.assistantService.summarizeMemory(req.user.id);
+  }
+
   @Delete('memory')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Borrar la conversación y la memoria del asistente' })

@@ -39,6 +39,10 @@ export class ServerResponseDto {
   @ApiPropertyOptional({ enum: ServerTag, nullable: true })
   tag: ServerTag | null;
 
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, description: 'Cuándo se marcó como favorito; null si no lo es' })
+  favoritedAt: Date | null;
+
   @Expose({ name: 'description' })
   @ApiProperty({ required: false })
   description: string;

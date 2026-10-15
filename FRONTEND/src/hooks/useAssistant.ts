@@ -141,6 +141,19 @@ export function useSendAssistantMessage() {
 	});
 }
 
+/** `/resume` del chat: resume la conversación en la memoria y la vacía. */
+export function useSummarizeAssistantMemory() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => assistantApi.summarizeMemory(),
+		onSuccess: () => {
+			queryClient.setQueryData(ASSISTANT_KEYS.messages(user?.id ?? ''), []);
+			void queryClient.invalidateQueries({ queryKey: ASSISTANT_KEYS.memory(user?.id ?? '') });
+		},
+	});
+}
+
 export function useClearAssistantMemory() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();

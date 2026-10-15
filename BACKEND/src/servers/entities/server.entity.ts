@@ -82,6 +82,10 @@ export class Server {
   @Column({ type: 'enum', enum: ServerTag, nullable: true, name: 'enu_tag' })
   tag: ServerTag | null;
 
+  /** Marcado como favorito (hasta 3 por usuario): la lista los pone primero, por esta fecha. */
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_favorited' })
+  favoritedAt: Date | null;
+
   @Column({ type: 'text', nullable: true, name: 'str_description' })
   description: string;
 

@@ -236,21 +236,21 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ connection, in
           </div>
         </div>
 
-        {/* Nombre */}
-        <div>
-          <Label>Nombre de la conexión *</Label>
-          <div className={wrapCls}>
-            <input name="name" type="text" value={form.name} onChange={handleChange}
-              required maxLength={100} placeholder="Ej: StartCode producción" className={inputCls} />
+        {/* Nombre + etiqueta (opcional, una de la lista) en la misma fila (85/15). */}
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,85fr)_minmax(8.5rem,15fr)] gap-4">
+          <div>
+            <Label>Nombre de la conexión *</Label>
+            <div className={wrapCls}>
+              <input name="name" type="text" value={form.name} onChange={handleChange}
+                required maxLength={100} placeholder="Ej: StartCode producción" className={inputCls} />
+            </div>
           </div>
-        </div>
-
-        {/* Etiqueta (opcional): una sola, de la lista */}
-        <div>
-          <Label>Etiqueta (opcional)</Label>
-          <div className={wrapCls}>
-            <Select className="flex-1 text-white/90" value={form.tag ?? ''} options={TAG_FIELD_OPTIONS}
-              onChange={tag => setForm(prev => ({ ...prev, tag: tag || null }))} aria-label="Etiqueta" />
+          <div title="Opcional: clasifica la conexión para encontrarla luego con los filtros">
+            <Label>Etiqueta</Label>
+            <div className={wrapCls}>
+              <Select className="flex-1 min-w-0 text-white/90" value={form.tag ?? ''} options={TAG_FIELD_OPTIONS}
+                onChange={tag => setForm(prev => ({ ...prev, tag: tag || null }))} aria-label="Etiqueta" />
+            </div>
           </div>
         </div>
 

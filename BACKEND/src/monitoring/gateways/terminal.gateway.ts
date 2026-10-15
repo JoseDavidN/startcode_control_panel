@@ -9,12 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server as IoServer, Socket } from 'socket.io';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import type { ClientChannel, Client as SSHClient } from 'ssh2';
-import { Server as ServerEntity } from '@servers/entities/server.entity';
 import { WsAuthService } from '@auth/ws-auth.service';
 import { SSHService } from '../services/ssh.service';
+import { ServersService } from '@servers/servers.service';
 
 interface TerminalSession {
   ssh: SSHClient;
@@ -42,8 +40,7 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
   private sessions = new Map<string, TerminalSession>();
 
   constructor(
-    @InjectRepository(ServerEntity)
-    private serversRepository: Repository<ServerEntity>,
+    private serversService: ServersService,
     private wsAuth: WsAuthService,
     private sshService: SSHService,
   ) {}
@@ -61,6 +58,12 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
       const server = await this.resolveServer(serverId, user.id);
 
       const ssh = await this.sshService.createDedicatedClient(server);
+      /* La pestaña pudo cerrarse mientras se conectaba: handleDisconnect ya
+         corrió sin sesión que limpiar, así que esta conexión se cierra aquí. */
+      if (client.disconnected) {
+        ssh.end();
+        return;
+      }
 
       const stream = await new Promise<ClientChannel>((resolve, reject) => {
         ssh.shell(
@@ -72,6 +75,12 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
           (err, channel) => (err ? reject(err) : resolve(channel)),
         );
       });
+
+      if (client.disconnected) {
+        try { stream.end(); } catch { /* ya cerrado */ }
+        ssh.end();
+        return;
+      }
 
       this.sessions.set(client.id, { ssh, stream, serverId: server.id, userId: user.id });
 
@@ -126,20 +135,10 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   /* ── Internos ──────────────────────────────────────────────────────── */
 
-  /** El servidor debe existir y ser del usuario; la llave no se selecciona por defecto. */
+  /** El servidor debe existir y ser del usuario. La llave llega descifrada (solo en memoria). */
   private async resolveServer(serverId: string | undefined, userId: string) {
     if (!serverId) throw new Error('Falta el servidor');
-
-    const server = await this.serversRepository
-      .createQueryBuilder('server')
-      .addSelect('server.privateKey')
-      .where('server.id = :serverId', { serverId })
-      .getOne();
-
-    if (!server) throw new Error('Servidor no encontrado');
-    if (server.ownerId !== userId) throw new Error('No tienes acceso a este servidor');
-
-    return server;
+    return this.serversService.findOneWithPrivateKey(serverId, userId);
   }
 
   private cleanup(socketId: string): void {

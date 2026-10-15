@@ -230,6 +230,12 @@ export class AssistantService {
     return this.memory.clear(userId);
   }
 
+  /** `/resume` del chat: todo lo pendiente pasa al resumen y la conversación se vacía. */
+  async summarizeMemory(userId: string) {
+    const { config, apiKey } = await this.loadWithKey(userId, true);
+    return this.memory.summarizeAndClear(userId, { provider: config.provider, model: config.model, apiKey });
+  }
+
   private async loadWithKey(userId: string, requireEnabled: boolean) {
     const config = await this.repo
       .createQueryBuilder('c')

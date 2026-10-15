@@ -24,6 +24,7 @@ import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES } from '@typings/database.ty
 import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
 import { statementAt } from '@utils/sql';
+import { loadEditors, saveEditors, type SavedEditors } from '@lib/sqlEditors';
 import type { ApiError } from '@typings/api.types';
 import type { QueryResult } from '@typings/database.types';
 
@@ -63,11 +64,11 @@ function dangerousQuery(err: unknown): { message: string; hint?: string } | null
 const MAX_CONSOLES = 6;
 interface QueryVars { sql: string; schema: string | null; confirm?: boolean }
 interface ConsoleRun { data?: QueryResult; error: unknown; running: boolean; variables?: QueryVars }
-interface SqlConsole { id: number; n: number; sql: string; run: ConsoleRun; /** Nombre puesto por el usuario; sin él, «Consola n». */ name?: string }
-const consoleName = (c: SqlConsole) => c.name ?? `Consola ${c.n}`;
+interface SqlConsole { id: number; n: number; sql: string; run: ConsoleRun; /** Nombre puesto por el usuario; sin él, «Editor n». */ name?: string }
+const consoleName = (c: SqlConsole) => c.name ?? `Editor ${c.n}`;
 const MAX_CONSOLE_NAME = 40;
 const IDLE_RUN: ConsoleRun = { error: null, running: false };
-/* «Consola #»: el número libre más bajo, así al cerrar una se reutiliza. */
+/* «Editor #»: el número libre más bajo, así al cerrar una se reutiliza. */
 const freeNumber = (list: SqlConsole[]) => {
   let n = 1;
   while (list.some(c => c.n === n)) n++;
@@ -139,7 +140,7 @@ function exportName(connection: string, schema: string | null): string {
    Misma ventana que el resto: cabecera fija y el resto repartido en el alto
    del contenedor. Arriba, bases (30 %) y editor (70 %); abajo, a todo el
    ancho, los resultados. Cada zona desplaza su propio contenido. */
-export const DatabaseDetail: React.FC = () => {
+const DatabaseDetailView: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: conn, isLoading, isError } = useDatabaseConnection(id);
@@ -156,10 +157,35 @@ export const DatabaseDetail: React.FC = () => {
   }, [schemasQuery.error, markClosed]);
 
   /* Consolas: todas quedan montadas (editor y resultado) y solo se oculta la
-     inactiva, así al volver conservan texto, deshacer, scroll y la tabla. */
-  const [consoles, setConsoles] = useState<SqlConsole[]>([{ id: 1, n: 1, sql: '', run: IDLE_RUN }]);
-  const [activeId, setActiveId] = useState(1);
-  const consoleSeq = useRef(1);
+     inactiva, así al volver conservan texto, deshacer, scroll y la tabla.
+     Arrancan con las guardadas en el equipo para esta conexión. */
+  const [saved] = useState(() => loadEditors(id, MAX_CONSOLES));
+  const [consoles, setConsoles] = useState<SqlConsole[]>(() =>
+    saved?.editors.map((e, i) => ({ id: i + 1, n: e.n, sql: e.sql, name: e.name, run: IDLE_RUN }))
+      ?? [{ id: 1, n: 1, sql: '', run: IDLE_RUN }]);
+  const [activeId, setActiveId] = useState(() => (saved?.active ?? 0) + 1);
+  const consoleSeq = useRef(consoles.length);
+
+  /* Guardado en el equipo: medio segundo después del último cambio, para no
+     escribir en cada tecla, y al salir de la vista o cerrar la app lo que quede pendiente. */
+  const persisted = useMemo(() => ({
+    editors: consoles.map(c => ({ n: c.n, sql: c.sql, ...(c.name ? { name: c.name } : {}) })),
+    active: Math.max(0, consoles.findIndex(c => c.id === activeId)),
+  }), [consoles, activeId]);
+  const pendingSave = useRef<SavedEditors | null>(null);
+  useEffect(() => {
+    pendingSave.current = persisted;
+    const t = setTimeout(() => { saveEditors(id, persisted); pendingSave.current = null; }, 500);
+    return () => clearTimeout(t);
+  }, [id, persisted]);
+  useEffect(() => {
+    const flush = () => {
+      if (pendingSave.current) saveEditors(id, pendingSave.current);
+      pendingSave.current = null;
+    };
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
+  }, [id]);
   const active = consoles.find(c => c.id === activeId) ?? consoles[0];
   const sql = active.sql;
   const editorRefs = useRef(new Map<number, HTMLTextAreaElement>());
@@ -168,7 +194,7 @@ export const DatabaseDetail: React.FC = () => {
   const setConsoleSql = useCallback((id: number, value: string | ((prev: string) => string)) =>
     patchConsole(id, c => ({ sql: typeof value === 'function' ? value(c.sql) : value })), [patchConsole]);
   const setSql = (value: string | ((prev: string) => string)) => setConsoleSql(activeId, value);
-  /* Renombrar con doble clic: Enter o salir del campo guarda, Escape cancela; vacío vuelve a «Consola n». */
+  /* Renombrar con doble clic: Enter o salir del campo guarda, Escape cancela; vacío vuelve a «Editor n». */
   const [renaming, setRenaming] = useState<{ id: number; value: string } | null>(null);
   const commitRename = () => {
     if (!renaming) return;
@@ -410,7 +436,7 @@ export const DatabaseDetail: React.FC = () => {
               </div>
               <div className="flex-1 min-h-0 flex">
                 {/* Consolas, a la derecha del editor (`order-last`) */}
-                <nav aria-label="Consolas SQL" className="order-last w-36 shrink-0 flex flex-col gap-1 p-2 border-l border-line">
+                <nav aria-label="Editores SQL" className="order-last w-36 shrink-0 flex flex-col gap-1 p-2 border-l border-line">
                   <div className="flex-1 min-h-0 flex flex-col gap-1 overflow-y-auto scroll-thin">
                     {consoles.map(c => {
                       const on = c.id === active.id;
@@ -418,7 +444,7 @@ export const DatabaseDetail: React.FC = () => {
                         <div key={c.id} className={`mo-tab group flex items-center h-8 rounded-lg border ${on ? 'nav-active' : 'border-transparent row-hit'}`}>
                           {renaming?.id === c.id ? (
                             <input autoFocus value={renaming.value} maxLength={MAX_CONSOLE_NAME}
-                              aria-label="Nombre de la consola" placeholder={`Consola ${c.n}`}
+                              aria-label="Nombre del editor" placeholder={`Editor ${c.n}`}
                               onChange={e => setRenaming({ id: c.id, value: e.target.value })}
                               onFocus={e => e.currentTarget.select()}
                               onBlur={commitRename}
@@ -441,7 +467,7 @@ export const DatabaseDetail: React.FC = () => {
                           )}
                           {consoles.length > 1 && (
                             <button type="button" onClick={() => closeConsole(c.id)}
-                              aria-label={`Cerrar ${consoleName(c)}`} title="Cerrar consola"
+                              aria-label={`Cerrar ${consoleName(c)}`} title="Cerrar editor"
                               className="w-6 h-6 mr-1 shrink-0 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-tint-hover">
                               <DbIcon name="close" className="w-3 h-3" />
                             </button>
@@ -451,10 +477,10 @@ export const DatabaseDetail: React.FC = () => {
                     })}
                   </div>
                   <button type="button" onClick={addConsole} disabled={consoles.length >= MAX_CONSOLES}
-                    title={consoles.length >= MAX_CONSOLES ? `Máximo ${MAX_CONSOLES} consolas` : 'Agregar consola'}
+                    title={consoles.length >= MAX_CONSOLES ? `Máximo ${MAX_CONSOLES} editores` : 'Agregar editor'}
                     className="mo-tab shrink-0 h-8 rounded-lg glass-soft row-hit text-white/65 hover:text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
                     <span className="text-sm leading-none">+</span>
-                    Agregar consola
+                    Agregar editor
                   </button>
                 </nav>
                 {consoles.map(c => (
@@ -511,4 +537,11 @@ export const DatabaseDetail: React.FC = () => {
       </Modal>
     </div>
   );
+};
+
+/* Con `key` por conexión: pasar de una base a otra sin salir de la ruta monta la
+   vista de nuevo, así sus editores guardados no se mezclan con los de la otra. */
+export const DatabaseDetail: React.FC = () => {
+  const { id = '' } = useParams<{ id: string }>();
+  return <DatabaseDetailView key={id} />;
 };

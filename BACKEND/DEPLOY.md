@@ -34,6 +34,8 @@ openssl rand -hex 64   # JWT_SECRET
 openssl rand -hex 32   # DB_CREDENTIALS_KEY (no cambiarla nunca después)
 ```
 
+`DB_CREDENTIALS_KEY` cifra (AES-256-GCM) las llaves privadas SSH de los servidores, las contraseñas de las conexiones a bases de datos y las claves de API del asistente: en la base solo queda el valor cifrado, y el backend lo descifra en memoria al conectar. Sin esta clave no se pueden crear servidores. Al actualizar desde una versión anterior a la 0.10.0, el backend cifra al arrancar las llaves SSH que estaban en claro (lo indica en el registro).
+
 Los artefactos del agente (instalador y binarios) van en `./agent-dist`, publicados por el repositorio del agente.
 
 ### Con una base de datos y un Redis existentes (por defecto)
@@ -146,4 +148,4 @@ docker compose --env-file .env.production --profile db exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > backup-$(date +%F).dump
 ```
 
-Guardar también `.env.production`: sin el mismo `DB_CREDENTIALS_KEY` las contraseñas de las conexiones a bases de datos y las claves de API de los asistentes de IA de la copia no se pueden descifrar. Redis es solo caché y no necesita copia.
+Guardar también `.env.production`: sin el mismo `DB_CREDENTIALS_KEY` las llaves SSH de los servidores, las contraseñas de las conexiones a bases de datos y las claves de API de los asistentes de IA de la copia no se pueden descifrar. Redis es solo caché y no necesita copia.

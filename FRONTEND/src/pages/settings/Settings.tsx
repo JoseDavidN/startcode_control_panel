@@ -1238,7 +1238,10 @@ const SystemPane = () => {
     queryClient.clear();
     const keep = new Set([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.REFRESH_TOKEN, STORAGE_KEYS.USER_DATA,
       'startcode:prefs']);
-    Object.keys(localStorage).forEach(k => { if (!keep.has(k)) localStorage.removeItem(k); });
+    /* Los editores SQL guardados son trabajo del usuario, no caché. */
+    Object.keys(localStorage).forEach(k => {
+      if (!keep.has(k) && !k.startsWith(STORAGE_KEYS.SQL_EDITORS)) localStorage.removeItem(k);
+    });
     notify.success('Caché limpiado', 'Se eliminaron todos los datos en caché de la aplicación');
   };
 

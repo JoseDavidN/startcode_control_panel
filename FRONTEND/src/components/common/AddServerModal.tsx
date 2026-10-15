@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { Select } from '@components/common/Select';
-import { SERVER_OS_OPTIONS } from '@utils/servers';
+import { SERVER_OS_OPTIONS, normalizeKey, validateKey } from '@utils/servers';
 import { TAG_FIELD_OPTIONS, type ResourceTag } from '@utils/tags';
 import { useCreateServer } from '@hooks/useServers';
 import { useAgentInstallProgress, useInstallAgent } from '@hooks/useAgentInstall';
@@ -65,27 +65,10 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [error]);
 
-  /* ── Private key validation ── */
-  const validateKey = (key: string): { valid: boolean; error?: string } => {
-    const k = key.trim();
-    if (!k) return { valid: false, error: 'La clave privada es requerida' };
-    if (!k.includes('BEGIN') || !k.includes('PRIVATE KEY'))
-      return { valid: false, error: 'Debe contener "BEGIN ... PRIVATE KEY"' };
-    if (!/-----BEGIN [A-Z ]+PRIVATE KEY-----/.test(k))
-      return { valid: false, error: 'Debe comenzar con "-----BEGIN ... PRIVATE KEY-----"' };
-    if (!/-----END [A-Z ]+PRIVATE KEY-----/.test(k))
-      return { valid: false, error: 'Debe terminar con "-----END ... PRIVATE KEY-----"' };
-    if ((k.includes('BEGIN RSA PRIVATE KEY') || k.includes('BEGIN EC PRIVATE KEY')) && k.includes('ENCRYPTED'))
-      return { valid: false, error: 'La clave tiene passphrase. Remuévela con: ssh-keygen -p -N "" -f tu_clave' };
-    const minLength = k.includes('BEGIN OPENSSH PRIVATE KEY') ? 400 : 800;
-    if (k.length < minLength) return { valid: false, error: 'La clave parece estar incompleta' };
-    return { valid: true };
-  };
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'privateKey') {
-      setFormData(prev => ({ ...prev, privateKey: value.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n') }));
+      setFormData(prev => ({ ...prev, privateKey: normalizeKey(value) }));
     } else {
       setFormData(prev => ({ ...prev, [name]: name === 'port' ? parseInt(value) || 22 : value }));
     }
@@ -265,12 +248,22 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
           </div>
         )}
 
-        {/* Nombre */}
-        <div>
-          <Label>Nombre del Servidor *</Label>
-          <div className={wrapCls}>
-            <input name="name" type="text" value={formData.name} onChange={handleChange}
-              required placeholder="Ej: Web Server 01" className={inputCls} />
+        {/* Nombre + etiqueta en la misma fila (85/15). La etiqueta es opcional y
+            clasifica el servidor para encontrarlo luego con los filtros. */}
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,85fr)_minmax(8.5rem,15fr)] gap-4">
+          <div>
+            <Label>Nombre del Servidor *</Label>
+            <div className={wrapCls}>
+              <input name="name" type="text" value={formData.name} onChange={handleChange}
+                required placeholder="Ej: Web Server 01" className={inputCls} />
+            </div>
+          </div>
+          <div title="Opcional: clasifica el servidor para encontrarlo luego con los filtros">
+            <Label>Etiqueta</Label>
+            <div className={wrapCls}>
+              <Select className="flex-1 min-w-0 text-white/90" value={formData.tag} options={TAG_FIELD_OPTIONS}
+                onChange={tag => setFormData(prev => ({ ...prev, tag }))} aria-label="Etiqueta" />
+            </div>
           </div>
         </div>
 
@@ -308,18 +301,6 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
                 onChange={os => setFormData(prev => ({ ...prev, os }))} aria-label="Sistema operativo" />
             </div>
           </div>
-        </div>
-
-        {/* Etiqueta (opcional): una sola, de la lista */}
-        <div>
-          <Label>Etiqueta (opcional)</Label>
-          <div className={wrapCls}>
-            <Select className="flex-1 text-white/90" value={formData.tag} options={TAG_FIELD_OPTIONS}
-              onChange={tag => setFormData(prev => ({ ...prev, tag }))} aria-label="Etiqueta" />
-          </div>
-          <p className="text-[11px] text-white/40 mt-1.5">
-            Clasifica el servidor para encontrarlo luego con los filtros.
-          </p>
         </div>
 
         {/* Contraseña de sudo (opcional) */}

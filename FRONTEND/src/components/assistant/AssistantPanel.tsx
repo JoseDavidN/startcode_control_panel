@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAssistant } from '@hooks/useAssistantBridge';
-import { useAssistantConfig, useAssistantMessages, useClearAssistantMemory, useSendAssistantMessage } from '@hooks/useAssistant';
+import { useAssistantConfig, useAssistantMessages, useClearAssistantMemory, useSendAssistantMessage, useSummarizeAssistantMemory } from '@hooks/useAssistant';
 import { notify } from '@services/notification.service';
 import { copyText } from '@lib/clipboard';
 import { ROUTES } from '@utils/constants';
@@ -163,6 +163,12 @@ const SUGGESTIONS = [
  * la terminal abierta. Se abre desde la barra superior (`AssistantLauncher`)
  * o desde la cabecera de la terminal.
  */
+/* Comandos del chat: se escriben solos en la entrada (p. ej. `/resume`) y no se envían al modelo. */
+const COMMANDS = [
+  { name: '/resume', hint: 'Guarda la conversación en la memoria del asistente y limpia el chat' },
+] as const;
+type CommandName = typeof COMMANDS[number]['name'];
+
 export const AssistantPanel: React.FC = () => {
   const navigate = useNavigate();
   const { open, setOpen, sources, targets } = useAssistant();
@@ -171,6 +177,7 @@ export const AssistantPanel: React.FC = () => {
   const { data: messages = [] } = useAssistantMessages(open);
   const chat = useSendAssistantMessage();
   const clear = useClearAssistantMemory();
+  const summarize = useSummarizeAssistantMemory();
   const [confirmClear, setConfirmClear] = useState(false);
   const [input, setInput] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
@@ -197,9 +204,29 @@ export const AssistantPanel: React.FC = () => {
 
   const activeSources = useMemo(() => sources.filter(s => !excluded.has(s.id)), [sources, excluded]);
 
+  /* Mientras se escribe `/…` sin espacios, la lista de comandos que coinciden. */
+  const typed = input.trimStart();
+  const commandHints = /^\/\S*$/.test(typed) ? COMMANDS.filter(c => c.name.startsWith(typed.toLowerCase())) : [];
+  const busy = chat.isPending || summarize.isPending;
+
+  const runCommand = (name: CommandName) => {
+    setInput('');
+    if (name === '/resume') {
+      if (!messages.length) { notify.info('No hay conversación que resumir'); return; }
+      chat.reset();
+      summarize.mutate(undefined, {
+        onSuccess: res => notify.success('Memoria actualizada',
+          res.summarized ? `${res.summarized} mensajes resumidos; el chat quedó limpio.` : 'Ya estaba todo resumido; el chat quedó limpio.'),
+        onError: err => notify.error('No se pudo resumir', errorText(err)),
+      });
+    }
+  };
+
   const send = (text: string) => {
     const question = text.trim();
-    if (!question || chat.isPending || !ready) return;
+    if (!question || busy || !ready) return;
+    const command = COMMANDS.find(c => c.name === question.toLowerCase());
+    if (command) { runCommand(command.name); return; }
     /* Se lee justo al enviar: es lo que se ve ahora en la terminal o el editor. */
     const context = activeSources
       .map(s => ({ type: s.type, title: s.title, content: s.read().slice(-MAX_SOURCE_CHARS), database: s.database?.() ?? undefined }))
@@ -293,12 +320,12 @@ export const AssistantPanel: React.FC = () => {
 
         {messages.map(m => <Bubble key={m.id} message={m} targets={targets} onReview={review} />)}
 
-        {chat.isPending && (
+        {busy && (
           <div className="flex items-center gap-2.5 text-xs text-white/45">
             <span className="w-7 h-7 rounded-lg grad-brand-soft border border-hairline flex items-center justify-center">
               <SparkIcon className="w-3.5 h-3.5 animate-pulse" />
             </span>
-            Pensando…
+            {summarize.isPending ? 'Resumiendo la conversación en la memoria…' : 'Pensando…'}
           </div>
         )}
 
@@ -329,6 +356,18 @@ export const AssistantPanel: React.FC = () => {
             );
           })}
         </div>
+        {commandHints.length > 0 && (
+          <div role="listbox" aria-label="Comandos" className="glass-soft rounded-xl p-1">
+            {commandHints.map(c => (
+              <button key={c.name} type="button" role="option" aria-selected={false}
+                onClick={() => { setInput(c.name); inputRef.current?.focus(); }}
+                className="w-full text-left row-hit rounded-lg px-2.5 py-1.5 flex items-baseline gap-2">
+                <span className="font-mono text-xs text-white/90">{c.name}</span>
+                <span className="text-[11px] text-white/45 truncate">{c.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="glass-input rounded-xl flex items-end gap-2 px-3 py-2">
           <textarea
             ref={inputRef}
@@ -337,13 +376,18 @@ export const AssistantPanel: React.FC = () => {
             disabled={!ready}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
+              /* Tab completa el comando que se está escribiendo. */
+              if (e.key === 'Tab' && commandHints.length === 1 && typed !== commandHints[0].name) {
+                e.preventDefault();
+                setInput(commandHints[0].name);
+              }
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
               if (e.key === 'Escape') setOpen(false);
             }}
-            placeholder={ready ? 'Escribe tu pregunta… (Shift+Enter, nueva línea)' : 'Conecta un asistente en Configuración'}
+            placeholder={ready ? 'Escribe tu pregunta… (Shift+Enter, nueva línea · /resume)' : 'Conecta un asistente en Configuración'}
             className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm text-white/90 placeholder:text-white/30 max-h-40 scroll-thin disabled:opacity-50"
           />
-          <button type="button" onClick={() => send(input)} disabled={!ready || !input.trim() || chat.isPending}
+          <button type="button" onClick={() => send(input)} disabled={!ready || !input.trim() || busy}
             aria-label="Enviar"
             className="mo-tab w-9 h-9 rounded-lg grad-brand text-white flex items-center justify-center elev-brand-sm disabled:opacity-40 shrink-0">
             <SendIcon />

@@ -9,6 +9,46 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.8.0] — 2026-10-15
+
+Versión **menor** sobre 0.7.1.
+
+### Añadido
+- Terminal del detalle del servidor con pestañas (`components/servers/ServerTerminal.tsx`): hasta 5 (`MAX_TABS`) en el mismo modal, «Terminal #» con el número libre más bajo. Cada pestaña es un `TerminalPane` con su xterm y su socket `/terminal`, es decir, su propia conexión SSH; todas quedan montadas y la inactiva solo se oculta, así conserva la sesión y el búfer. Las pestañas son lengüetas de la propia consola: la activa tiene su fondo y se une a ella sin borde (con curvas inversas en los pies), las inactivas quedan sobre el cristal del modal. El texto y la x de la activa usan la paleta fija de la terminal (`THEME.foreground`), porque `text-white` es tinta oscura en los temas claros y no se leía sobre la consola. Cada pestaña muestra el estado de su conexión; la x cierra solo esa conexión (en las inactivas aparece al pasar el mouse) y cerrar la última cierra la terminal; el + desaparece al llegar a 5
+- Editores SQL guardados en el equipo (`lib/sqlEditors.ts`, `localStorage` con la clave `sql_editors:<id de la conexión>`): por conexión, las pestañas (número, nombre y texto) y la activa. Se guardan 500 ms después del último cambio y lo pendiente al salir de la vista o al cerrar la app (`pagehide`); al abrir la conexión se restauran. No se guardan los resultados ni el historial de deshacer. Una sola pestaña vacía no ocupa espacio. Se borran al eliminar la conexión y «Limpiar caché» de Configuración los conserva. `DatabaseDetail` se monta con `key` por conexión, para que pasar de una base a otra no mezcle sus editores. Ojo: el texto SQL queda guardado tal cual en el equipo
+- Resultados: celda marcada (`ResultGrid.tsx`). Un clic la marca (`.cell-active`, borde y fondo de marca) y quita la selección de filas; Ctrl/⌘ + C o el botón «Copiar valor» copian su valor tal cual, sin comillas de TSV. Una NULL no se copia y una columna oculta pide mostrarla antes, para no copiar la máscara. Las flechas la mueven (con `scrollIntoView`), Enter la edita y Escape la desmarca. Las celdas (también las de filas nuevas) usan `cursor-pointer` en lugar del de texto, salvo la que se está editando. Si hay texto seleccionado con el mouse, Ctrl + C copia ese texto
+- Asistente IA: comando `/resume` (`AssistantPanel.tsx`). No se envía al modelo: llama a `POST /assistant/memory/summarize` (backend 0.10.0), que resume toda la conversación en la memoria y la vacía; un aviso dice cuántos mensajes se resumieron. Mientras se escribe `/…` aparece la lista de comandos (clic o Tab completa) y, mientras resume, «Resumiendo la conversación en la memoria…». Sin conversación avisa y no hace nada
+- Servidores favoritos (`pages/servers/Servers.tsx`): clic derecho en una tarjeta o fila abre su menú con «Marcar como favorito» / «Quitar de favoritos», «Editar» y «Eliminar». Hasta 3 (`MAX_FAVORITES`): con 3 marcados la opción sale desactivada como «Favoritos completos (3)». Los favoritos van primero, por orden de marcado, también con búsqueda y filtros, y llevan una estrella de marca junto al nombre. El cambio se aplica al instante (`useSetServerFavorite`, optimista) y vuelve atrás si el backend lo rechaza. Iconos `star`, `unstar` y `edit` en `MenuIcon`. Las tarjetas y filas ya no llevan los botones de editar y eliminar (`RowActions` eliminado): están en el menú. Requiere el backend 0.10.0
+- Editar servidor: enlace «Cambiar llave privada» (`EditServerModal.tsx`). Al pulsarlo aparece el campo de la nueva llave con el indicador de válida o inválida; «Cancelar» lo vuelve a ocultar. Al guardar, primero los datos y después la llave (`PUT /servers/:id/private-key`, `useUpdateServerKey`), que el backend 0.10.0 guarda cifrada. La actual nunca se muestra (la API no la devuelve). La validación y la normalización de saltos de línea pasan a `utils/servers.ts` (`validateKey`, `normalizeKey`), compartidas con el alta
+
+### Cambiado
+- Limpiar, el estado de la cabecera y el asistente (leer y escribir) actúan sobre la pestaña activa. «Terminar sesión» pasa a «Terminar todas» con más de una pestaña. Cada pestaña abre su socket con `forceNew`, sin compartir el Manager de socket.io, así cerrarla corta su websocket y el backend cierra su SSH. Requiere el backend 0.10.0 para cerrar también las que se cierran mientras conectan
+- Bases de datos: las pestañas del editor SQL pasan a llamarse por defecto «Editor #» (antes «Consola #»). «Agregar editor», «Cerrar editor» y el campo de renombrar cambian igual; los nombres puestos por el usuario se conservan
+- Agregar servidor (`AddServerModal.tsx`) y conexión a base de datos (`ConnectionModal.tsx`): la etiqueta va en la misma fila que el nombre, en proporción 85/15 (`grid-cols-[minmax(0,85fr)_minmax(8.5rem,15fr)]`; la etiqueta no baja de 8,5 rem para que se lea «Sin etiqueta» o «Desarrollo»). En pantallas estrechas vuelven a ir una debajo de otra. El texto de ayuda de la etiqueta pasa a un `title`
+- Editor SQL: margen derecho para que el final de una línea larga no quede pegado al borde. Es un borde transparente de 32 px (20 de margen más la franja de la barra) en el textarea y en el resaltado, y no padding: el `padding-right` de un textarea no cuenta en su desplazamiento horizontal. `placeCaret` ya no suma la franja, porque `clientWidth` no incluye el borde
+
+### Corregido
+- Portapapeles (`lib/clipboard.ts`): copiar daba «No se pudo copiar al portapapeles». `copyText` usaba solo el plugin de Tauri (arboard), que en Linux con Wayland escribe en el portapapeles de X11 y puede fallar o no llegar. Ahora copia primero con el del webview (un textarea fuera de pantalla y `execCommand('copy')`, síncrono, dentro del gesto de la tecla o el clic, que es lo que piden WebKitGTK, WKWebView y WebView2), devuelve el foco y la selección, y deja el plugin de respaldo. Afecta a todos los «Copiar» de la app
+- Editor SQL: `placeCaret` también mueve la vista en horizontal, solo lo justo para que se vea el cursor. Antes conservaba el desplazamiento horizontal: tras Enter al final de una línea larga, la fila nueva quedaba fuera de la vista con el cursor a la izquierda
+
+---
+
+## [0.10.0] — 2026-10-15
+
+Versión **menor** sobre 0.9.1. Va junto con la app de escritorio 0.8.0.
+
+### Añadido
+- `POST /assistant/memory/summarize` (`/resume` del chat): `AssistantMemoryService.summarizeAndClear` condensa con el proveedor del usuario todos los mensajes aún sin resumir, los añade al resumen a largo plazo y borra la conversación. Espera al proveedor (no va en segundo plano); si el resumen sale vacío o falla, no se borra nada. Si ya estaba todo resumido, solo vacía el chat. Responde 409 si ya hay un resumen en curso. Límite de 6 por minuto. El resumen automático no cambia: se dispara al pasar de 40 mensajes sin resumir y deja los 20 últimos literales. Tests en `assistant-memory.spec.ts`
+- Servidores favoritos: columna `dat_favorited` (`favoritedAt`, `timestamptz`) en `tbl_servers`, devuelta en la respuesta, y `PUT /servers/:id/favorite` con `{ favorite: boolean }`. Hasta 3 por usuario (`MAX_FAVORITES`): el cuarto responde 409. Marcar uno que ya lo es, o quitar uno que no lo es, no cambia nada. Migración `src/migrations/add_favorite_to_servers.sql` (aplicarla antes de desplegar en una base existente) y columna añadida a `01-schema.sql`. Tests en `servers.service.spec.ts`
+
+### Seguridad
+- Llaves privadas SSH cifradas en la base: antes `str_privatekey` se guardaba en texto plano. Ahora `ServersService` las cifra con `CredentialsCipherService` (AES-256-GCM, `DB_CREDENTIALS_KEY`, formato `v1:<iv>:<tag>:<cifrado>`, lo mismo que las contraseñas de las bases y las claves del asistente) al crear un servidor y al cambiar su llave (`updatePrivateKey` escribe solo la columna, sin volver a guardar la entidad), y `findOneWithPrivateKey` las descifra solo en memoria para conectar. La terminal deja de leer la llave por su cuenta y usa `findOneWithPrivateKey`, así que toda conexión SSH (terminal, SFTP, comandos, Docker, Kubernetes, servicios, agente) pasa por el mismo descifrado. Al arrancar, el backend cifra las llaves que seguían en claro; sin `DB_CREDENTIALS_KEY` las deja como estaban, avisa en el registro y siguen funcionando. `ServersModule` importa `DatabasesModule` por el cifrador. `DB_CREDENTIALS_KEY` pasa a ser obligatoria para crear servidores: documentado en `DEPLOY.md` y en los `.env` de ejemplo. Tests en `servers.service.spec.ts`; se corrige de paso el test de `create`, que esperaba `OFFLINE` en lugar de `PENDING`
+
+### Corregido
+- Terminal: cerrar la pestaña (o la terminal) mientras aún conectaba dejaba abierta la conexión SSH en el servidor. `handleDisconnect` corría antes de que existiera la sesión y no había nada que limpiar; ahora `handleConnection` comprueba `client.disconnected` tras abrir el cliente SSH y tras abrir la shell, y la cierra si el socket ya se fue
+
+---
+
 ## [0.9.1] — 2026-10-14
 
 Versión de **parche** sobre 0.9.0: despliegue con la imagen de Docker Hub (primera versión publicada allí). Sin cambios en la API.

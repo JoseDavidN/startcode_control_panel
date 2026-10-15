@@ -28,6 +28,7 @@ import { AuthService } from '@auth/auth.service';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { UpdatePrivateKeyDto } from './dto/update-private-key.dto';
+import { SetFavoriteDto } from './dto/set-favorite.dto';
 import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
 import { DeleteServerDto } from './dto/agent-install.dto';
@@ -284,6 +285,22 @@ export class ServersController {
       updatePrivateKeyDto,
       req.user,
     );
+  }
+
+  @Put(':id/favorite')
+  @ApiOperation({
+    summary: 'Marcar o quitar un servidor de favoritos',
+    description: 'Hasta 3 favoritos por usuario; la vista de servidores los muestra primero.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Favorito actualizado', type: ServerResponseDto })
+  @ApiResponse({ status: 409, description: 'Ya hay 3 servidores favoritos' })
+  async setFavorite(
+    @Param('id') id: string,
+    @Body() dto: SetFavoriteDto,
+    @Request() req,
+  ): Promise<ServerResponseDto> {
+    return await this.serversService.setFavorite(id, dto.favorite, req.user);
   }
 
   @Patch(':id/status')

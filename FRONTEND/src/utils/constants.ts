@@ -42,6 +42,8 @@ export const STORAGE_KEYS = {
 	CLOUD_CONNECTION: 'cloud_connection',
 	/** Notificación del sistema para alertas de seguridad: depende del equipo, no de la cuenta. */
 	NATIVE_SECURITY_ALERTS: 'native_security_alerts',
+	/** Prefijo: + id de la conexión. Pestañas del editor SQL guardadas en el equipo. */
+	SQL_EDITORS: 'sql_editors:',
 };
 
 export const ROUTES = {

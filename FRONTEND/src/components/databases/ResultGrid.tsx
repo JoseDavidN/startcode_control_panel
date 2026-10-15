@@ -158,6 +158,8 @@ const defaultText = (c: InsertColumn) => {
  *
  * - Clic en `#`: todas las filas. Clic en un número: esa fila (Ctrl/⌘ suma,
  *   Mayús elige un rango). Ctrl/⌘ + C o «Copiar» las copian como TSV.
+ * - Clic en una celda la marca; Ctrl/⌘ + C copia su valor tal cual. Las
+ *   flechas la mueven y Enter la edita.
  * - Doble clic en una celda editable la edita; la fila muestra guardar y
  *   cancelar, y guardar hace un UPDATE por clave primaria de esa fila.
  */
@@ -171,6 +173,8 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
+  /* Celda marcada con un clic: la que copia Ctrl + C. Excluye la selección de filas. */
+  const [active, setActive] = useState<{ r: number; c: number } | null>(null);
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [pending, setPending] = useState<Pending>({});
   const [saving, setSaving] = useState<Set<number>>(new Set());
@@ -235,9 +239,11 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
   const selectAll = () => {
     setSelected(allSelected ? new Set() : new Set(rows.map((_, i) => i)));
     setAnchor(null);
+    setActive(null);
   };
 
   const selectRow = (r: number, e: React.MouseEvent) => {
+    setActive(null);
     if (e.shiftKey && anchor !== null) {
       const [a, b] = anchor < r ? [anchor, r] : [r, anchor];
       setSelected(new Set(Array.from({ length: b - a + 1 }, (_, i) => a + i)));
@@ -267,18 +273,63 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
     }
   };
 
+  const selectCell = (r: number, c: number) => {
+    setActive({ r, c });
+    if (selected.size) setSelected(new Set());
+    setAnchor(null);
+  };
+
+  /* El valor tal cual (sin comillas de TSV). Una columna oculta no se copia
+     enmascarada: hay que mostrarla antes. */
+  const copyCell = async ({ r, c }: { r: number; c: number }) => {
+    if (!rows[r]) return;
+    if (isHidden(c)) { say('Muestra la columna con el ojo para copiar su valor'); return; }
+    const value = valueAt(r, c);
+    if (value === null || value === undefined) { say('La celda es NULL: no hay nada que copiar'); return; }
+    try {
+      await copyText(display(value));
+      say('Valor copiado');
+    } catch {
+      say('No se pudo copiar al portapapeles');
+    }
+  };
+
+  /* Flechas: mueven la celda marcada y la mantienen a la vista. */
+  const moveCell = (dr: number, dc: number, host: HTMLElement) => {
+    if (!active) return;
+    const r = Math.min(rows.length - 1, Math.max(0, active.r + dr));
+    const c = Math.min(columns.length - 1, Math.max(0, active.c + dc));
+    setActive({ r, c });
+    requestAnimationFrame(() =>
+      host.querySelector(`[data-cell="${r}:${c}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (editing) return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selected.size > 0) {
+    const ARROWS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (active && ARROWS[e.key]) {
+      e.preventDefault();
+      moveCell(...ARROWS[e.key], e.currentTarget);
+    } else if (active && e.key === 'Enter') {
+      e.preventDefault();
+      startEdit(active.r, active.c);
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && active) {
+      /* Si hay texto seleccionado con el ratón, se copia ese texto como siempre. */
+      if (window.getSelection()?.toString()) return;
+      e.preventDefault();
+      void copyCell(active);
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selected.size > 0) {
       /* Si hay texto seleccionado con el ratón, se copia ese texto como siempre. */
       if (window.getSelection()?.toString()) return;
       e.preventDefault();
       void copySelection();
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
+      setActive(null);
       setSelected(new Set(rows.map((_, i) => i)));
     } else if (e.key === 'Escape') {
       setSelected(new Set());
+      setActive(null);
     }
   };
 
@@ -531,6 +582,14 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
               Copiar {selected.size} {selected.size === 1 ? 'fila' : 'filas'}
             </button>
           )}
+          {active && rows[active.r] && (
+            <button type="button" onClick={() => void copyCell(active)}
+              title={`Copiar el valor de ${columns[active.c]}, fila ${active.r + 1} (Ctrl + C)`}
+              className="mo-tab inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg grad-brand-soft border border-hairline text-white/85 hover:text-white text-xs font-medium">
+              <DbIcon name="copy" className="w-3.5 h-3.5" />
+              Copiar valor
+            </button>
+          )}
           {insertRef && (
             <button type="button" onClick={addDraft} disabled={!canInsert}
               title={insertBlock ?? (tableCols.isLoading ? 'Leyendo las columnas de la tabla…' : `Agregar una fila en ${insertRef.table}`)}
@@ -632,7 +691,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
                     <td key={c}
                       onDoubleClick={() => setDraftEditing({ id: d.id, c, draft: cell.mode === 'value' ? cell.value : col.defaultValue ?? '' })}
                       title={`${col.name} · ${col.type}${!col.nullable && !col.auto && col.defaultValue === null ? ' · obligatoria' : ''}`}
-                      className={`px-3 h-8 whitespace-nowrap border-b border-line cursor-text ${cell.mode === 'value' ? 'cell-dirty text-white/85' : 'text-white/40'}`}>
+                      className={`px-3 h-8 whitespace-nowrap border-b border-line cursor-pointer ${cell.mode === 'value' ? 'cell-dirty text-white/85' : 'text-white/40'}`}>
                       {isEditing ? (
                         <CellEditor initial={draftEditing.draft}
                           onCommit={v => { setDraftCell(d.id, c, v === null ? { mode: 'null', value: '' } : { mode: 'value', value: v }); setDraftEditing(null); }}
@@ -689,8 +748,10 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ result, connectionId, se
                     const value = valueAt(r, c);
                     return (
                       <td key={c}
+                        data-cell={`${r}:${c}`}
+                        onClick={() => { if (!isEditing) selectCell(r, c); }}
                         onDoubleClick={() => startEdit(r, c)}
-                        className={`px-3 h-8 text-white/80 whitespace-nowrap border-b border-line ${isDirty ? 'cell-dirty' : ''} ${canEdit(c) ? 'cursor-text' : ''}`}>
+                        className={`px-3 h-8 text-white/80 whitespace-nowrap border-b border-line ${isDirty ? 'cell-dirty' : ''} ${active?.r === r && active.c === c && !isEditing ? 'cell-active' : ''} ${isEditing ? '' : 'cursor-pointer'}`}>
                         {isEditing ? (
                           <CellEditor initial={editing.draft} onCommit={commitEdit} onCancel={() => setEditing(null)} />
                         ) : (

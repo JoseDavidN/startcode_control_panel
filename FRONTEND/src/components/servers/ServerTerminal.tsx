@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { io, type Socket } from 'socket.io-client';
 import { Terminal } from '@xterm/xterm';
@@ -58,41 +58,45 @@ const ASPECT = 16 / 9;
 const ASSISTANT_SPACE = 460;
 const MARGIN = 24;
 
-interface Props {
+/** Lo que el modal necesita de cada pestaña. */
+interface PaneHandle {
+  clear: () => void;
+  read: () => string;
+  /** Escribe en la shell como si se tecleara; false si no está conectada. */
+  type: (text: string) => boolean;
+}
+
+interface PaneProps {
   serverId: string;
-  serverName: string;
-  /** Oculta, la sesión sigue viva: al volver a abrirla está como se dejó. */
-  open: boolean;
-  /** Ocultar sin cerrar la sesión. */
-  onClose: () => void;
-  /** Cerrar la sesión SSH. */
-  onEnd: () => void;
+  /** Pestaña activa y modal abierto: es la que se ve. */
+  visible: boolean;
+  assistantOpen: boolean;
+  onStatus: (status: Status, message: string) => void;
 }
 
 /**
- * Terminal SSH del detalle de un servidor. Cerrar la ventana solo la oculta:
- * la conexión sigue hasta que se termina la sesión o se sale del detalle del
- * servidor (al desmontarse).
+ * Una terminal con su propia conexión SSH (un socket por pestaña). Montada
+ * mientras exista la pestaña: oculta conserva la sesión y el búfer.
  */
-export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, onClose, onEnd }) => {
+const TerminalPane = forwardRef<PaneHandle, PaneProps>(({ serverId, visible, assistantOpen, onStatus }, ref) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const fitRef = useRef<(() => void) | null>(null);
-  const { open: assistantOpen } = useAssistant();
+  const statusRef = useRef(onStatus);
+  statusRef.current = onStatus;
+  const [ready, setReady] = useState(false);
 
-  const [status, setStatus] = useState<Status>('connecting');
-  const [message, setMessage] = useState('Conectando por SSH…');
-
-  /* Oculta no se ofrece al asistente: no está en pantalla. */
-  useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => readBuffer(termRef.current), open);
-  useAssistantTarget(`terminal:${serverId}`, 'terminal', 'la terminal', text => {
-    const line = toSingleLine(text);
-    if (!line || !socketRef.current?.connected) return;
-    /* Se escribe como si se tecleara, sin Enter: ejecutar lo decide el usuario. */
-    socketRef.current.emit('terminal:input', line);
-    termRef.current?.focus();
-  }, status === 'ready' && open);
+  useImperativeHandle(ref, () => ({
+    clear: () => termRef.current?.clear(),
+    read: () => readBuffer(termRef.current),
+    type: text => {
+      if (!socketRef.current?.connected) return false;
+      socketRef.current.emit('terminal:input', text);
+      termRef.current?.focus();
+      return true;
+    },
+  }), []);
 
   /* Clic derecho: la selección de xterm no es la del documento, así que la
      terminal da su propio menú. Pegar hace lo mismo que Ctrl + V. */
@@ -106,7 +110,7 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
         id: 'copy', label: 'Copiar', icon: <MenuIcon name="copy" />,
         onSelect: () => { copyText(selection).then(() => term.focus(), () => notify.error('No se pudo copiar')); },
       }] : []),
-      ...(status === 'ready' ? [{
+      ...(ready ? [{
         id: 'paste', label: 'Pegar', shortcut: 'Ctrl+V', icon: <MenuIcon name="paste" />,
         onSelect: () => {
           readClipboard().then(
@@ -154,7 +158,10 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
     void document.fonts.load(`${FONT_SIZE}px ${fontFamily}`, NERD_SAMPLE);
 
     const base = API_CONFIG.WS_URL;
+    /* forceNew: cada pestaña con su propia conexión (sin compartir el Manager
+       de socket.io), así cerrarla corta su websocket y el backend su SSH. */
     const socket = io(`${base}/terminal`, {
+      forceNew: true,
       transports: ['websocket'],
       auth: {
         token: TokenManager.getAccessToken(),
@@ -165,28 +172,34 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
     });
     socketRef.current = socket;
 
+    let current: Status = 'connecting';
+    const report = (status: Status, message: string) => {
+      current = status;
+      setReady(status === 'ready');
+      statusRef.current(status, message);
+    };
+    report('connecting', 'Conectando por SSH…');
+
     socket.on('terminal:ready', (info: { user: string; host: string }) => {
-      setStatus('ready');
-      setMessage(`${info.user}@${info.host}`);
+      report('ready', `${info.user}@${info.host}`);
       term.focus();
     });
 
     socket.on('terminal:output', (data: string) => term.write(data));
 
     socket.on('terminal:error', (payload: { message: string }) => {
-      setStatus('error');
-      setMessage(payload?.message ?? 'No se pudo abrir la terminal');
+      report('error', payload?.message ?? 'No se pudo abrir la terminal');
       term.writeln(`\r\n\x1b[31m${payload?.message ?? 'Error de conexión'}\x1b[0m`);
     });
 
     socket.on('terminal:closed', (payload: { reason?: string }) => {
-      setStatus('closed');
-      setMessage(payload?.reason ?? 'Sesión terminada');
+      report('closed', payload?.reason ?? 'Sesión terminada');
       term.writeln('\r\n\x1b[90m— sesión terminada —\x1b[0m');
     });
 
     socket.on('disconnect', () => {
-      setStatus(prev => (prev === 'ready' ? 'closed' : prev));
+      /* Solo una sesión en marcha pasa a cerrada; un error se queda con su mensaje. */
+      if (current === 'ready') report('closed', 'Conexión cerrada');
     });
 
     const onData = term.onData(data => socket.emit('terminal:input', data));
@@ -226,20 +239,89 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
     };
   }, [serverId]);
 
-  /* Al volver a mostrarla: tamaño al día y el foco en la shell. */
+  /* Al volver a mostrarla (o cambiar a su pestaña): tamaño al día y el foco en la shell. */
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const raf = requestAnimationFrame(() => {
       fitRef.current?.();
       termRef.current?.focus();
     });
     return () => cancelAnimationFrame(raf);
-  }, [open, assistantOpen]);
+  }, [visible, assistantOpen]);
 
-  const tone =
-    status === 'ready' ? 'bg-emerald-400' :
-    status === 'connecting' ? 'bg-amber-400 animate-pulse' :
-    status === 'error' ? 'bg-rose-400' : 'bg-white/30';
+  return (
+    <div className={`flex-1 min-h-0 p-3 ${visible ? '' : 'hidden'}`} style={{ background: THEME.background }}>
+      <div ref={hostRef} onContextMenu={onContextMenu} className="w-full h-full" />
+    </div>
+  );
+});
+TerminalPane.displayName = 'TerminalPane';
+
+/* Pestañas: cada una abre su propia conexión SSH. */
+const MAX_TABS = 5;
+interface Tab { id: number; n: number; status: Status; message: string }
+/* «Terminal #»: el número libre más bajo, así al cerrar una se reutiliza. */
+const freeNumber = (tabs: Tab[]) => {
+  let n = 1;
+  while (tabs.some(t => t.n === n)) n++;
+  return n;
+};
+const toneOf = (status: Status) =>
+  status === 'ready' ? 'bg-emerald-400' :
+  status === 'connecting' ? 'bg-amber-400 animate-pulse' :
+  status === 'error' ? 'bg-rose-400' : 'bg-white/30';
+
+interface Props {
+  serverId: string;
+  serverName: string;
+  /** Oculta, las sesiones siguen vivas: al volver a abrirla está como se dejó. */
+  open: boolean;
+  /** Ocultar sin cerrar las sesiones. */
+  onClose: () => void;
+  /** Cerrar todas las sesiones SSH. */
+  onEnd: () => void;
+}
+
+/**
+ * Terminal SSH del detalle de un servidor, con hasta cinco pestañas, cada una
+ * con su conexión. Cerrar la ventana solo la oculta: las conexiones siguen
+ * hasta que se terminan o se sale del detalle del servidor (al desmontarse).
+ */
+export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, onClose, onEnd }) => {
+  const { open: assistantOpen } = useAssistant();
+  const [tabs, setTabs] = useState<Tab[]>(() => [{ id: 1, n: 1, status: 'connecting', message: 'Conectando por SSH…' }]);
+  const [activeId, setActiveId] = useState(1);
+  const nextId = useRef(2);
+  const panes = useRef(new Map<number, PaneHandle>());
+  const active = tabs.find(t => t.id === activeId) ?? tabs[0];
+
+  const addTab = () => {
+    if (tabs.length >= MAX_TABS) return;
+    const id = nextId.current++;
+    setTabs(list => [...list, { id, n: freeNumber(list), status: 'connecting', message: 'Conectando por SSH…' }]);
+    setActiveId(id);
+  };
+
+  /* Cerrar una pestaña termina su conexión; la última cierra la terminal. */
+  const closeTab = (id: number) => {
+    if (tabs.length === 1) { onEnd(); return; }
+    const i = tabs.findIndex(t => t.id === id);
+    const rest = tabs.filter(t => t.id !== id);
+    setTabs(rest);
+    if (id === activeId) setActiveId(rest[Math.min(i, rest.length - 1)].id);
+  };
+
+  const setTabStatus = (id: number, status: Status, message: string) =>
+    setTabs(list => list.map(t => (t.id === id ? { ...t, status, message } : t)));
+
+  /* El asistente lee y escribe en la pestaña activa. Oculta no se le ofrece: no está en pantalla. */
+  useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => panes.current.get(active.id)?.read() ?? '', open);
+  useAssistantTarget(`terminal:${serverId}`, 'terminal', 'la terminal', text => {
+    const line = toSingleLine(text);
+    /* Se escribe como si se tecleara, sin Enter: ejecutar lo decide el usuario. */
+    if (line) panes.current.get(active.id)?.type(line);
+  }, active.status === 'ready' && open);
+
 
   /* Al body, igual que el Modal común: un ancestro con `backdrop-filter` o con
      `transform` crea bloque contenedor y encerraría este overlay fijo dentro de
@@ -258,30 +340,30 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
         className="relative flex flex-col glass elev-modal grain rounded-2xl animate-slideUp overflow-hidden transition-[width] duration-200"
         style={{ width, aspectRatio: `${ASPECT}` }}
       >
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-line shrink-0">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${tone}`} />
+        <div className="flex items-center gap-3 px-5 pt-3 pb-1 shrink-0">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${toneOf(active.status)}`} />
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">Terminal · {serverName}</div>
-            <div className="text-xs text-white/45 font-mono truncate">{message}</div>
+            <div className="text-xs text-white/45 font-mono truncate">{active.message}</div>
           </div>
 
           <div className="ml-auto"><AssistantLauncher compact /></div>
           <button
-            onClick={() => termRef.current?.clear()}
+            onClick={() => panes.current.get(active.id)?.clear()}
             className="mo-tab h-9 px-3 rounded-xl glass-soft text-white/70 hover:text-white row-hit text-xs font-medium"
           >
             Limpiar
           </button>
           <button
             onClick={onEnd}
-            title="Cierra la conexión SSH"
+            title="Cierra todas las conexiones SSH"
             className="mo-tab h-9 px-3 rounded-xl text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-medium"
           >
-            Terminar sesión
+            {tabs.length > 1 ? 'Terminar todas' : 'Terminar sesión'}
           </button>
           <button
             onClick={onClose}
-            title="Ocultar: la sesión sigue abierta hasta salir del servidor"
+            title="Ocultar: las sesiones siguen abiertas hasta salir del servidor"
             className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/70 hover:text-white row-hit flex items-center justify-center"
             aria-label="Ocultar terminal"
           >
@@ -291,9 +373,64 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 p-3" style={{ background: THEME.background }}>
-          <div ref={hostRef} onContextMenu={onContextMenu} className="w-full h-full" />
+        {/* Pestañas: una conexión SSH cada una. La activa tiene el fondo de la
+            consola y se une a ella sin borde, como una lengüeta que sale de la
+            terminal; las curvas inversas de sus pies suavizan la unión. */}
+        <div role="tablist" aria-label="Terminales" className="flex items-end gap-0.5 px-3 pt-2 shrink-0">
+          {tabs.map(t => {
+            const on = t.id === active.id;
+            return (
+              <div key={t.id}
+                className={`relative group flex items-center transition-colors ${on ? 'z-10 h-9 rounded-t-xl' : 'h-8 mb-0.5 rounded-xl hover:bg-tint-hover'}`}
+                style={on ? { background: THEME.background } : undefined}>
+                {on && (
+                  <>
+                    <span aria-hidden className="absolute bottom-0 -left-3 w-3 h-3 pointer-events-none"
+                      style={{ background: `radial-gradient(circle at 0 0, transparent 11.5px, ${THEME.background} 12px)` }} />
+                    <span aria-hidden className="absolute bottom-0 -right-3 w-3 h-3 pointer-events-none"
+                      style={{ background: `radial-gradient(circle at 100% 0, transparent 11.5px, ${THEME.background} 12px)` }} />
+                  </>
+                )}
+                {/* La activa va sobre el fondo fijo de la consola: su texto usa la
+                    paleta de la terminal, no `text-white`, que en temas claros es tinta oscura. */}
+                <button type="button" role="tab" aria-selected={on} onClick={() => setActiveId(t.id)}
+                  title={t.message}
+                  style={on ? { color: THEME.foreground } : undefined}
+                  className={`h-full flex items-center gap-2 pl-3.5 pr-1.5 text-xs font-medium font-mono transition-colors ${on ? '' : 'text-white/50 hover:text-white/85'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${toneOf(t.status)}`} />
+                  Terminal {t.n}
+                </button>
+                <button type="button" onClick={() => closeTab(t.id)}
+                  aria-label={`Cerrar Terminal ${t.n}`} title="Cerrar pestaña (termina su conexión SSH)"
+                  className={`w-5 h-5 mr-2 shrink-0 rounded-md flex items-center justify-center transition-opacity ${on ? 'text-[#6b6480] hover:text-[#e6e1f5] hover:bg-[#e6e1f5]/10' : 'text-white/40 hover:text-white hover:bg-tint-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3 h-3" aria-hidden>
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+          {tabs.length < MAX_TABS && (
+            <button type="button" onClick={addTab}
+              title="Nueva terminal (abre otra conexión SSH)" aria-label="Nueva terminal"
+              className="mb-1.5 ml-1 w-7 h-7 rounded-lg text-white/50 hover:text-white hover:bg-tint-hover flex items-center justify-center transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5" aria-hidden>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
         </div>
+
+        {tabs.map(t => (
+          <TerminalPane
+            key={t.id}
+            ref={h => { if (h) panes.current.set(t.id, h); else panes.current.delete(t.id); }}
+            serverId={serverId}
+            visible={open && t.id === active.id}
+            assistantOpen={assistantOpen}
+            onStatus={(status, message) => setTabStatus(t.id, status, message)}
+          />
+        ))}
       </div>
     </div>,
     document.body,

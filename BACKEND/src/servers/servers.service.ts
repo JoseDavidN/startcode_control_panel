@@ -4,9 +4,10 @@ import {
   ForbiddenException,
   ConflictException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { Server, ServerStatus, ServerOs, type ServerAgentMetadata } from './entities/server.entity';
 import { User } from '@auth/entities/user.entity';
 import { CreateServerDto } from './dto/create-server.dto';
@@ -15,15 +16,53 @@ import { UpdatePrivateKeyDto } from './dto/update-private-key.dto';
 import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
 import { plainToClass } from 'class-transformer';
+import { CredentialsCipherService } from '@/databases/services/credentials-cipher.service';
 
+/** Servidores favoritos por usuario. */
+export const MAX_FAVORITES = 3;
+
+/*
+ * La llave privada SSH se guarda cifrada (AES-256-GCM con DB_CREDENTIALS_KEY,
+ * `CredentialsCipherService`): en la base solo está `v1:<iv>:<tag>:<cifrado>`.
+ * Se descifra en memoria al cargarla para conectar (`findOneWithPrivateKey`)
+ * y nunca sale en las respuestas de la API.
+ */
 @Injectable()
-export class ServersService {
+export class ServersService implements OnModuleInit {
   private readonly logger = new Logger(ServersService.name);
 
   constructor(
     @InjectRepository(Server)
     private serversRepository: Repository<Server>,
+    private readonly cipher: CredentialsCipherService,
   ) {}
+
+  /* Llaves guardadas en claro por versiones anteriores: se cifran al arrancar.
+     Sin clave de cifrado no se toca nada (siguen funcionando en claro) y se avisa. */
+  async onModuleInit(): Promise<void> {
+    const legacy = await this.serversRepository
+      .createQueryBuilder('server')
+      .select(['server.id'])
+      .addSelect('server.privateKey')
+      .where('server.privateKey NOT LIKE :prefix', { prefix: 'v1:%' })
+      .getMany();
+    if (!legacy.length) return;
+    if (!this.cipher.ready) {
+      this.logger.warn(
+        `${legacy.length} servidores tienen la llave SSH en claro y no se pueden cifrar: define DB_CREDENTIALS_KEY (openssl rand -hex 32) y reinicia.`,
+      );
+      return;
+    }
+    for (const s of legacy) {
+      await this.serversRepository.update({ id: s.id }, { privateKey: this.cipher.encrypt(s.privateKey) });
+    }
+    this.logger.log(`🔐 Llaves SSH cifradas: ${legacy.length} servidores que las tenían en claro`);
+  }
+
+  /** Llave en claro para conectar. Una antigua sin cifrar se usa tal cual (se cifra al arrancar). */
+  private revealKey(stored: string): string {
+    return CredentialsCipherService.isEncrypted(stored) ? this.cipher.decrypt(stored) : stored;
+  }
 
   /**
    * Crea un nuevo servidor
@@ -55,7 +94,7 @@ export class ServersService {
       host: createServerDto.host,
       port: createServerDto.port || 22,
       username: createServerDto.username,
-      privateKey: createServerDto.privateKey,
+      privateKey: this.cipher.encrypt(createServerDto.privateKey),
       os: createServerDto.os,
       tag: createServerDto.tag ?? null,
       description: createServerDto.description,
@@ -136,6 +175,8 @@ export class ServersService {
       );
     }
 
+    /* Se descifra solo en memoria: esta entidad no debe volver a guardarse con `save`. */
+    server.privateKey = this.revealKey(server.privateKey);
     return server;
   }
 
@@ -204,14 +245,15 @@ export class ServersService {
     updatePrivateKeyDto: UpdatePrivateKeyDto,
     user: User,
   ): Promise<{ message: string }> {
-    const server = await this.findOneWithPrivateKey(id, user.id);
+    const server = await this.verifyServerAccess(id, user.id);
 
-    server.privateKey = updatePrivateKeyDto.privateKey;
-    server.updatedAt = new Date();
-
-    const updatedServer = await this.serversRepository.save(server);
+    /* Solo la columna de la llave, cifrada: sin cargar ni volver a guardar la entidad. */
+    await this.serversRepository.update(
+      { id },
+      { privateKey: this.cipher.encrypt(updatePrivateKeyDto.privateKey), updatedAt: new Date() },
+    );
     this.logger.log(
-      `Llave privada actualizada: ${updatedServer.name} por usuario ${user.email}`,
+      `Llave privada actualizada: ${server.name} por usuario ${user.email}`,
     );
 
     return { message: 'Llave privada actualizada correctamente' };
@@ -232,6 +274,25 @@ export class ServersService {
     );
 
     return { message: 'Servidor eliminado correctamente' };
+  }
+
+  /**
+   * Marca o quita un servidor de favoritos. Como mucho MAX_FAVORITES por
+   * usuario: el que pase de ahí recibe 409 y hay que quitar otro antes.
+   */
+  async setFavorite(id: string, favorite: boolean, user: User): Promise<ServerResponseDto> {
+    const server = await this.verifyServerAccess(id, user.id);
+    if (favorite === Boolean(server.favoritedAt)) return this.toResponseDto(server);
+
+    if (favorite) {
+      const count = await this.serversRepository.count({ where: { ownerId: user.id, favoritedAt: Not(IsNull()) } });
+      if (count >= MAX_FAVORITES) {
+        throw new ConflictException(`Solo puedes marcar ${MAX_FAVORITES} servidores como favoritos: quita uno antes`);
+      }
+    }
+    server.favoritedAt = favorite ? new Date() : null;
+    await this.serversRepository.update({ id }, { favoritedAt: server.favoritedAt });
+    return this.toResponseDto(server);
   }
 
   /**

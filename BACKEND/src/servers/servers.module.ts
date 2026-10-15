@@ -10,11 +10,14 @@ import { AgentInstallTokenGuard } from './guards/agent-install-token.guard';
 import { Server } from './entities/server.entity';
 import { AuthModule } from '@auth/auth.module';
 import { MonitoringModule } from '@monitoring/monitoring.module';
+import { DatabasesModule } from '@/databases/databases.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Server]),
     AuthModule,
+    /* Por `CredentialsCipherService`: la llave SSH se guarda cifrada. */
+    DatabasesModule,
     forwardRef(() => MonitoringModule),
   ],
   controllers: [ServersController, AgentController, AgentReleasesController],

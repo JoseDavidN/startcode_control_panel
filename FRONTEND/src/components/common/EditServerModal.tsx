@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { Select } from '@components/common/Select';
-import { SERVER_OS_OPTIONS } from '@utils/servers';
+import { SERVER_OS_OPTIONS, normalizeKey, validateKey } from '@utils/servers';
 import { TAG_FIELD_OPTIONS, type ResourceTag } from '@utils/tags';
-import { useUpdateServer } from '@hooks/useServers';
+import { useUpdateServer, useUpdateServerKey } from '@hooks/useServers';
 import { notify } from '@services/notification.service';
 import type { Server } from '@services/server.service';
 
@@ -21,6 +21,10 @@ const wrapCls  = 'glass-input rounded-xl h-11 flex items-center px-3.5 transitio
 
 export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
   const update = useUpdateServer();
+  const updateKey = useUpdateServerKey();
+  /* La llave no se muestra nunca (el backend no la devuelve): solo se puede sustituir. */
+  const [changingKey, setChangingKey] = useState(false);
+  const [newKey, setNewKey] = useState('');
   const [form, setForm] = useState({
     name: '', host: '', port: 22, username: '', os: 'ubuntu', tag: '' as ResourceTag | '', description: '',
   });
@@ -38,10 +42,14 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
       tag: server.tag ?? '',
       description: server.description ?? '',
     });
+    setChangingKey(false);
+    setNewKey('');
     setError(null);
   }, [server]);
 
   if (!server) return null;
+
+  const keyState = changingKey && newKey ? validateKey(newKey) : null;
 
   const set = (k: keyof typeof form) => (v: string | number) =>
     setForm(prev => ({ ...prev, [k]: v }));
@@ -53,6 +61,10 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
     if (!form.name.trim() || !form.host.trim() || !form.username.trim()) {
       setError('Nombre, host y usuario son obligatorios.');
       return;
+    }
+    if (changingKey) {
+      const kv = validateKey(newKey);
+      if (!kv.valid) { setError(kv.error ?? 'Clave privada inválida'); return; }
     }
 
     try {
@@ -68,7 +80,8 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
           description: form.description.trim(),
         },
       });
-      notify.success('Servidor actualizado', form.name.trim());
+      if (changingKey) await updateKey.mutateAsync({ id: server.id, privateKey: newKey });
+      notify.success('Servidor actualizado', changingKey ? `${form.name.trim()} · llave privada cambiada` : form.name.trim());
       onClose();
     } catch (err: unknown) {
       const message =
@@ -81,7 +94,7 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
 
   return (
     <Modal isOpen onClose={onClose} title={`Editar ${server.name}`} size="md">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
         <div>
           <Label>Nombre *</Label>
           <div className={wrapCls}>
@@ -141,9 +154,37 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
           </div>
         </div>
 
-        <p className="text-xs text-white/35">
-          La llave privada no se edita aquí: tiene su propio flujo para no exponerla.
-        </p>
+        {/* Llave privada: oculta tras un enlace; solo se sustituye, nunca se muestra la actual. */}
+        {changingKey ? (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-xs text-white/55 font-medium">Nueva llave privada *</div>
+              <div className="flex items-center gap-2">
+                {keyState && (keyState.valid
+                  ? <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20">Clave válida</span>
+                  : <span className="text-xs px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/20">Clave inválida</span>)}
+                <button type="button" onClick={() => { setChangingKey(false); setNewKey(''); setError(null); }}
+                  className="text-xs text-white/50 hover:text-white">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+            <div className={`glass-input rounded-xl transition relative ${keyState ? (keyState.valid ? 'border-emerald-500/40' : 'border-rose-500/40') : ''}`}>
+              <textarea autoFocus value={newKey} onChange={e => setNewKey(normalizeKey(e.target.value))} rows={7}
+                spellCheck={false} autoComplete="off"
+                placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEA...\n-----END OPENSSH PRIVATE KEY-----'}
+                className="w-full bg-transparent outline-none text-xs font-mono placeholder:text-white/25 text-white/90 p-3.5 resize-none" />
+            </div>
+            <p className="text-[11px] text-white/40 mt-1.5">
+              Sustituye a la actual al guardar. Se guarda cifrada y no se vuelve a mostrar.
+            </p>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setChangingKey(true)}
+            className="text-xs font-medium text-violet-300 hover:text-violet-200 transition-colors">
+            Cambiar llave privada
+          </button>
+        )}
 
         {error && (
           <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm border border-rose-400/20">
@@ -156,9 +197,9 @@ export const EditServerModal: React.FC<Props> = ({ server, onClose }) => {
             className="mo-tab h-11 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
             Cancelar
           </button>
-          <button type="submit" disabled={update.isPending}
+          <button type="submit" disabled={update.isPending || updateKey.isPending}
             className="mo-tab h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold elev-brand disabled:opacity-50">
-            {update.isPending ? 'Guardando…' : 'Guardar cambios'}
+            {update.isPending || updateKey.isPending ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>
       </form>

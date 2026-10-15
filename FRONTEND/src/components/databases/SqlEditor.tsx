@@ -20,18 +20,26 @@ const INDENT = '  ';
 
 /**
  * Tras cambiar el texto desde código (mayúsculas, sangría, sugerencia), deja
- * el cursor en `pos` y el desplazamiento donde estaba. Al reemplazar el valor,
- * el navegador lleva el cursor al final y desplaza la vista hasta allí; sin
- * restaurar el scroll, escribir `as` en una consulta larga saltaba al final.
+ * el cursor en `pos` y el desplazamiento donde estaba, moviéndolo solo lo justo
+ * para que el cursor se vea. Al reemplazar el valor, el navegador lleva el
+ * cursor al final y desplaza la vista hasta allí; sin restaurar el scroll,
+ * escribir `as` en una consulta larga saltaba al final. Y en horizontal la
+ * vista sigue al cursor: Enter tras una línea larga vuelve al inicio de la fila
+ * nueva en vez de quedarse desplazada a la derecha. `charW`: ancho de un
+ * carácter (fuente monoespaciada).
  */
-const placeCaret = (el: HTMLTextAreaElement, pos: number) => {
+const placeCaret = (el: HTMLTextAreaElement, pos: number, charW: number) => {
   const { scrollTop, scrollLeft } = el;
   requestAnimationFrame(() => {
     el.selectionStart = el.selectionEnd = pos;
-    el.scrollLeft = scrollLeft;
-    /* Solo lo justo para que la línea del cursor se vea (p. ej. Enter en la última línea visible). */
-    const top = PAD + (el.value.slice(0, pos).split('\n').length - 1) * LINE;
+    const before = el.value.slice(0, pos);
+    /* Vertical: la línea del cursor a la vista (p. ej. Enter en la última línea visible). */
+    const top = PAD + (before.split('\n').length - 1) * LINE;
     el.scrollTop = Math.min(Math.max(scrollTop, top + LINE + PAD + BAR - el.clientHeight), top);
+    /* Horizontal: la columna del cursor entre el padding izquierdo y la franja de la barra. */
+    const x = PAD + (pos - before.lastIndexOf('\n') - 1) * charW;
+    /* `clientWidth` ya no cuenta el borde derecho (el margen): basta con que el carácter quepa. */
+    el.scrollLeft = Math.min(Math.max(scrollLeft, x + charW - el.clientWidth), Math.max(0, x - PAD));
   });
 };
 /* Caja del texto: padding de 12 px (`p-3`) y alto de línea de 24 px (`leading-6`). */
@@ -118,7 +126,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
       const pos = suggest.from + item.insert.length;
       setSuggest(null);
       onChange(next);
-      placeCaret(el, pos);
+      placeCaret(el, pos, measureChar(el));
     };
 
     /* Sin índice (cambió la base), el menú abierto ya no vale. */
@@ -139,7 +147,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
       const formatted = typedOne ? uppercaseKeywordBefore(next, caret, dialect) : next;
       onChange(formatted);
       /* Mismo largo: el cursor vuelve a donde estaba tras el re-render. */
-      if (formatted !== next) placeCaret(el, caret);
+      if (formatted !== next) placeCaret(el, caret, measureChar(el));
       /* Se sugiere al escribir un carácter; al borrar uno con el menú abierto, se
          ajusta; pegar o borrar más cierra el menú. */
       const erasedOne = next.length === value.length - 1 && caret === el.selectionEnd;
@@ -192,7 +200,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         /* El salto de línea también cierra una palabra reservada: se pasa a mayúsculas como al escribirla. */
         const broken = uppercaseKeywordBefore(`${value.slice(0, start)}\n${value.slice(end)}`, start + 1, dialect);
         onChange(broken.slice(0, start + 1) + indent + broken.slice(start + 1));
-        placeCaret(el, start + insert.length);
+        placeCaret(el, start + insert.length, measureChar(el));
         return;
       }
       /* Tab indenta en vez de sacar el foco del editor. */
@@ -201,7 +209,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         const el = e.currentTarget;
         const { selectionStart: start, selectionEnd: end } = el;
         onChange(value.slice(0, start) + INDENT + value.slice(end));
-        placeCaret(el, start + INDENT.length);
+        placeCaret(el, start + INDENT.length, measureChar(el));
       }
     };
 
@@ -219,14 +227,17 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         <pre
           ref={highlightRef}
           aria-hidden
-          className="absolute inset-0 m-0 pt-3 pl-3 pb-[calc(0.75rem+12px)] pr-[calc(0.75rem+12px)] overflow-hidden whitespace-pre pointer-events-none text-white/90"
+          className="absolute inset-0 m-0 pt-3 pl-3 pb-[calc(0.75rem+12px)] pr-0 border-r-[20px] border-transparent overflow-hidden whitespace-pre pointer-events-none text-white/90"
         >
           {tokens.map((t, i) => t.type === 'text'
             ? t.text
             : <span key={i} className={`sql-${t.type}`}>{t.text}</span>)}
           {/* Sin barras nativas (las dibuja `overlayScrollbars`), el textarea y el <pre>
-              tienen el mismo recorrido con el mismo padding. A la derecha y abajo se
-              reservan 12 px, la franja de esas barras, para que no tapen el final del texto.
+              tienen el mismo recorrido con el mismo padding. Abajo se reservan 12 px, la
+              franja de esas barras. A la derecha va un borde transparente de 32 px (margen
+              de 20 más la franja): el padding derecho de un textarea no cuenta en su
+              desplazamiento horizontal, así que con él el final de una línea larga
+              quedaba pegado al borde; el borde sí queda siempre fuera del texto.
               Un salto final en el textarea abre una fila vacía: el <pre> también la necesita. */}
           {'\n'}
         </pre>
@@ -253,7 +264,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
           autoCorrect="off"
           aria-label="Editor SQL"
           placeholder="SELECT * FROM tabla LIMIT 100;"
-          className="absolute inset-0 w-full h-full resize-none bg-transparent outline-none pt-3 pl-3 pb-[calc(0.75rem+12px)] pr-[calc(0.75rem+12px)] text-transparent caret-white placeholder:text-white/25 whitespace-pre overflow-auto scroll-thin selection:bg-violet-500/30 disabled:opacity-50"
+          className="absolute inset-0 w-full h-full resize-none bg-transparent outline-none pt-3 pl-3 pb-[calc(0.rem+12px)] pr-0 border-r-[20px] border-transparent text-transparent caret-white placeholder:text-white/25 whitespace-pre overflow-auto scroll-thin selection:bg-violet-500/30 disabled:opacity-50"
         />
         </div>
         {suggest && createPortal(

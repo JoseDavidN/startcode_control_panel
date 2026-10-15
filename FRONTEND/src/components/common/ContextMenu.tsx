@@ -8,7 +8,7 @@ export interface ContextMenuState {
   items: ContextMenuItem[];
 }
 
-export type MenuIconName = 'cut' | 'copy' | 'paste' | 'download' | 'open' | 'pin' | 'unpin' | 'move' | 'rename' | 'trash' | 'info' | 'send' | 'select' | 'unselect' | 'newFolder' | 'upload';
+export type MenuIconName = 'cut' | 'copy' | 'paste' | 'download' | 'open' | 'pin' | 'unpin' | 'move' | 'rename' | 'trash' | 'info' | 'send' | 'select' | 'unselect' | 'newFolder' | 'upload' | 'star' | 'unstar' | 'edit';
 
 /* Iconos de trazo de las opciones del menú contextual. */
 export const MenuIcon = ({ name, className = 'w-4 h-4' }: { name: MenuIconName; className?: string }) => (
@@ -29,6 +29,9 @@ export const MenuIcon = ({ name, className = 'w-4 h-4' }: { name: MenuIconName; 
     {name === 'unselect' && <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M9 9l6 6M15 9l-6 6" /></>}
     {name === 'newFolder' && <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM12 10.5v5M9.5 13h5" />}
     {name === 'upload'   && <path d="M12 16V5M7 10l5-5 5 5M5 20h14" />}
+    {name === 'star'     && <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />}
+    {name === 'unstar'   && <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9zM3 3l18 18" />}
+    {name === 'edit'     && <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />}
     {name === 'open'     && <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>}
   </svg>
 );

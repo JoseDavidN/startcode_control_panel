@@ -70,4 +70,11 @@ export const assistantApi = {
 	async clearMemory(): Promise<void> {
 		await apiService.delete(`${BASE}/memory`);
 	},
+
+	/** `/resume`: lo pendiente pasa al resumen de la memoria y la conversación se vacía. */
+	async summarizeMemory(): Promise<{ summary: string; summarized: number }> {
+		return unwrap<{ summary: string; summarized: number }>(
+			await apiService.post<{ summary: string; summarized: number }>(`${BASE}/memory/summarize`, undefined, { timeout: CHAT_TIMEOUT })
+		);
+	},
 };

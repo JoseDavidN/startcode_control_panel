@@ -407,6 +407,7 @@ CREATE TABLE public.tbl_servers (
     enu_status public.tbl_servers_enu_status_enum DEFAULT 'offline'::public.tbl_servers_enu_status_enum NOT NULL,
     enu_os public.tbl_servers_enu_os_enum NOT NULL,
     enu_tag public.tbl_servers_enu_tag_enum,
+    dat_favorited timestamp with time zone,
     str_description text,
     json_metadata jsonb,
     dat_last_seen timestamp with time zone,

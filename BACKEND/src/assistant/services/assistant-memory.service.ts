@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AiAssistantMessage, AiMessageRole } from '../entities/ai-assistant-message.entity';
@@ -24,6 +24,8 @@ Recibes el resumen anterior (puede estar vacío) y una parte antigua de la conve
 - servidores, bases de datos, servicios y rutas relevantes, y su estado o problemas conocidos;
 - decisiones tomadas, problemas resueltos y cómo, tareas pendientes.
 Descarta saludos y detalles sin valor futuro. Nunca incluyas contraseñas, llaves, tokens ni claves de API, ni rutas o detalles internos de StartCode Panel. Máximo ${MAX_SUMMARY_CHARS} caracteres. Devuelve solo el resumen.`;
+
+type ProviderAccess = { provider: AiProvider; model: string; apiKey: string };
 
 export interface MemoryState {
   summary: string;
@@ -115,7 +117,7 @@ export class AssistantMemoryService {
    * usuario. No bloquea la respuesta y un fallo solo deja el resumen para la
    * próxima vez.
    */
-  compact(userId: string, provider: { provider: AiProvider; model: string; apiKey: string }): void {
+  compact(userId: string, provider: ProviderAccess): void {
     if (this.summarizing.has(userId)) return;
     this.summarizing.add(userId);
     this.doCompact(userId, provider)
@@ -123,11 +125,45 @@ export class AssistantMemoryService {
       .finally(() => this.summarizing.delete(userId));
   }
 
-  private async doCompact(userId: string, p: { provider: AiProvider; model: string; apiKey: string }): Promise<void> {
+  private async doCompact(userId: string, p: ProviderAccess): Promise<void> {
     const pending = await this.messages.find({ where: { userId, summarized: false }, order: { createdAt: 'ASC' } });
     if (pending.length <= SUMMARIZE_ABOVE) return;
 
     const old = pending.slice(0, pending.length - KEEP_AFTER_SUMMARY);
+    if (!(await this.summarize(userId, old, p))) return;
+    await this.messages.update({ id: In(old.map(m => m.id)) }, { summarized: true });
+    await this.prune(userId);
+  }
+
+  /**
+   * `/resume`: condensa en el resumen todo lo que aún no lo está y vacía la
+   * conversación. Espera al proveedor (no va en segundo plano): el panel
+   * muestra el resultado. Si el resumen falla, no se borra nada.
+   */
+  async summarizeAndClear(userId: string, p: ProviderAccess): Promise<{ summary: string; summarized: number }> {
+    if (this.summarizing.has(userId)) throw new ConflictException('Ya se está actualizando la memoria: inténtalo en unos segundos');
+    this.summarizing.add(userId);
+    try {
+      const pending = await this.messages.find({ where: { userId, summarized: false }, order: { createdAt: 'ASC' } });
+      if (!pending.length) {
+        const total = await this.messages.count({ where: { userId } });
+        if (!total) throw new BadRequestException('No hay mensajes que resumir');
+      }
+      let summary = (await this.memory.findOne({ where: { userId } }))?.summary ?? '';
+      if (pending.length) {
+        const updated = await this.summarize(userId, pending, p);
+        if (updated === null) throw new BadRequestException('El proveedor devolvió un resumen vacío: no se borró la conversación');
+        summary = updated;
+      }
+      await this.messages.delete({ userId });
+      return { summary, summarized: pending.length };
+    } finally {
+      this.summarizing.delete(userId);
+    }
+  }
+
+  /** Añade `old` al resumen del usuario con el proveedor. Devuelve el resumen guardado o null si vino vacío. */
+  private async summarize(userId: string, old: AiAssistantMessage[], p: ProviderAccess): Promise<string | null> {
     const mem = (await this.memory.findOne({ where: { userId } })) ?? this.memory.create({ userId, summary: '', summarizedCount: 0 });
     const transcript = old.map(m => `${m.role === AiMessageRole.USER ? 'Usuario' : 'Asistente'}: ${m.content}`).join('\n\n');
 
@@ -142,13 +178,12 @@ export class AssistantMemoryService {
       ],
       maxTokens: 4000,
     });
-    if (!summary.trim()) return;
+    if (!summary.trim()) return null;
 
     mem.summary = hidePanelInternals(summary.trim()).slice(0, MAX_SUMMARY_CHARS);
     mem.summarizedCount += old.length;
     await this.memory.save(mem);
-    await this.messages.update({ id: In(old.map(m => m.id)) }, { summarized: true });
-    await this.prune(userId);
+    return mem.summary;
   }
 
   /** Borra lo ya resumido que exceda el tope de historial guardado. */

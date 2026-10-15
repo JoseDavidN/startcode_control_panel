@@ -11,7 +11,9 @@ const ALGORITHM = 'aes-256-gcm';
 const VERSION = 'v1';
 
 /**
- * Cifra las contraseñas de las conexiones a bases de datos.
+ * Cifra los secretos que el panel guarda y tiene que volver a usar: las
+ * contraseñas de las conexiones a bases de datos, las claves de API del
+ * asistente y las llaves privadas SSH de los servidores.
  *
  * AES-256-GCM con IV aleatorio por valor: el mismo texto da un cifrado
  * distinto cada vez y la etiqueta de autenticación detecta cualquier
@@ -39,6 +41,16 @@ export class CredentialsCipherService implements OnModuleInit {
         'DB_CREDENTIALS_KEY no está definida o no mide 32 bytes: no se podrán guardar ni usar contraseñas de bases de datos. Genera una con `openssl rand -hex 32`.',
       );
     }
+  }
+
+  /** Hay clave válida: se puede cifrar y descifrar. */
+  get ready(): boolean {
+    return this.key !== null;
+  }
+
+  /** Valor ya cifrado por este servicio (y no un dato antiguo en claro). */
+  static isEncrypted(value: string | null | undefined): boolean {
+    return typeof value === 'string' && value.startsWith(`${VERSION}:`);
   }
 
   encrypt(plain: string): string {

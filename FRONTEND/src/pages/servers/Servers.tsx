@@ -2,7 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ServerDetail } from '@components/servers/ServerDetail';
 import { AddServerModal, EditServerModal, DeleteServerModal } from '@components/common';
 import { type ServerData } from '@typings/DashboardTypes';
-import { useServers, useRefreshAllServers } from '@hooks/useServers';
+import { useServers, useRefreshAllServers, useSetServerFavorite } from '@hooks/useServers';
+import { useContextMenu } from '@hooks/useContextMenu';
+import { MenuIcon } from '@components/common/ContextMenu';
+import { notify } from '@services/notification.service';
 import type { Server } from '@services/server.service';
 import { useServersLive } from '@hooks/useServersLive';
 import { emptyRuntime, type ServerRuntime } from '@lib/serverRuntime';
@@ -65,30 +68,19 @@ const icons = {
   chevron:  <I d="M9 6l6 6-6 6" className="w-5 h-5" />,
   cards:    <I d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" className="w-4 h-4" />,
   list:     <I d="M4 6h16M4 12h16M4 18h16" className="w-4 h-4" />,
-  edit:     <I d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" className="w-4 h-4" />,
-  trash:    <I d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" className="w-4 h-4" />,
 };
 
-/* ── Acciones de la tarjeta ───────────────────────────────────────── */
-/* Van fuera del área clicable: la tarjeta entera abre el detalle, así que
-   estos botones paran la propagación para no arrastrar al usuario con ellos. */
-const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
-  <div className="flex items-center gap-1 shrink-0">
-    <button
-      onClick={e => { e.stopPropagation(); onEdit(); }}
-      title="Editar servidor" aria-label="Editar servidor"
-      className="mo-tab w-8 h-8 rounded-lg glass-soft text-white/55 hover:text-white row-hit flex items-center justify-center"
-    >
-      {icons.edit}
-    </button>
-    <button
-      onClick={e => { e.stopPropagation(); onDelete(); }}
-      title="Eliminar servidor" aria-label="Eliminar servidor"
-      className="mo-tab w-8 h-8 rounded-lg glass-soft text-white/50 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center"
-    >
-      {icons.trash}
-    </button>
-  </div>
+/* ── Favoritos ────────────────────────────────────────────────────── */
+/** Tope de favoritos por usuario (lo valida también el backend). */
+const MAX_FAVORITES = 3;
+
+/* Distintivo junto al nombre: estrella rellena con el color de marca. */
+const FavoriteStar = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-label="Favorito" role="img"
+    className="w-3.5 h-3.5 shrink-0 text-violet-300">
+    <title>Favorito</title>
+    <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
+  </svg>
 );
 
 /* ── Métricas derivadas — compartidas por la tarjeta y la fila ────── */
@@ -109,13 +101,14 @@ const StatusBadge = ({ status }: { status: ServerRuntime['state'] }) => {
 };
 
 /* ── Server card (glassmorphism) ──────────────────────────────────── */
-const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
+const GlassServerCard = ({ server, tag, rt, favorite, onClick, onMenu }: {
   server: ServerData;
   tag: ResourceTag | null;
   rt: ServerRuntime;
+  favorite: boolean;
   onClick: (s: ServerData) => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  /** Clic derecho: menú de opciones (favorito, editar y eliminar). */
+  onMenu: (e: React.MouseEvent) => void;
 }) => {
   return (
     /* No es un <button>: dentro hay botones de acción y anidarlos sería HTML
@@ -125,6 +118,7 @@ const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
       tabIndex={0}
       onClick={() => onClick(server)}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
+      onContextMenu={onMenu}
       className="text-left group w-full cursor-pointer"
     >
       <Card className="p-4 row-hit relative">
@@ -136,18 +130,16 @@ const GlassServerCard = ({ server, tag, rt, onClick, onEdit, onDelete }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <div className="font-semibold truncate">{server.name}</div>
+              {favorite && <FavoriteStar />}
               <TagBadge tag={tag} />
             </div>
             <div className="text-xs text-white/55 mt-0.5 font-mono truncate">
               {server.ip} · {server.os}
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <RowActions onEdit={onEdit} onDelete={onDelete} />
-            <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition">
-              {icons.chevron}
-            </span>
-          </div>
+          <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition shrink-0">
+            {icons.chevron}
+          </span>
         </div>
 
         {/* Metric tiles row 1 */}
@@ -205,13 +197,13 @@ const MiniMetric = ({ label, value, gradient }: { label: string; value: number |
 );
 
 /* ── Fila (vista de lista) ────────────────────────────────────────── */
-const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
+const ServerRow = ({ server, tag, rt, favorite, onClick, onMenu }: {
   server: ServerData;
   tag: ResourceTag | null;
   rt: ServerRuntime;
+  favorite: boolean;
   onClick: (s: ServerData) => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onMenu: (e: React.MouseEvent) => void;
 }) => {
   return (
     <div
@@ -219,6 +211,7 @@ const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
       tabIndex={0}
       onClick={() => onClick(server)}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(server); } }}
+      onContextMenu={onMenu}
       className="w-full text-left group flex items-center gap-4 px-5 py-4 hover:bg-tint-hover transition cursor-pointer"
     >
       <div className="w-10 h-10 rounded-xl grad-brand-soft border border-hairline flex items-center justify-center text-violet-200 shrink-0">
@@ -228,6 +221,7 @@ const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold truncate">{server.name}</span>
+          {favorite && <FavoriteStar />}
           {/* El punto «en vivo» va pegado al estado, antes de la etiqueta. */}
           <StatusBadge status={rt.state} />
           {rt.live && rt.state === 'online' && (
@@ -257,7 +251,6 @@ const ServerRow = ({ server, tag, rt, onClick, onEdit, onDelete }: {
         </span>
       </div>
 
-      <RowActions onEdit={onEdit} onDelete={onDelete} />
 
       <span className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition shrink-0">
         {icons.chevron}
@@ -319,6 +312,28 @@ export const Servers: React.FC = () => {
 
   const { data: servers = [], isLoading, isError } = useServers();
   const { mutate: refreshServers } = useRefreshAllServers();
+  const setFavorite = useSetServerFavorite();
+  const { openContextMenu } = useContextMenu();
+  const favoriteCount = servers.filter(s => s.favoritedAt).length;
+
+  /* Clic derecho en una tarjeta o fila: favorito, editar y eliminar. */
+  const openServerMenu = (e: React.MouseEvent, server: Server) => {
+    const favorite = Boolean(server.favoritedAt);
+    const full = !favorite && favoriteCount >= MAX_FAVORITES;
+    openContextMenu(e, [
+      {
+        id: 'favorite',
+        label: favorite ? 'Quitar de favoritos' : full ? `Favoritos completos (${MAX_FAVORITES})` : 'Marcar como favorito',
+        icon: <MenuIcon name={favorite ? 'unstar' : 'star'} />,
+        disabled: full,
+        onSelect: () => setFavorite.mutate({ id: server.id, favorite: !favorite }, {
+          onError: err => notify.error('No se pudo cambiar el favorito', (err as { message?: string })?.message),
+        }),
+      },
+      { id: 'edit', label: 'Editar', icon: <MenuIcon name="edit" />, separator: true, onSelect: () => setEditing(server) },
+      { id: 'delete', label: 'Eliminar', icon: <MenuIcon name="trash" />, danger: true, onSelect: () => setDeleting(server) },
+    ]);
+  };
   /* Los números vienen de aquí, no de `GET /servers`: `metadata.cpu` y compañía
      no los escribe nadie en el backend. */
   const { runtime, onlineCount } = useServersLive();
@@ -343,11 +358,15 @@ export const Servers: React.FC = () => {
 
   const filteredServers = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return servers.filter(s =>
+    const matches = servers.filter(s =>
       (!term || s.name.toLowerCase().includes(term) || s.host.toLowerCase().includes(term)) &&
       (!filters.os || s.os === filters.os) &&
       (!filters.tag || (filters.tag === 'none' ? !s.tag : s.tag === filters.tag))
     );
+    /* Favoritos primero, por orden de marcado; el resto conserva el orden del backend. */
+    const favorites = matches.filter(s => s.favoritedAt)
+      .sort((a, b) => Date.parse(a.favoritedAt!) - Date.parse(b.favoritedAt!));
+    return [...favorites, ...matches.filter(s => !s.favoritedAt)];
   }, [servers, searchTerm, filters]);
 
   /* Al entrar en la vista (y al volver del detalle) los datos se piden de nuevo. */
@@ -443,9 +462,9 @@ export const Servers: React.FC = () => {
                 server={transformServer(server)}
                 tag={server.tag ?? null}
                 rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
+                favorite={Boolean(server.favoritedAt)}
                 onClick={setSelectedServer}
-                onEdit={() => setEditing(server)}
-                onDelete={() => setDeleting(server)}
+                onMenu={e => openServerMenu(e, server)}
               />
             ))}
           </div>
@@ -461,9 +480,9 @@ export const Servers: React.FC = () => {
                     server={transformServer(server)}
                     tag={server.tag ?? null}
                     rt={runtime[server.id] ?? emptyRuntime(server.id, server.status)}
+                    favorite={Boolean(server.favoritedAt)}
                     onClick={setSelectedServer}
-                    onEdit={() => setEditing(server)}
-                    onDelete={() => setDeleting(server)}
+                    onMenu={e => openServerMenu(e, server)}
                   />
                 ))}
               </Card>

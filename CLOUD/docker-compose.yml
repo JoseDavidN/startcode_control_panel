@@ -1,24 +1,46 @@
-# StartCode Cloud — despliegue con docker compose (ver README.md).
-#   cp .env.example .env.production   # y completa CLOUD_JWT_SECRET y CLOUD_ADMIN_PASSWORD
-#   docker compose up -d --build
+# StartCode Cloud — producción, con la imagen de Docker Hub.
+#
+#   cp .env.production.example .env.production   # y completar
+#   docker compose --env-file .env.production pull
+#   docker compose --env-file .env.production up -d
+#
+# Ver README.md y docs/IMAGENES_DOCKER.md (publicar y versionar la imagen).
+
+name: startcode-cloud
+
 services:
   cloud:
-    build: .
-    image: startcode-cloud:latest
+    image: ${DOCKERHUB_USER:?Falta DOCKERHUB_USER en .env.production}/startcode-cloud:${CLOUD_TAG:-latest}
     restart: unless-stopped
+    # tini como PID 1: reenvía SIGTERM a node y recoge los ffmpeg que queden huérfanos.
+    init: true
     env_file: .env.production
     environment:
       NODE_ENV: production
+      PORT: 3100
       CLOUD_DATA_DIR: /data
       CLOUD_ALLOWED_ROOTS: /storage
     ports:
+      # Con un proxy inverso (TLS) delante, publicar solo en local:
+      #   "127.0.0.1:3100:3100"
       - "${CLOUD_PORT:-3100}:3100"
     volumes:
-      # Estado interno (usuarios y sesiones).
+      # Estado interno (usuarios, sesiones y caché de videos convertidos).
       - cloud-data:/data
-      # Archivos de Home y Backups. Cambia la carpeta del host por la del
-      # disco de almacenamiento; debe ser escribible por el uid 1000 (node).
-      - ${CLOUD_STORAGE_DIR:-./storage}:/storage
+      # Archivos de Home y Backups.
+      - cloud-storage:/storage
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
+# Volúmenes externos: se crean una vez fuera del compose (docker volume create)
+# y `docker compose down -v` no los borra.
 volumes:
   cloud-data:
+    external: true
+    name: ${CLOUD_DATA_VOLUME:-startcode-cloud-data}
+  cloud-storage:
+    external: true
+    name: ${CLOUD_STORAGE_VOLUME:-startcode-cloud-storage}

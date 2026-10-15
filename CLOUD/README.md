@@ -20,20 +20,55 @@ El primero se crea al arrancar con `CLOUD_ADMIN_USERNAME` / `CLOUD_ADMIN_PASSWOR
 ```bash
 pnpm user:add <usuario>            # compilado (producción)
 pnpm user:add:dev <usuario>        # desde src
-docker compose exec cloud node dist/cli/user-add <usuario>
+docker compose --env-file .env.production exec cloud node dist/cli/user-add <usuario>
 ```
 Reinicia la nube después para que lea el cambio.
 
-## Producción (docker compose)
+## Producción (docker compose, imagen de Docker Hub)
+La imagen se publica como `<DOCKERHUB_USER>/startcode-cloud` (`make push`; ver `docs/IMAGENES_DOCKER.md`) y el compose la descarga:
 ```bash
-cp .env.example .env.production
+cp .env.production.example .env.production
 openssl rand -base64 48            # → CLOUD_JWT_SECRET
-# CLOUD_ADMIN_PASSWORD, CORS_ORIGIN (URL del panel web)
-CLOUD_STORAGE_DIR=/mnt/almacenamiento docker compose up -d --build
+# DOCKERHUB_USER, CLOUD_TAG, CLOUD_ADMIN_PASSWORD, CORS_ORIGIN (URL del panel web)
+docker volume create startcode-cloud-data       # solo la primera vez
+docker volume create startcode-cloud-storage
+docker compose --env-file .env.production pull
+docker compose --env-file .env.production up -d
 ```
-- `CLOUD_STORAGE_DIR` es la carpeta del host que se monta en `/storage`; Home y Backups solo pueden configurarse dentro de ella (`CLOUD_ALLOWED_ROOTS`). Debe pertenecer al uid 1000.
-- El estado (`users.json`, `sessions.json`) vive en el volumen `cloud-data`.
+Para actualizar: `CLOUD_TAG` a la versión nueva, `pull` y `up -d`.
+- Los dos montajes son volúmenes externos de Docker (nombres en `CLOUD_DATA_VOLUME` y `CLOUD_STORAGE_VOLUME`): el compose no los crea ni los borra, ni con `down -v`. Si ya existen de un despliegue anterior, basta con poner sus nombres.
+- `/storage` (volumen de almacenamiento) guarda Home y Backups; solo pueden configurarse dentro de él (`CLOUD_ALLOWED_ROOTS`). `/data` guarda el estado (`users.json`, `sessions.json`) y la caché de videos.
+- Un volumen nuevo y vacío toma el dueño de la imagen (uid 1000, `node`) al montarse la primera vez.
 - Pon la nube detrás de HTTPS si sale de la red local: el token viaja en cada petición.
+
+### Volúmenes en una carpeta del host (p. ej. `/srv`)
+Para que los datos queden en `/srv` en lugar de en `/var/lib/docker/volumes`, se crean los volúmenes enlazados a esas carpetas (una sola vez, antes del primer `up`). El compose no cambia: monta los volúmenes por su nombre.
+```bash
+# 1. Carpetas, del uid 1000 (node, el usuario de la imagen)
+sudo mkdir -p /srv/startcode-cloud/data /srv/startcode-cloud/storage
+sudo chown -R 1000:1000 /srv/startcode-cloud
+
+# 2. Volúmenes que apuntan a esas carpetas
+docker volume create --driver local \
+  --opt type=none --opt o=bind --opt device=/srv/startcode-cloud/data \
+  startcode-cloud-data
+docker volume create --driver local \
+  --opt type=none --opt o=bind --opt device=/srv/startcode-cloud/storage \
+  startcode-cloud-storage
+
+# 3. Comprobar: "device" debe ser la carpeta de /srv
+docker volume inspect startcode-cloud-storage
+```
+En `.env.production`, `CLOUD_DATA_VOLUME` y `CLOUD_STORAGE_VOLUME` con esos nombres (son los de por defecto). Luego `pull` y `up -d` como arriba.
+
+| Carpeta del host | En el contenedor | Contenido |
+|---|---|---|
+| `/srv/startcode-cloud/data` | `/data` | Usuarios, sesiones y caché de videos convertidos |
+| `/srv/startcode-cloud/storage` | `/storage` | Archivos de Home y Backups (en la app se ven como `/storage/...`) |
+
+- Si el almacenamiento está en otro disco, móntalo en `/srv/startcode-cloud/storage` antes de crear el volumen.
+- Docker no cambia la carpeta de un volumen ya creado. Para mover uno existente: `docker compose down`, copiar su contenido (ruta en `docker volume inspect <nombre>` → `Mountpoint`) a la carpeta de `/srv`, `docker volume rm <nombre>`, crearlo con el comando del paso 2 y volver a levantar.
+- Si la nube da errores de permisos al subir archivos, repetir `sudo chown -R 1000:1000 /srv/startcode-cloud`.
 
 ## Video
 

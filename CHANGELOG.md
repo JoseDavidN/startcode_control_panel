@@ -9,6 +9,34 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [0.9.1] — 2026-10-14
+
+Versión de **parche** sobre 0.9.0: despliegue con la imagen de Docker Hub (primera versión publicada allí). Sin cambios en la API.
+
+### Cambiado
+- `docker-compose.yml` ya no compila: descarga `<DOCKERHUB_USER>/startcode-panel-backend:<BACKEND_TAG>` y corre en producción (`NODE_ENV=production`, puerto 3001, `init: true`). Por defecto usa una base PostgreSQL y un Redis existentes (`DB_HOST`/`DB_PORT` y `REDIS_HOST`/`REDIS_PORT` en `.env.production`). Con esas variables vacías y los perfiles `db` y `cache`, el compose levanta los suyos, como antes. `depends_on` con `required: false`, para que solo espere a los servicios de los perfiles activos
+- `Dockerfile`: etiquetas OCI (título, descripción, versión con `--build-arg VERSION`)
+- `Makefile`: `make image` (imagen local) y `make push` (Docker Hub, amd64 y arm64, con las etiquetas `X.Y.Z`, `X.Y` y `latest`). `make push` se niega a volver a subir una `X.Y.Z` ya publicada. Se arregla `make help`, que no tenía su objetivo. Guía de compilación, publicación y versionado en `docs/IMAGENES_DOCKER.md`
+- `.env.production.example`: `DOCKERHUB_USER`, `BACKEND_TAG`, `DB_HOST`, `DB_PORT`, `DB_VOLUME`, `REDIS_HOST` y `REDIS_PORT`
+- Los datos de Postgres (perfil `db`) van en un volumen externo de Docker (`DB_VOLUME`, `external: true`): el compose no lo crea ni lo borra. `DEPLOY.md` explica cómo enlazarlo a una carpeta de `/srv`
+- `DEPLOY.md`: publicar en Docker Hub, instalar con base existente o con la del compose, actualizar, migraciones y copias en los dos casos, y el aviso de compartir la base con un backend en desarrollo (que sincroniza el esquema). Probado: imagen compilada y compose con los perfiles `db` y `cache` en producción (health `ok`, base conectada, administrador creado)
+
+---
+
+## [Cloud 0.2.1] — 2026-10-14
+
+Versión de **parche** sobre 0.2.0: despliegue con la imagen de Docker Hub (primera versión publicada allí). Sin cambios en la API.
+
+### Cambiado
+- `docker-compose.yml` ya no compila: descarga `<DOCKERHUB_USER>/startcode-cloud:<CLOUD_TAG>` y corre en producción (puerto 3100, `init: true` para que los ffmpeg huérfanos no queden zombis, registros con rotación)
+- `Dockerfile`: etiquetas OCI (título, descripción, versión con `--build-arg VERSION`)
+- `Makefile` nuevo: `install`, `dev`, `build`, `test`, `lint`, `prod`, `user U=…`, y `image`/`push` para Docker Hub (amd64 y arm64; etiquetas `X.Y.Z`, `X.Y` y `latest`; no vuelve a subir una versión ya publicada)
+- `.env.production.example` nuevo, con `DOCKERHUB_USER`, `CLOUD_TAG`, `CLOUD_PORT`, `CLOUD_DATA_VOLUME` y `CLOUD_STORAGE_VOLUME`
+- `/data` y `/storage` se montan desde volúmenes externos de Docker (`external: true`): el compose no los crea ni los borra, y se reutilizan los de despliegues anteriores por su nombre
+- README: despliegue con la imagen de Docker Hub. Guía común con el backend en `docs/IMAGENES_DOCKER.md`. Probado: imagen compilada y compose en producción (health con la versión, inicio de sesión del administrador, ffmpeg en la imagen)
+
+---
+
 ## [App de escritorio 0.7.1] — 2026-10-14
 
 Versión de **parche** sobre 0.7.0.

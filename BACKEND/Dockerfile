@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# Backend de StartCode Panel — imagen de producción.
-#   docker build -t startcode-panel-backend .
+# Backend de StartCode Panel — imagen de producción, publicada en Docker Hub.
+#   make image            # compila la imagen local con la versión de package.json
+#   make push             # amd64 + arm64 a Docker Hub (DOCKERHUB_USER=…)
 # Ver DEPLOY.md para el despliegue completo con docker compose.
 
 ARG NODE_VERSION=24
@@ -36,6 +37,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 
 # ── Imagen final ─────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="StartCode Panel — backend" \
+      org.opencontainers.image.description="API NestJS de StartCode Panel: servidores, agente de monitoreo, bases de datos, terminal y SFTP" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="UNLICENSED"
 ENV NODE_ENV=production \
     PORT=3001
 WORKDIR /app

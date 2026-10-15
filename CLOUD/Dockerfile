@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
-# StartCode Cloud — imagen de producción.
-#   docker build -t startcode-cloud .
-# Ver README.md para el despliegue con docker compose.
+# StartCode Cloud — imagen de producción, publicada en Docker Hub.
+#   make image            # compila la imagen local con la versión de package.json
+#   make push             # amd64 + arm64 a Docker Hub (DOCKERHUB_USER=…)
+# Ver README.md y docs/IMAGENES_DOCKER.md.
 
 ARG NODE_VERSION=24
 ARG PNPM_VERSION=12.4.2
@@ -27,6 +28,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 
 # ── Imagen final ─────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="StartCode Cloud" \
+      org.opencontainers.image.description="Almacenamiento en la nube de StartCode Panel: archivos de Home y Backups, visor de imagen y video (ffmpeg) y SFTP" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="UNLICENSED"
 ENV NODE_ENV=production \
     PORT=3100 \
     CLOUD_DATA_DIR=/data \

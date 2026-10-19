@@ -1,4 +1,27 @@
-import { AssistantMemoryService, toAlternating } from './assistant-memory.service';
+import { AssistantMemoryService, toAlternating, withinBudget } from './assistant-memory.service';
+
+describe('withinBudget', () => {
+  const msgs = [
+    { role: 'user' as const, content: 'a'.repeat(10) },
+    { role: 'assistant' as const, content: 'b'.repeat(50) },
+    { role: 'user' as const, content: 'c'.repeat(10) },
+    { role: 'assistant' as const, content: 'd'.repeat(20) },
+  ];
+
+  it('conserva todo si cabe', () => {
+    expect(withinBudget(msgs, 1000)).toEqual(msgs);
+  });
+
+  it('deja los más recientes que caben y empieza por el usuario', () => {
+    expect(withinBudget(msgs, 40)).toEqual(msgs.slice(2));
+    /* 80 cabría desde la respuesta larga, pero el historial no puede empezar por el asistente. */
+    expect(withinBudget(msgs, 80)).toEqual(msgs.slice(2));
+  });
+
+  it('vacío si ni el último cabe', () => {
+    expect(withinBudget(msgs, 5)).toEqual([]);
+  });
+});
 
 describe('toAlternating', () => {
   it('descarta las respuestas iniciales y el usuario final sin respuesta', () => {

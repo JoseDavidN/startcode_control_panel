@@ -86,8 +86,8 @@ startcode-panel/
 ├── versions.json                  novedades (la app lo lee)
 ├── linux/x86_64/latest.json       AppImage
 ├── windows/x86_64/latest.json     instalador NSIS (-setup.exe)
-├── darwin/aarch64/latest.json     .app.tar.gz Apple Silicon
-├── darwin/x86_64/latest.json      .app.tar.gz Intel
+├── darwin/aarch64/latest.json     .app.tar.gz universal (Apple Silicon)
+├── darwin/x86_64/latest.json      .app.tar.gz universal (Intel), el mismo paquete
 └── files/<versión>/               instalables (.deb .rpm .AppImage .msi .exe .dmg) y paquetes de actualización + .sig
 ```
 

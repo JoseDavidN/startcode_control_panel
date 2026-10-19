@@ -19,7 +19,17 @@ function unwrapAgent<T>(response: unknown): T {
 	return second as T;
 }
 
-interface CreateServerDto {
+/* Igual que `unwrapAgent`, pero con la comprobación por veracidad (no `??`)
+   que estos endpoints usaron siempre: un `data` vacío no se desenvuelve. */
+function unwrapPayload(response: unknown): unknown {
+	const pick = (value: unknown): unknown => {
+		const inner = (value as { data?: unknown } | null | undefined)?.data;
+		return value && inner ? inner : value;
+	};
+	return pick(pick(response));
+}
+
+export interface CreateServerDto {
 	name: string;
 	host: string;
 	port: number;
@@ -85,12 +95,7 @@ class ServerService {
 			API_CONFIG.ENDPOINTS.SERVERS,
 			data
 		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const created =
-			payload && (payload as any).data ? (payload as any).data : payload;
+		const created = unwrapPayload(response);
 		return created as Server;
 	}
 
@@ -98,12 +103,7 @@ class ServerService {
 		const response = await apiService.get<Server[]>(
 			API_CONFIG.ENDPOINTS.SERVERS
 		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const list =
-			payload && (payload as any).data ? (payload as any).data : payload;
+		const list = unwrapPayload(response);
 		return Array.isArray(list) ? (list as Server[]) : [];
 	}
 
@@ -111,12 +111,7 @@ class ServerService {
 		const response = await apiService.get<Server>(
 			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`
 		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const item =
-			payload && (payload as any).data ? (payload as any).data : payload;
+		const item = unwrapPayload(response);
 		return item as Server;
 	}
 
@@ -136,12 +131,7 @@ class ServerService {
 			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`,
 			data
 		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const updated =
-			payload && (payload as any).data ? (payload as any).data : payload;
+		const updated = unwrapPayload(response);
 		return updated as Server;
 	}
 
@@ -155,12 +145,7 @@ class ServerService {
 			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}`,
 			{ data: opts ?? {}, timeout: AGENT_OPERATION_TIMEOUT },
 		);
-		const payload =
-			response && (response as any).data
-				? (response as any).data
-				: response;
-		const res =
-			payload && (payload as any).data ? (payload as any).data : payload;
+		const res = unwrapPayload(response);
 		return res as { message: string; warning?: string };
 	}
 

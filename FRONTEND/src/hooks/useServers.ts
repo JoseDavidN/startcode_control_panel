@@ -1,7 +1,7 @@
 // src/hooks/useServers.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serverService } from '@services/server.service';
-import type { Server, UpdateServerDto } from '@services/server.service';
+import type { CreateServerDto, Server, UpdateServerDto } from '@services/server.service';
 
 /**
  * Hook para obtener todos los servidores del usuario
@@ -39,10 +39,10 @@ export function useCreateServer() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: serverService.createServer,
+		mutationFn: (data: CreateServerDto) => serverService.createServer(data),
 		onSuccess: () => {
 			// Invalidar la query de servidores para que se recargue
-			queryClient.invalidateQueries({ queryKey: ['servers'] });
+			void queryClient.invalidateQueries({ queryKey: ['servers'] });
 		},
 	});
 }
@@ -108,8 +108,8 @@ export function useDeleteServer() {
 						sudoPassword: vars.sudoPassword,
 					}),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['servers'] });
-			queryClient.invalidateQueries({ queryKey: ['servers-summary'] });
+			void queryClient.invalidateQueries({ queryKey: ['servers'] });
+			void queryClient.invalidateQueries({ queryKey: ['servers-summary'] });
 		},
 	});
 }

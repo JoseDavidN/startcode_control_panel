@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ServersController } from './servers.controller';
 import { ServersService } from './servers.service';
 import { AuthService } from '@auth/auth.service';
+import { AgentInstallService } from '@servers/services/agent-install.service';
 
 const mockServersService = {
   create: jest.fn(),
@@ -25,6 +26,11 @@ const mockAuthService = {
   getMe: jest.fn(),
 };
 
+const mockAgentInstallService = {
+  install: jest.fn(),
+  uninstall: jest.fn(),
+};
+
 describe('ServersController', () => {
   let controller: ServersController;
 
@@ -34,6 +40,7 @@ describe('ServersController', () => {
       providers: [
         { provide: ServersService, useValue: mockServersService },
         { provide: AuthService, useValue: mockAuthService },
+        { provide: AgentInstallService, useValue: mockAgentInstallService },
       ],
     }).compile();
 

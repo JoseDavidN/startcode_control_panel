@@ -9,6 +9,7 @@ import type {
 	LoginCredentials,
 	AuthResponse,
 	PasswordChangeRequiredResponse,
+	RawAuthPayload,
 	TwoFactorPendingResponse,
 } from '@typings/auth.types';
 
@@ -22,12 +23,14 @@ export function useLoginMutation() {
 			/* Dispositivo de confianza: si el 2FA se verificó aquí hace menos de
 			   7 días, el backend no vuelve a pedir el código. */
 			const trustedDeviceToken = await getTrustedDeviceToken(credentials.email);
-			const response = await apiService.post<any>(
+			const response = await apiService.post<RawAuthPayload>(
 				API_CONFIG.ENDPOINTS.LOGIN,
 				trustedDeviceToken ? { ...credentials, trustedDeviceToken } : credentials
 			);
 
-			const backendData = response && response.data ? response.data : response;
+			const backendData = (response && response.data ? response.data : response) as
+				| RawAuthPayload
+				| undefined;
 
 			/* Respuestas sin sesión: hay que devolverlas tal cual, porque
 			   normalizeAuthResponse exige `user` y lanzaría "Respuesta inválida

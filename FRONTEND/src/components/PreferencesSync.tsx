@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@hooks/useAuth';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
 
 /**
  * Puente entre la sesión y las preferencias. Va montado DENTRO de AuthProvider

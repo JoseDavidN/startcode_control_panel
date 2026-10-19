@@ -1,4 +1,4 @@
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
@@ -31,7 +31,7 @@ describe('AuthService · dispositivo de confianza 2FA', () => {
     service = new AuthService(users as never, {} as never, jwt, config);
   });
 
-  const trustToken = (claims: Record<string, unknown> = {}, expiresIn = '7d') => {
+  const trustToken = (claims: Record<string, unknown> = {}, expiresIn: JwtSignOptions['expiresIn'] = '7d') => {
     const fp = (service as unknown as { trustFingerprint: (u: User) => string }).trustFingerprint(user);
     return jwt.sign({ sub: user.id, type: '2fa-trusted', fp, ...claims }, { expiresIn });
   };

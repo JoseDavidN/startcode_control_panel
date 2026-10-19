@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apiService } from '@services/api.service';
 import { queryClient } from '@lib/queryClient';
@@ -11,6 +11,11 @@ import {
   sanitizeSection,
 } from '@typings/preferences.types';
 import type { PreferenceSection, UserPreferences } from '@typings/preferences.types';
+import {
+  PreferencesContext,
+  type PreferencesContextValue,
+  type SyncStatus,
+} from '@contexts/preferences-context';
 
 /* ── Caché local ──────────────────────────────────────────────────────
    Una sola clave. `userId` evita que los ajustes de una cuenta se
@@ -86,19 +91,6 @@ function loadCacheOrMigrate(): PrefsCache {
 }
 
 /* ── Contexto ─────────────────────────────────────────────────────── */
-export type SyncStatus = 'local' | 'syncing' | 'synced' | 'error';
-
-interface PreferencesContextValue {
-  prefs: UserPreferences;
-  status: SyncStatus;
-  patch: <K extends PreferenceSection>(section: K, value: Partial<UserPreferences[K]>) => void;
-  flush: () => Promise<void>;
-  /** API interna — solo la consume PreferencesSync */
-  hydrate: (serverPrefs: Partial<UserPreferences> | null, userId: string) => void;
-  reset: () => void;
-}
-
-const PreferencesContext = createContext<PreferencesContextValue | undefined>(undefined);
 
 export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
   const initial = useRef<PrefsCache>(loadCacheOrMigrate());
@@ -268,10 +260,4 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
-};
-
-export const usePreferences = (): PreferencesContextValue => {
-  const ctx = useContext(PreferencesContext);
-  if (!ctx) throw new Error('usePreferences debe usarse dentro de PreferencesProvider');
-  return ctx;
 };

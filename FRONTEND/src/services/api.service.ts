@@ -2,6 +2,7 @@
 import axios, {
 	type AxiosInstance,
 	AxiosError,
+	type AxiosRequestConfig,
 	type InternalAxiosRequestConfig,
 } from 'axios';
 import { invoke } from '@tauri-apps/api/core';
@@ -43,8 +44,8 @@ class ApiService {
 	private api: AxiosInstance;
 	private isRefreshing = false;
 	private failedQueue: Array<{
-		resolve: (value?: any) => void;
-		reject: (reason?: any) => void;
+		resolve: (value?: unknown) => void;
+		reject: (reason?: unknown) => void;
 	}> = [];
 
 	constructor() {
@@ -76,7 +77,7 @@ class ApiService {
 
 				return config;
 			},
-			(error) => {
+			(error: Error) => {
 				return Promise.reject(error);
 			}
 		);
@@ -111,9 +112,6 @@ class ApiService {
 						})
 							.then(() => {
 								return this.api(originalRequest);
-							})
-							.catch((err) => {
-								return Promise.reject(err);
 							});
 					}
 
@@ -128,7 +126,7 @@ class ApiService {
 						}
 
 						// Intentar refrescar el token
-						const response = await axios.post(
+						const response = await axios.post<{ token: string; refreshToken: string }>(
 							`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.REFRESH}`,
 							{
 								refreshToken,
@@ -165,12 +163,18 @@ class ApiService {
 							window.location.href = '/login';
 						}
 
-						return Promise.reject(refreshError);
+						/* axios solo rechaza con AxiosError, y lo demás es el Error de
+						   «No refresh token available». */
+						return Promise.reject(refreshError as Error);
 					} finally {
 						this.isRefreshing = false;
 					}
 				}
 
+				/* El contrato de toda la app es rechazar con el `ApiError` plano
+				   (statusCode, code, hint): los consumidores lo leen así y algunos
+				   distinguen `instanceof Error` para otros fallos. */
+				// eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- ver comentario
 				return Promise.reject(this.handleError(error));
 			}
 		);
@@ -178,7 +182,7 @@ class ApiService {
 
 	private handleError(error: AxiosError): ApiError {
 		if (error.response) {
-			const data = error.response.data as any;
+			const data = error.response.data as Partial<ApiError> | undefined;
 			return {
 				message: data?.message || 'Error en la petición',
 				statusCode: error.response.status,
@@ -200,40 +204,40 @@ class ApiService {
 	}
 
 	// Métodos HTTP
-	async get<T>(url: string, config?: any): Promise<ApiResponse<T>> {
-		const response = await this.api.get(url, config);
+	async get<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+		const response = await this.api.get<ApiResponse<T>>(url, config);
 		return response.data;
 	}
 
 	async post<T>(
 		url: string,
-		data?: any,
-		config?: any
+		data?: unknown,
+		config?: AxiosRequestConfig
 	): Promise<ApiResponse<T>> {
-		const response = await this.api.post(url, data, config);
+		const response = await this.api.post<ApiResponse<T>>(url, data, config);
 		return response.data;
 	}
 
 	async put<T>(
 		url: string,
-		data?: any,
-		config?: any
+		data?: unknown,
+		config?: AxiosRequestConfig
 	): Promise<ApiResponse<T>> {
-		const response = await this.api.put(url, data, config);
+		const response = await this.api.put<ApiResponse<T>>(url, data, config);
 		return response.data;
 	}
 
 	async patch<T>(
 		url: string,
-		data?: any,
-		config?: any
+		data?: unknown,
+		config?: AxiosRequestConfig
 	): Promise<ApiResponse<T>> {
-		const response = await this.api.patch(url, data, config);
+		const response = await this.api.patch<ApiResponse<T>>(url, data, config);
 		return response.data;
 	}
 
-	async delete<T>(url: string, config?: any): Promise<ApiResponse<T>> {
-		const response = await this.api.delete(url, config);
+	async delete<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+		const response = await this.api.delete<ApiResponse<T>>(url, config);
 		return response.data;
 	}
 }

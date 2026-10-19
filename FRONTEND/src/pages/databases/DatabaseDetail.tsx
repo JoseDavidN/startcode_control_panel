@@ -7,6 +7,7 @@ import { SchemaTree } from '@components/databases/SchemaTree';
 import { SqlEditor } from '@components/databases/SqlEditor';
 import { QueryResults } from '@components/databases/QueryResults';
 import { QueryAuditModal } from '@components/databases/QueryAuditModal';
+import { RedisBrowser } from '@components/databases/redis/RedisBrowser';
 import { Modal } from '@components/common/Modal';
 import {
   isSessionClosedError,
@@ -20,7 +21,7 @@ import { buildCompletionIndex } from '@utils/sqlComplete';
 import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
 import type { DatabaseSessionStatus } from '@hooks/useDatabases';
-import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES } from '@typings/database.types';
+import { DATABASE_ENGINE_LABELS, MANAGEABLE_ENGINES, SQL_ENGINES } from '@typings/database.types';
 import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
 import { statementAt } from '@utils/sql';
@@ -145,9 +146,11 @@ const DatabaseDetailView: React.FC = () => {
   const navigate = useNavigate();
   const { data: conn, isLoading, isError } = useDatabaseConnection(id);
   const manageable = conn ? MANAGEABLE_ENGINES.includes(conn.engine) : false;
+  /* Redis tiene su propio explorador: sin árbol de bases, editor SQL ni predicción. */
+  const sqlView = conn ? SQL_ENGINES.includes(conn.engine) : false;
   /* La conexión a la base vive mientras esta vista está montada. */
   const session = useDatabaseSession(conn);
-  const schemasQuery = useDatabaseSchemas(conn, session.sessionId);
+  const schemasQuery = useDatabaseSchemas(sqlView ? conn : undefined, session.sessionId);
   const runQuery = useRunQuery(id, session.sessionId);
   const { markClosed } = session;
 
@@ -224,7 +227,7 @@ const DatabaseDetailView: React.FC = () => {
 
   /* Predicción del editor: tablas, vistas y columnas de la base activa. Usa la
      misma caché que el árbol (si ya se abrió, no hay petición) y se arma una vez. */
-  const predictOn = Boolean(manageable && activeSchema && session.sessionId);
+  const predictOn = Boolean(sqlView && activeSchema && session.sessionId);
   const predictTables = useSchemaSection(id, session.sessionId ?? '', activeSchema ?? '', 'tables', predictOn);
   const predictViews = useSchemaSection(id, session.sessionId ?? '', activeSchema ?? '', 'views', predictOn);
   const completion = useMemo(
@@ -235,7 +238,7 @@ const DatabaseDetailView: React.FC = () => {
   /* ── Asistente: lee el editor, el último resultado y la estructura, que el
      backend saca del motor al preguntar; puede dejar SQL en el editor, nunca ejecutarlo. */
   const sessionId = session.sessionId;
-  const assistantOn = Boolean(conn && manageable);
+  const assistantOn = Boolean(conn && sqlView);
   const connLabel = conn?.name ?? 'Base de datos';
   useAssistantSource(`sql-editor:${id}`, 'sql_editor', `Editor SQL · ${connLabel}`,
     () => (sql.trim() ? `Base activa: ${activeSchema ?? 'ninguna'}\n${sql}` : ''), assistantOn);
@@ -366,8 +369,10 @@ const DatabaseDetailView: React.FC = () => {
           <div className="text-sm font-medium text-white/60">
             La gestión de {DATABASE_ENGINE_LABELS[conn.engine]} llega pronto
           </div>
-          <p className="text-xs text-white/35 max-w-[320px]">Por ahora se pueden explorar y consultar conexiones MySQL, MariaDB y PostgreSQL.</p>
+          <p className="text-xs text-white/35 max-w-[320px]">Por ahora se pueden explorar y consultar conexiones MySQL, MariaDB, PostgreSQL y Redis.</p>
         </div>
+      ) : !sqlView ? (
+        <RedisBrowser conn={conn} sessionId={session.sessionId} onSessionClosed={markClosed} />
       ) : (
         /* `grid-cols-[minmax(0,1fr)]`: sin él la columna implícita crece con la
            tabla de resultados y el scroll horizontal nunca aparece. */

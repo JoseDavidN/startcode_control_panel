@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
 import type { SecurityPrefs } from '@typings/preferences.types';
 
 export type SecuritySettings = SecurityPrefs;

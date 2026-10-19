@@ -19,7 +19,7 @@ export function useUpdateProfile() {
     mutationFn: (data: UpdateProfilePayload) =>
       apiService.patch(API_CONFIG.ENDPOINTS.UPDATE_PROFILE, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      void queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     },
   });
 }

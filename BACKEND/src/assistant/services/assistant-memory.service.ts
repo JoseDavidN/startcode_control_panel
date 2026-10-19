@@ -9,6 +9,12 @@ import { hidePanelInternals, stripPanelInstructions } from './panel-guard';
 
 /** Mensajes recientes que se reenvían literales al modelo. */
 const RECENT_LIMIT = 30;
+/**
+ * Tope de caracteres del historial literal (~6000 tokens): si los últimos
+ * mensajes traen respuestas largas, se reenvían los más recientes que quepan.
+ * Lo anterior sigue en el resumen.
+ */
+const RECENT_MAX_CHARS = 24_000;
 /** Al pasar de aquí sin resumir, lo más antiguo se condensa en el resumen… */
 const SUMMARIZE_ABOVE = 40;
 /** …y quedan literales estos. */
@@ -63,12 +69,12 @@ export class AssistantMemoryService {
     /* También sobre lo ya guardado: respuestas anteriores a la barrera no deben reenviarse con rutas internas. */
     return {
       summary: hidePanelInternals(mem?.summary ?? ''),
-      recent: toAlternating(
+      recent: withinBudget(toAlternating(
         recent.reverse().map(m => ({
           role: m.role,
           content: m.role === AiMessageRole.ASSISTANT ? stripPanelInstructions(m.content) : hidePanelInternals(m.content),
         })),
-      ),
+      ), RECENT_MAX_CHARS),
     };
   }
 
@@ -203,6 +209,19 @@ export class AssistantMemoryService {
  * alterna roles (Gemini y Anthropic no admiten dos turnos seguidos del
  * mismo rol sin unirlos). Los consecutivos del mismo rol se juntan.
  */
+/** Los mensajes más recientes que caben en `maxChars`, empezando siempre por uno del usuario. */
+export function withinBudget(messages: ProviderMessage[], maxChars: number): ProviderMessage[] {
+  let total = 0;
+  let start = messages.length;
+  while (start > 0 && total + messages[start - 1].content.length <= maxChars) {
+    total += messages[start - 1].content.length;
+    start--;
+  }
+  const kept = messages.slice(start);
+  while (kept.length && kept[0].role !== 'user') kept.shift();
+  return kept;
+}
+
 export function toAlternating(rows: { role: AiMessageRole | string; content: string }[]): ProviderMessage[] {
   const out: ProviderMessage[] = [];
   for (const r of rows) {

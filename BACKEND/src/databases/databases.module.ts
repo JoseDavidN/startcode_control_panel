@@ -10,11 +10,12 @@ import { DatabaseProbeService } from './services/database-probe.service';
 import { DatabaseExplorerService } from './services/database-explorer.service';
 import { PostgresExplorerService } from './services/postgres-explorer.service';
 import { DatabaseSessionService } from './services/database-session.service';
+import { RedisExplorerService } from './services/redis-explorer.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([DatabaseConnection, DatabaseQueryAudit]), AuthModule],
   controllers: [DatabasesController],
-  providers: [DatabasesService, CredentialsCipherService, DatabaseProbeService, DatabaseExplorerService, PostgresExplorerService, DatabaseSessionService],
+  providers: [DatabasesService, CredentialsCipherService, DatabaseProbeService, DatabaseExplorerService, PostgresExplorerService, DatabaseSessionService, RedisExplorerService],
   exports: [CredentialsCipherService, DatabasesService],
 })
 export class DatabasesModule {}

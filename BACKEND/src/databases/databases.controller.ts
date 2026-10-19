@@ -30,6 +30,13 @@ import { TestDatabaseConnectionDto } from './dto/test-database-connection.dto';
 import { RunQueryDto } from './dto/run-query.dto';
 import { UpdateRowDto } from './dto/update-row.dto';
 import { DeleteRowsDto, InsertRowDto, TableRefDto } from './dto/insert-row.dto';
+import { RedisCommandDto, RedisDeleteKeysDto, RedisEditDto, RedisKeyDto, RedisScanDto } from './dto/redis.dto';
+import type {
+  RedisCommandResult,
+  RedisKeyDetail,
+  RedisOverview,
+  RedisScanResult,
+} from './services/redis-explorer.service';
 import type {
   QueryResult,
   SchemaIndex,
@@ -312,6 +319,98 @@ export class DatabasesController {
   ): Promise<{ affectedRows: number }> {
     const { sessionId, ...input } = dto;
     return this.databasesService.deleteRows(req.user.id, id, input, sessionId);
+  }
+
+  /* ── Redis ── */
+
+  @Get(':id/redis/overview')
+  @ApiOperation({ summary: 'Redis: versión, memoria, clientes y claves por base (INFO)' })
+  @ApiParam({ name: 'id' })
+  @ApiQuery({ name: 'session', required: false })
+  redisOverview(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('session') session?: string,
+  ): Promise<RedisOverview> {
+    return this.databasesService.redisOverview(req.user.id, id, session);
+  }
+
+  @Post(':id/redis/scan')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @ApiOperation({
+    summary: 'Redis: una página de claves',
+    description: 'SCAN con `pattern` (MATCH) y `type` opcionales, nunca KEYS. Hasta 100 claves con su tipo y TTL en ms (-1 sin caducidad); `cursor` "0" indica que no hay más.',
+  })
+  @ApiParam({ name: 'id' })
+  redisScan(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RedisScanDto,
+  ): Promise<RedisScanResult> {
+    return this.databasesService.redisScan(req.user.id, id, dto.db, dto.pattern, dto.cursor, dto.type, dto.sessionId);
+  }
+
+  @Post(':id/redis/key')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @ApiOperation({
+    summary: 'Redis: valor de una clave',
+    description: 'Según el tipo: texto (hasta 256 KB), hash, lista, conjunto y conjunto ordenado (hasta 500 elementos) o stream (las 200 entradas más recientes). `truncated` indica si se leyó solo una parte. 404 si no existe.',
+  })
+  @ApiParam({ name: 'id' })
+  redisKey(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RedisKeyDto,
+  ): Promise<RedisKeyDetail> {
+    return this.databasesService.redisKey(req.user.id, id, dto.db, dto.key, dto.sessionId);
+  }
+
+  @Post(':id/redis/edit')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @ApiOperation({
+    summary: 'Redis: crear o cambiar una clave',
+    description: '`op`: create, set (conserva la caducidad), hset/hdel, lset/lpush/rpush/lremIndex, sadd/srem, zadd/zrem, xadd/xdel, expire (null quita la caducidad) y rename (409 si el nombre ya existe).',
+  })
+  @ApiParam({ name: 'id' })
+  redisEdit(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RedisEditDto,
+  ): Promise<{ ok: true }> {
+    const { sessionId, db, ...input } = dto;
+    return this.databasesService.redisEdit(req.user.id, id, db, input, sessionId);
+  }
+
+  @Post(':id/redis/delete')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @ApiOperation({ summary: 'Redis: borrar claves', description: 'UNLINK de hasta 1000 claves. Queda en la auditoría de la conexión.' })
+  @ApiParam({ name: 'id' })
+  redisDelete(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RedisDeleteKeysDto,
+  ): Promise<{ deleted: number }> {
+    return this.databasesService.redisDeleteKeys(req.user.id, id, dto.db, dto.keys, dto.sessionId);
+  }
+
+  @Post(':id/redis/command')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiOperation({
+    summary: 'Redis: ejecutar un comando de la consola',
+    description: 'Una línea como en redis-cli (comillas y escapes). Los que bloquean o cambian la conexión (SUBSCRIBE, MONITOR, SELECT, MULTI, BLPOP…) responden 400 `REDIS_COMMAND_BLOCKED`. Los peligrosos (FLUSHDB, KEYS, CONFIG SET…) responden 400 `DANGEROUS_QUERY` hasta que llegan con `confirm: true`, y quedan auditados.',
+  })
+  @ApiParam({ name: 'id' })
+  redisCommand(
+    @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RedisCommandDto,
+  ): Promise<RedisCommandResult> {
+    return this.databasesService.redisCommand(req.user.id, id, dto.db, dto.command, dto.confirm, dto.sessionId);
   }
 
   @Get(':id/audit')

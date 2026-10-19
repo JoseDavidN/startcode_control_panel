@@ -268,7 +268,7 @@ export class AuthService {
       throw new BadRequestException('El 2FA ya está activado para esta cuenta');
     }
 
-    const appName = this.configService.get('APP_NAME', 'StartCode Panel');
+    const appName = this.configService.get<string>('APP_NAME', 'StartCode Panel');
     const generated = speakeasy.generateSecret({
       name: `${appName}:${user.email}`,
     });
@@ -639,7 +639,7 @@ export class AuthService {
     await this.usersRepository.update(user.id, { lastLogin: now });
     user.lastLogin = now;
 
-    const expiresIn = this.configService.get('JWT_EXPIRES_IN', '30m');
+    const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '30m');
 
     return {
       user: {
@@ -924,8 +924,8 @@ export class AuthService {
   /** Duración del refresh: la sesión persistente usa JWT_REFRESH_REMEMBER_EXPIRES_IN. */
   private refreshExpiresIn(persistent: boolean): string {
     return persistent
-      ? (this.configService.get('JWT_REFRESH_REMEMBER_EXPIRES_IN', '30d') as string)
-      : (this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d') as string);
+      ? this.configService.get<string>('JWT_REFRESH_REMEMBER_EXPIRES_IN', '30d')
+      : this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
   }
 
   private refreshTtlMs(persistent = false): number {
@@ -1012,7 +1012,7 @@ export class AuthService {
       type: 'agent',
       serverName,
     };
-    const expiresIn = this.configService.get('AGENT_TOKEN_EXPIRES_IN', '365d');
+    const expiresIn = this.configService.get<JwtSignOptions['expiresIn']>('AGENT_TOKEN_EXPIRES_IN', '365d');
     return this.jwtService.sign(payload, { expiresIn });
   }
 
@@ -1027,7 +1027,7 @@ export class AuthService {
    */
   generateAgentInstallToken(serverId: string): string {
     const payload = { sub: serverId, type: 'agent-install' };
-    const expiresIn = this.configService.get('AGENT_INSTALL_TOKEN_EXPIRES_IN', '5m');
+    const expiresIn = this.configService.get<JwtSignOptions['expiresIn']>('AGENT_INSTALL_TOKEN_EXPIRES_IN', '5m');
     return this.jwtService.sign(payload, { expiresIn });
   }
 

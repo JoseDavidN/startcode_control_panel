@@ -70,7 +70,7 @@ export class DefaultUserSeeder implements OnModuleInit {
       this.logger.log('IMPORTANTE: Cambia la contraseña después del primer login');
       this.logger.log('═══════════════════════════════════════════════════════════');
     } catch (error) {
-      this.logger.error('Error al crear usuario administrador por defecto:', error.message);
+      this.logger.error('Error al crear usuario administrador por defecto:', error instanceof Error ? error.message : String(error));
     }
   }
 }

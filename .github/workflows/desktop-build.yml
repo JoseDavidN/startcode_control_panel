@@ -2,7 +2,10 @@
 # el actualizador, y la carpeta lista para subir a releases.startcode.com.co.
 #
 # - Tag `v*` (igual a `version` de tauri.conf.json): versión publicable, las
-#   cuatro plataformas y la carpeta del sitio.
+#   tres plataformas y la carpeta del sitio.
+# - macOS se compila una sola vez como binario universal (Intel y Apple
+#   Silicon en el mismo .app): un job de macOS cuesta 10 minutos de la cuota
+#   por cada minuto, así que dos compilaciones separadas la gastaban el doble.
 # - Manual (Actions → "Desktop build" → Run workflow, requiere el workflow en
 #   la rama por defecto): eliges plataformas; solo con «all» se genera la
 #   carpeta del sitio.
@@ -28,7 +31,7 @@ on:
       platforms:
         description: Plataformas
         type: choice
-        options: [all, windows, linux, macos, macos-intel, macos-arm]
+        options: [all, windows, linux, macos]
         default: all
   push:
     tags: ['v*']
@@ -88,10 +91,9 @@ jobs:
           const all = [
             { name: 'Linux (x64)', os: 'ubuntu-22.04', args: '', artifact: 'startcode-panel-linux-x86_64', group: 'linux' },
             { name: 'Windows (x64)', os: 'windows-latest', args: '', artifact: 'startcode-panel-windows-x86_64', group: 'windows' },
-            { name: 'macOS (Apple Silicon)', os: 'macos-latest', args: '--target aarch64-apple-darwin', artifact: 'startcode-panel-darwin-aarch64', group: 'macos', only: 'macos-arm' },
-            { name: 'macOS (Intel)', os: 'macos-latest', args: '--target x86_64-apple-darwin', artifact: 'startcode-panel-darwin-x86_64', group: 'macos', only: 'macos-intel' },
+            { name: 'macOS (Universal)', os: 'macos-latest', args: '--target universal-apple-darwin', artifact: 'startcode-panel-darwin-universal', group: 'macos' },
           ];
-          const include = all.filter(p => platforms === 'all' || p.group === platforms || p.only === platforms);
+          const include = all.filter(p => platforms === 'all' || p.group === platforms);
           console.log(`matrix=${JSON.stringify({ include })}`);
           console.log(`site=${platforms === 'all'}`);
           JS

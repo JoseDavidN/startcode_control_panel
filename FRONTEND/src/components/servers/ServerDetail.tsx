@@ -4,7 +4,7 @@ import { SftpIcon } from '@components/servers/sftp/icons';
 import { AgentCard } from '@components/servers/AgentCard';
 import { CommandBar, type CommandBarHandle } from '@components/servers/CommandBar';
 import { useServerDetail, type TopProcess } from '@hooks/useServerDetail';
-import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
+import { useServerMetrics } from '@hooks/useRealtimeMetrics';
 import { useServiceAction, usePinnedServices, useKillProcess } from '@hooks/useServiceAction';
 import { ServiceActionModal } from '@components/servers/ServiceActionModal';
 import { ProcessKillModal } from '@components/servers/ProcessKillModal';
@@ -18,6 +18,7 @@ import type { ServiceAction } from '@services/service-control.service';
 import { MetricBar } from '@components/common/MetricBar';
 import { barGradient, formatBytes, groupDisks } from '@utils/metrics';
 import { formatUptime } from '@utils/time';
+import { useTerminalDock, useTerminalDockViewing } from '@hooks/useTerminalDock';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -101,10 +102,8 @@ interface ServerDetailProps {
   onBack: () => void;
 }
 
-/* Bajo demanda: xterm, el cliente SFTP, Docker y Kubernetes solo se descargan al abrirlos,
-   no con el detalle (xterm solo pesa más que el resto de la vista). */
-const ServerTerminal = lazy(() =>
-  import('@components/servers/ServerTerminal').then(m => ({ default: m.ServerTerminal })));
+/* Bajo demanda: el cliente SFTP, Docker y Kubernetes solo se descargan al abrirlos,
+   no con el detalle. La terminal (xterm) la carga `TerminalDockProvider`. */
 const SftpModal = lazy(() =>
   import('@components/servers/sftp/SftpModal').then(m => ({ default: m.SftpModal })));
 const DockerTab = lazy(() =>
@@ -132,10 +131,11 @@ const KUBERNETES_UNITS = [
 export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) => {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('overview');
   const [installOpen, setInstallOpen] = useState(false);
-  /* La terminal se monta al abrirla por primera vez y sigue montada (oculta)
-     al cerrarla: la sesión SSH dura hasta terminarla o salir de este detalle. */
-  const [terminalSession, setTerminalSession] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  /* La terminal es global: al salir de este detalle se minimiza abajo y sus
+     sesiones siguen. Entrar aquí con la de otro servidor abierta la cierra. */
+  const terminal = useTerminalDock();
+  useTerminalDockViewing(server.id);
+  const terminalSession = terminal.session?.serverId === server.id;
   const [sftpOpen, setSftpOpen] = useState(false);
   const commandBarRef = useRef<CommandBarHandle>(null);
 
@@ -375,7 +375,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={() => { setTerminalSession(true); setTerminalOpen(true); }}
+            <button onClick={() => terminal.openTerminal(server.id, server.name)}
               title={terminalSession ? 'La sesión SSH sigue abierta: volver a ella' : 'Abrir una shell SSH en este servidor'}
               className="mo-tab flex items-center gap-2 h-9 px-3.5 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
               <TerminalIcon className="w-4 h-4" />
@@ -798,19 +798,6 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
           serviceName={logsFor}
           onClose={() => setLogsFor(null)}
         />
-      )}
-
-      {/* ── Terminal SSH ─────────────────────────────────────────────── */}
-      {terminalSession && (
-        <Suspense fallback={null}>
-          <ServerTerminal
-            serverId={server.id}
-            serverName={server.name}
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
-            onEnd={() => { setTerminalOpen(false); setTerminalSession(false); }}
-          />
-        </Suspense>
       )}
 
       {/* ── SFTP ─────────────────────────────────────────────────────── */}

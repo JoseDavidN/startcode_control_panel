@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { monitoringApi } from '@services/monitoring.api';
-import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeMetrics } from '@hooks/useRealtimeMetrics';
 import { mergeServerRuntime, type ServerRuntime } from '@lib/serverRuntime';
 
 /**

@@ -16,6 +16,15 @@ export interface ApiError {
 	hint?: string;
 }
 
+/**
+ * Lo que puede llegar al `catch` de una llamada a la API: el `ApiError` del
+ * cliente o, en llamadas que no pasan por él, el error crudo de axios.
+ */
+export interface RequestFailure {
+	message?: string;
+	response?: { data?: { message?: string } };
+}
+
 export interface PaginatedResponse<T> {
 	data: T[];
 	total: number;

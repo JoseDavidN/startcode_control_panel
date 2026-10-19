@@ -44,6 +44,8 @@ export const STORAGE_KEYS = {
 	NATIVE_SECURITY_ALERTS: 'native_security_alerts',
 	/** Prefijo: + id de la conexión. Pestañas del editor SQL guardadas en el equipo. */
 	SQL_EDITORS: 'sql_editors:',
+	/** Prefijo: + id del usuario. Hasta qué mensaje se limpió la vista del chat del asistente (`/clear`). */
+	ASSISTANT_CLEARED: 'assistant_cleared:',
 };
 
 export const ROUTES = {

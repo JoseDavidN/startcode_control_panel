@@ -12,18 +12,19 @@ import { useSessions, useRevokeSession } from '@hooks/useSessions';
 import { useAuth } from '@hooks/useAuth';
 import { useUpdateProfile, useChangePassword } from '@hooks/useProfile';
 import type { TwoFactorSetupResponse } from '@typings/auth.types';
-import { useNotifications } from '@contexts/NotificationContext';
+import type { RequestFailure } from '@typings/api.types';
+import { useNotifications } from '@hooks/useNotifications';
 import { useAppearance } from '@contexts/AppearanceContext';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
 import type { SidebarMode, Theme, FontFamily } from '@contexts/AppearanceContext';
-import type { NotifPrefs } from '@contexts/NotificationContext';
+import type { NotifPrefs } from '@contexts/notification-context';
 import { useSecuritySettings, passwordAgeDays } from '@hooks/useSecuritySettings';
 import { useSystemInfo } from '@hooks/useSystemInfo';
 import { useUpdater } from '@hooks/useUpdater';
 import { ReleaseNotes } from '@components/settings/ReleaseNotes';
 import { useMonitoringSettings } from '@hooks/useMonitoringSettings';
 import { useServers } from '@hooks/useServers';
-import { useRealtimeMetrics } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeMetrics } from '@hooks/useRealtimeMetrics';
 import { queryClient } from '@lib/queryClient';
 import { IS_MAC, notify } from '@services/notification.service';
 import { timeAgo } from '@utils/time';
@@ -223,7 +224,7 @@ const SaveBar = ({ label = 'Guardar cambios' }: { label?: string }) => {
         <span className="text-xs text-rose-300">No se pudo sincronizar — reintenta</span>
       )}
       <button
-        onClick={onSave}
+        onClick={() => void onSave()}
         disabled={busy}
         className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi transition disabled:opacity-50"
       >
@@ -278,7 +279,8 @@ const ProfilePane = () => {
       await updateProfile.mutateAsync({ firstname: firstname.trim(), lastname: lastname.trim(), email: email.trim() });
       await refreshAuth();
       setProfileMsg({ ok: true, text: 'Perfil actualizado correctamente' });
-    } catch (err: any) {
+    } catch (error) {
+      const err = error as RequestFailure | undefined;
       const msg = err?.message || err?.response?.data?.message || 'Error al actualizar el perfil';
       setProfileMsg({ ok: false, text: msg });
     }
@@ -293,7 +295,8 @@ const ProfilePane = () => {
       await changePassword.mutateAsync({ currentPassword: currentPw, newPassword: newPw });
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
       setPwMsg({ ok: true, text: 'Contraseña actualizada correctamente' });
-    } catch (err: any) {
+    } catch (error) {
+      const err = error as RequestFailure | undefined;
       const msg = err?.message || err?.response?.data?.message || 'Error al cambiar la contraseña';
       setPwMsg({ ok: false, text: msg });
     }
@@ -347,7 +350,7 @@ const ProfilePane = () => {
 
         <div className="flex justify-end">
           <button
-            onClick={handleSaveProfile}
+            onClick={() => void handleSaveProfile()}
             disabled={updateProfile.isPending}
             className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl grad-brand text-white text-sm font-semibold elev-brand hover:elev-brand-hi transition disabled:opacity-50"
           >
@@ -410,7 +413,7 @@ const ProfilePane = () => {
             {pwMsg && <Feedback ok={pwMsg.ok} msg={pwMsg.text} />}
 
             <button
-              onClick={handleChangePassword}
+              onClick={() => void handleChangePassword()}
               disabled={changePassword.isPending || !currentPw || !reqsOk}
               className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl glass-soft text-white/85 row-hit text-sm font-semibold transition disabled:opacity-40"
             >
@@ -764,7 +767,7 @@ const SecurityPane = () => {
               <div className="text-sm font-medium">2FA desactivado</div>
               <div className="text-xs text-white/55 mt-0.5">Usa Google Authenticator, Authy o cualquier app TOTP</div>
             </div>
-            <button onClick={handleSetup} disabled={setupMutation.isPending}
+            <button onClick={() => void handleSetup()} disabled={setupMutation.isPending}
               className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium elev-brand transition disabled:opacity-50">
               <Icon name={setupMutation.isPending ? 'loader' : 'shield'} className="w-4 h-4" />
               Activar 2FA
@@ -791,7 +794,7 @@ const SecurityPane = () => {
                   placeholder="000000"
                   className="w-full bg-transparent outline-none text-center text-xl font-mono tracking-widest text-white placeholder:text-white/30" />
               </div>
-              <button onClick={handleEnable} disabled={tfCode.length !== 6 || enableMutation.isPending}
+              <button onClick={() => void handleEnable()} disabled={tfCode.length !== 6 || enableMutation.isPending}
                 className="h-12 px-4 rounded-xl grad-brand text-white font-semibold text-sm transition disabled:opacity-50 flex items-center gap-2">
                 <Icon name={enableMutation.isPending ? 'loader' : 'check'} className="w-4 h-4" />Confirmar
               </button>
@@ -863,7 +866,7 @@ const SecurityPane = () => {
                         placeholder="000000"
                         className="w-full bg-transparent outline-none text-center text-lg font-mono tracking-widest text-white placeholder:text-white/30" />
                     </div>
-                    <button onClick={handleRegenerate}
+                    <button onClick={() => void handleRegenerate()}
                       disabled={regenCode.length !== 6 || !regenPwd || regenMutation.isPending}
                       className="mo-tab h-11 px-4 rounded-xl grad-brand text-white font-semibold text-sm disabled:opacity-50 flex items-center gap-2">
                       <Icon name={regenMutation.isPending ? 'loader' : 'check'} className="w-4 h-4" />Generar
@@ -889,7 +892,7 @@ const SecurityPane = () => {
                         placeholder="000000"
                         className="w-full bg-transparent outline-none text-center text-lg font-mono tracking-widest text-white placeholder:text-white/30" />
                     </div>
-                    <button onClick={handleDisable}
+                    <button onClick={() => void handleDisable()}
                       disabled={disCode.length !== 6 || !disPwd || disableMutation.isPending}
                       className="mo-tab h-11 px-4 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white font-semibold text-sm disabled:opacity-50 flex items-center gap-2">
                       <Icon name={disableMutation.isPending ? 'loader' : 'shieldOff'} className="w-4 h-4" />Confirmar
@@ -924,7 +927,7 @@ const SecurityPane = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={() => copyCodes(backupCodes)}
+              <button onClick={() => void copyCodes(backupCodes).catch(() => undefined)}
                 className="mo-tab inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/85 row-hit text-sm font-medium">
                 <Icon name="copy" className="w-4 h-4" />Copiar
               </button>
@@ -1013,7 +1016,7 @@ const SecurityPane = () => {
       <div>
         <div className="flex items-center justify-between mb-4">
           <SectionTitle>Sesiones activas</SectionTitle>
-          <button onClick={() => logout()}
+          <button onClick={() => void logout()}
             className="mo-tab text-xs text-rose-300 hover:text-rose-200 flex items-center gap-1.5">
             <Icon name="shieldOff" className="w-3.5 h-3.5" />
             Cerrar sesión
@@ -1224,8 +1227,13 @@ const MonitoringPane = () => {
 };
 
 /* ── Pane: Sistema ────────────────────────────────────────────────── */
+/* Temas claros: el logo para fondo claro; el resto, el de fondo oscuro (llaves en blanco). */
+const LIGHT_THEMES: Theme[] = ['solar'];
+
 const SystemPane = () => {
   const { prefs } = usePreferences();
+  const { theme } = useAppearance();
+  const logo = LIGHT_THEMES.includes(theme) ? '/logo-fondo-claro-1200.png' : '/logo-fondo-oscuro-1200.png';
   const { data: health, isLoading, dataUpdatedAt, appVersion } = useSystemInfo();
   const updater = useUpdater();
   const [showLogs, setShowLogs] = useState(false);
@@ -1238,9 +1246,9 @@ const SystemPane = () => {
     queryClient.clear();
     const keep = new Set([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.REFRESH_TOKEN, STORAGE_KEYS.USER_DATA,
       'startcode:prefs']);
-    /* Los editores SQL guardados son trabajo del usuario, no caché. */
+    /* Los editores SQL guardados son trabajo del usuario, no caché; tampoco el `/clear` del asistente. */
     Object.keys(localStorage).forEach(k => {
-      if (!keep.has(k) && !k.startsWith(STORAGE_KEYS.SQL_EDITORS)) localStorage.removeItem(k);
+      if (!keep.has(k) && !k.startsWith(STORAGE_KEYS.SQL_EDITORS) && !k.startsWith(STORAGE_KEYS.ASSISTANT_CLEARED)) localStorage.removeItem(k);
     });
     notify.success('Caché limpiado', 'Se eliminaron todos los datos en caché de la aplicación');
   };
@@ -1289,6 +1297,12 @@ const SystemPane = () => {
   return (
     <div className="space-y-8">
 
+      {/* ── Logo de la empresa ── */}
+      <div className="glass-soft rounded-xl flex items-center justify-center py-6 px-4">
+        <img src={logo} alt="StartCode" width={240} height={120} draggable={false}
+          className="block h-28 w-auto max-w-full object-contain select-none" />
+      </div>
+
       {/* ── Sistema + DB en la misma fila ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
@@ -1297,7 +1311,7 @@ const SystemPane = () => {
             <InfoRow label="Versión app"><Mono>{appVersion !== '—' ? `v${appVersion}` : '—'}</Mono></InfoRow>
             <InfoRow label="Versión backend"><Mono>{isLoading ? '…' : health?.version ? `v${health.version}` : '—'}</Mono></InfoRow>
             <InfoRow label="Entorno">
-              {isLoading ? <Mono>…</Mono> : <SBadge color={envColor as any}>{envLabel}</SBadge>}
+              {isLoading ? <Mono>…</Mono> : <SBadge color={envColor}>{envLabel}</SBadge>}
             </InfoRow>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { apiService } from '@services/api.service';
 import { TokenManager } from '@utils/tokenManager';
 import { API_CONFIG } from '@utils/constants';
 import { normalizeUser } from '@services/auth.adapter';
-import type { User } from '@typings/auth.types';
+import type { RawBackendUser, User } from '@typings/auth.types';
 
 /**
  * Hook para obtener el perfil del usuario autenticado
@@ -21,12 +21,14 @@ export function useCurrentUser() {
 
 			try {
 				// El backend puede devolver objeto directo o envuelto { success, data } o { user }
-				const response = await apiService.get<any>(
+				const response = await apiService.get<unknown>(
 					API_CONFIG.ENDPOINTS.ME
 				);
 
-				const payload =
-					response && response.data ? response.data : response;
+				const payload = (response && response.data ? response.data : response) as
+					| (RawBackendUser & { user?: RawBackendUser })
+					| null
+					| undefined;
 				const rawUser = payload?.user ?? payload;
 
 				if (!rawUser) {

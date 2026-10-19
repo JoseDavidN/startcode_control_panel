@@ -6,6 +6,7 @@ import { useAppearance } from '@contexts/AppearanceContext';
 import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { AssistantLauncher, AssistantPanel } from '@components/assistant/AssistantPanel';
 import { useAssistant } from '@hooks/useAssistantBridge';
+import { TerminalDockProvider } from '@contexts/TerminalDockContext';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
@@ -157,7 +158,7 @@ export const AppLayout = () => {
   const chromeSegment = routeToChrome(location.pathname);
 
   return (
-    <>
+    <TerminalDockProvider>
       {/* ── Fixed background ────────────────────────────────────── */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none"
         style={{ zIndex: -1, background: 'var(--bg-radial)' }}>
@@ -179,9 +180,9 @@ export const AppLayout = () => {
           <div className="shrink-0 px-[14px] pt-4 pb-3 border-b border-line">
             <div className="sb-row">
               <span className="sb-slot">
-                <span className="w-9 h-9 rounded-xl grad-brand flex items-center justify-center elev-brand">
-                  <Icon name="server" className="w-4 h-4 text-white" />
-                </span>
+                {/* El logo trae su fondo y sus esquinas: solo se fija el tamaño. */}
+                <img src="/icono-oscuro-180.png" alt="" width={36} height={36} draggable={false}
+                  className="block w-9 h-9 shrink-0 object-contain select-none" />
               </span>
               <span className="sb-label sb-fade" aria-hidden={collapsed}>
                 <span className="block text-sm font-bold tracking-tight leading-none">StartCode</span>
@@ -247,7 +248,7 @@ export const AppLayout = () => {
 
               {/* Recortado por overflow:hidden en el rail ⇒ fuera del tab order */}
               <button
-                onClick={() => logout()}
+                onClick={() => void logout()}
                 aria-label="Cerrar sesión"
                 aria-hidden={collapsed}
                 tabIndex={collapsed ? -1 : 0}
@@ -281,6 +282,6 @@ export const AppLayout = () => {
       </div>
 
       {assistantAllowed && <AssistantPanel />}
-    </>
+    </TerminalDockProvider>
   );
 };

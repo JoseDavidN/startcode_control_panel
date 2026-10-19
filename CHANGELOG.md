@@ -9,6 +9,34 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.9.0] — 2026-10-19
+
+Versión **menor** sobre 0.8.0.
+
+### Añadido
+- Terminal minimizada (`contexts/TerminalDockContext.tsx`, `hooks/useTerminalDock.ts`): la terminal deja de vivir en el detalle del servidor y la monta `TerminalDockProvider` en `AppLayout`, así sus sesiones SSH (todas las pestañas) siguen abiertas al ir a otra vista. Cerrar la ventana la minimiza: fuera del detalle de su servidor aparece una barra flotante abajo a la derecha (`glass-float`, se corre a la izquierda del asistente si está abierto) con el estado, el servidor y el número de terminales; un clic la vuelve a abrir sobre la vista actual (p. ej. Bases de datos) y la x termina todas las sesiones. Una sola terminal a la vez: entrar al detalle de otro servidor cierra la minimizada (`useTerminalDockViewing`). Cerrar sesión en la app también las cierra
+- Bases de datos: gestión de Redis (`components/databases/redis/`), que antes mostraba «llega pronto». La vista de la conexión abre su sesión y muestra, arriba, las claves (30 %) y el valor (70 %) y, abajo, la consola:
+  - Claves (`RedisBrowser.tsx`): selector de base (db0–db15 con su número de claves), filtro por tipo y buscador (sin comodines busca «contiene»; con `*`/`?` usa el patrón tal cual, con 350 ms de espera), lista por páginas con «Cargar más», tipo y caducidad de cada una, «Nueva» y, al pie, claves de la base, memoria usada / límite, clientes y si es réplica.
+  - Valor (`RedisValuePanel.tsx`): nombre, tipo, tamaño, memoria y caducidad (cambiarla o quitarla), copiar el nombre, renombrar y borrar (con confirmación; queda en la auditoría). Texto con editor (Ctrl + S guarda y conserva la caducidad; «Formatear JSON» si lo es); hash, lista, conjunto, conjunto ordenado y stream en tablas con edición en línea (doble clic o lápiz), quitar y agregar al pie (lista al inicio o al final; stream con campo=valor por línea). Si el valor viene recortado lo avisa, y un texto recortado queda de solo lectura.
+  - Consola (`RedisConsole.tsx`): comandos como en redis-cli sobre la base elegida, respuesta con su formato (`(nil)`, `(integer)`, listas numeradas), historial con ↑/↓, Ctrl + L o `clear` limpian, y confirmación para los peligrosos. El asistente lee las últimas respuestas y puede dejar un comando escrito, sin ejecutarlo. Tras un comando que escribe se refrescan la lista y el valor.
+  - Clave nueva (`RedisNewKeyModal.tsx`): nombre, tipo, su primer valor y caducidad opcional.
+  - `MANAGEABLE_ENGINES` incluye Redis y `SQL_ENGINES` separa lo que usa árbol y editor SQL. Requiere el backend 0.11.0
+- Asistente IA: comando `/clear` (`AssistantPanel.tsx`). Limpia solo la vista del chat: la conversación sigue en el backend como contexto y memoria (no se resume ni se borra). Se guarda en el equipo (`assistant_cleared:<id del usuario>`) la fecha, del servidor, del último mensaje visto, y solo se muestran los posteriores; la pregunta en vuelo se ve siempre. Aparece en la lista de comandos junto a `/resume` y «Limpiar caché» lo conserva
+
+### Cambiado
+- Asistente IA: cada fuente de la pantalla se adjunta con un tope de 12 000 caracteres (antes 30 000), lo más reciente, para gastar menos tokens. Los bloques ```redis solo se ofrecen para pegar en la consola de Redis, y la consola de Redis no recibe bloques de shell ni SQL
+- El botón de la esquina de la terminal pasa de x («Ocultar») a «Minimizar»
+- Barra lateral: el logo del título es el icono de la app (`public/icono-oscuro-180.png`, 180 px para que se vea nítido en pantallas 2x y 3x) en lugar del icono genérico de servidor. Se muestra a 36 px tal cual, con sus propias esquinas
+- Configuración → Sistema: el logo de StartCode encabeza la pestaña, a 112 px de alto. Según el tema: `public/logo-fondo-claro-1200.png` en Solar y `public/logo-fondo-oscuro-1200.png` (llaves en blanco) en Nocturno y Aurora; ambos 1200×600 con fondo transparente
+- Código sin errores de ESLint ni de TypeScript (había 339). El cliente HTTP (`services/api.service.ts`) tipa las respuestas (`ApiResponse<T>`), lo que elimina casi todos los `any`. Hay tipos para el payload del agente (`RawAgentMetrics` en `useServerDetail.ts`) y para las respuestas de autenticación (`RawBackendUser`, `RawAuthPayload`). Los contextos de métricas en tiempo real, notificaciones y preferencias separan tipos y hooks (`contexts/*-context.ts`, `hooks/useRealtimeMetrics.ts`, `useNotifications.ts`, `usePreferences.ts`), así el refresco en caliente funciona. Sin cambios de comportamiento
+- Compilación (`.github/workflows/desktop-build.yml`): macOS se compila una sola vez como binario universal (`--target universal-apple-darwin`, Intel y Apple Silicon en el mismo .app y .dmg) en lugar de dos jobs. Un minuto de macOS gasta 10 de la cuota de Actions, así que esto ahorra la mitad de lo que gastaba macOS. `build-update-site.mjs` publica el mismo paquete de actualización en `darwin/aarch64` y `darwin/x86_64`, que es lo que piden las apps ya instaladas. La ejecución manual ofrece `all`, `windows`, `linux` y `macos`
+
+### Corregido
+- Configuración → seguridad: «Copiar códigos» de respaldo dejaba una promesa rechazada sin manejar si el portapapeles fallaba
+- Cerrar sesión desde la barra lateral: la promesa de `logout()` quedaba sin `void` en el manejador del clic
+
+---
+
 ## [App de escritorio 0.8.0] — 2026-10-15
 
 Versión **menor** sobre 0.7.1.
@@ -30,6 +58,44 @@ Versión **menor** sobre 0.7.1.
 ### Corregido
 - Portapapeles (`lib/clipboard.ts`): copiar daba «No se pudo copiar al portapapeles». `copyText` usaba solo el plugin de Tauri (arboard), que en Linux con Wayland escribe en el portapapeles de X11 y puede fallar o no llegar. Ahora copia primero con el del webview (un textarea fuera de pantalla y `execCommand('copy')`, síncrono, dentro del gesto de la tecla o el clic, que es lo que piden WebKitGTK, WKWebView y WebView2), devuelve el foco y la selección, y deja el plugin de respaldo. Afecta a todos los «Copiar» de la app
 - Editor SQL: `placeCaret` también mueve la vista en horizontal, solo lo justo para que se vea el cursor. Antes conservaba el desplazamiento horizontal: tras Enter al final de una línea larga, la fila nueva quedaba fuera de la vista con el cursor a la izquierda
+
+---
+
+## [0.11.0] — 2026-10-19
+
+Versión **menor** sobre 0.10.0. Va junto con la app de escritorio 0.9.0.
+
+### Añadido
+- Gestión de Redis en la vista de consultas (antes respondía «todavía no está disponible»). La sesión de la vista abre un cliente ioredis (`openRedis` en `connection-factory.ts`) que se reutiliza en serie, hace `SELECT` solo al cambiar de base y se reconecta si se cae; la versión sale de `INFO server`. `RedisExplorerService` (`services/redis-explorer.service.ts`) y las rutas `/databases/:id/redis/*`:
+  - `GET overview`: versión, modo, rol, memoria usada y `maxmemory`, clientes y claves por base (`INFO`; bases por `CONFIG GET databases`, 16 si no hay permiso).
+  - `POST scan`: claves por páginas de 100 con SCAN (nunca KEYS), patrón (`MATCH`) y tipo (`TYPE`, Redis 6+), con su tipo y TTL. Da varias vueltas de SCAN hasta llenar la página.
+  - `POST key`: valor según el tipo con topes: texto hasta 256 KB, hash/lista/conjunto/conjunto ordenado hasta 500 elementos (HSCAN/SSCAN si son más), stream con las 200 entradas más recientes; `truncated`, longitud y `MEMORY USAGE`. Los tipos de módulos se listan y se leen por la consola.
+  - `POST edit`: crear clave (falla si existe; caducidad opcional), `set` (conserva la caducidad), hset/hdel, lset/lpush/rpush, borrar de una lista por posición (script Lua atómico), sadd/srem, zadd/zrem, xadd/xdel, caducidad (`expire`, null = PERSIST) y renombrar (RENAMENX, 409 si el nombre existe).
+  - `POST delete`: UNLINK (DEL en Redis antiguos) de hasta 1000 claves, auditado.
+  - `POST command`: consola tipo redis-cli. `redis-policy.ts` parte la línea (comillas, escapes `\n`, `\xHH`) y rechaza con `REDIS_COMMAND_BLOCKED` lo que rompería la conexión compartida (SUBSCRIBE, MONITOR, SELECT, MULTI/EXEC, AUTH, HELLO, QUIT, BLPOP y demás bloqueantes, XREAD con BLOCK, CLIENT REPLY). Los peligrosos (FLUSHALL, FLUSHDB, KEYS, SHUTDOWN, SWAPDB, DEBUG, SAVE, CONFIG SET/REWRITE, ACL SETUSER/DELUSER, CLIENT KILL/PAUSE, MODULE LOAD, SCRIPT/FUNCTION FLUSH, REPLICAOF, CLUSTER RESET/FAILOVER…) responden `DANGEROUS_QUERY` hasta confirmarlos y quedan en la auditoría de la conexión, como el SQL. La respuesta va tal cual con tope de 5000 elementos y 2 MB; los errores de Redis se devuelven con su texto
+- Las rutas SQL (consulta, exportar, filas, árbol) responden 400 en una conexión Redis, y las de Redis en una SQL
+- Tests: `redis-policy.spec.ts`, `dto/redis.dto.spec.ts` y `redis-explorer.it.spec.ts`, de integración contra un Redis real (solo con `REDIS_IT_PORT`; probado con Redis 7)
+
+- Asistente IA que enseña (`assistant.service.ts`, prompt del sistema): con cada comando o consulta explica en pocas líneas qué hace y por qué cada opción importante, nombra el concepto de fondo cuando ayuda, indica dónde aprender más (`man`, `--help`, `\h`, `HELP`, `COMMAND DOCS`) solo la primera vez y adapta el nivel a lo que la memoria muestra que el usuario ya domina; si se pide solo el comando, lo da sin explicación. Conoce Redis (bloques ```redis para la consola; SCAN en lugar de KEYS)
+- Asistente IA que valida el destino antes de proponer (`assistant-context.service.ts` → `destinations`, `target-system.ts`): cada pregunta lleva un bloque `<destino>` con el sistema real de lo que está en pantalla o se nombró. Para un servidor (por el título de la terminal o de la línea de comandos, o por su nombre, host o hostname en la pregunta): distribución y versión del agente (o la guardada), kernel, arquitectura, gestor de paquetes (apt, dnf, yum en la familia Red Hat 7 y Amazon Linux 2, zypper, apk, pacman, pkg) y arranque (systemd, OpenRC, rc), y sin datos del agente pide confirmarlo con `cat /etc/os-release`. Para una base (editor SQL, resultados, estructura o consola de Redis): motor y versión. El prompt obliga a escribir para ese sistema (paquetes, servicios, nombres como apache2/httpd; en SQL la sintaxis de ese motor y versión), a decir en una línea para cuál es, y a preguntar o dar primero el comando para averiguarlo si no hay destino claro. Tests en `target-system.spec.ts` y `assistant-context.spec.ts`
+- Asistente IA con menos tokens por pregunta:
+  - Datos del panel enfocados (`assistant-context.service.ts`): solo los servidores nombrados en la pregunta o abiertos en pantalla (o el único, si hay uno) llevan métricas completas; el resto va en una línea (estado, CPU, memoria, disco más lleno, carga y servicios fallidos). Sin ids ni campos vacíos, menos historial de comandos (15), notificaciones (10) y consultas auditadas (10), y tope de 30 000 caracteres en lugar de 60 000.
+  - Historial literal con tope de 24 000 caracteres (`withinBudget` en `assistant-memory.service.ts`): con respuestas largas se reenvían las más recientes que caben; lo anterior sigue en el resumen.
+  - Caché de prompt en Anthropic (`ai-provider.service.ts`): el prompt fijo, la memoria y el historial se marcan con `cache_control`, así las preguntas seguidas leen ese prefijo de la caché (alrededor de una décima parte del precio) y solo pagan entero lo nuevo. OpenAI y Gemini cachean solos el prefijo, que ahora es estable. `system` acepta partes (`string | string[]`)
+
+### Corregido
+- Caché en Redis (`cache/cache.module.ts`): no se estaba usando. cache-manager 7 (el de @nestjs/cache-manager 3) ya no lee la opción `store` de `cache-manager-ioredis-yet`, así que todo quedaba en la memoria del proceso sin avisar. Ahora va a Redis con `@keyv/redis` y `keyv` (sustituyen a `cache-manager-ioredis-yet`):
+  - Claves con el prefijo `startcode-panel::`, así `reset()` borra solo las del panel y no el resto de un Redis compartido.
+  - Las variables `REDIS_*` se convierten a número (llegaban como texto); sin `REDIS_HOST`, caché en memoria con un aviso.
+  - Con Redis caído la API no falla ni se queda esperando: sin cola de comandos desconectados, una lectura cuenta como «no está» y se va al origen; reconecta sola (cada vez más espaciado, hasta 10 s) y avisa una vez por caída y al volver.
+  - Al arrancar escribe y lee una clave de prueba y lo registra («Caché en Redis (host:puerto, dbN)»). Al apagar cierra la conexión.
+  - Test de integración `cache.module.it.spec.ts` (con `REDIS_IT_PORT`): prefijo y TTL en Redis, `getOrSet`, que limpiar no toca claves ajenas y el comportamiento con Redis caído
+- Terminal (`terminal.gateway.ts`): la salida SSH se decodifica con `StringDecoder`. Antes cada fragmento se convertía a texto por separado y un carácter de varios bytes partido entre dos (acentos, iconos Nerd Font de nvim o de un prompt) salía como `�`
+- `CacheService.reset()` llamaba a `cacheManager.reset()`, que no existe en cache-manager 7, y fallaba siempre; ahora usa `clear()`
+- Tests: `servers.controller.spec` (faltaba el mock de `AgentInstallService`) y `auth.service.spec` (faltaba el repositorio de sesiones) vuelven a pasar; 285 de 285
+
+### Cambiado
+- Código sin errores de ESLint ni de TypeScript (había 192 y 16). Peticiones autenticadas tipadas (`auth/types/authenticated-request.type.ts`, `AuthenticatedRequest`) en los controladores; payloads del agente y columnas jsonb de `agent-metrics.entity.ts` con sus interfaces; las columnas anulables de `server.entity.ts` declaran `| null`. Sin cambios en la API
 
 ---
 

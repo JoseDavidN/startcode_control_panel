@@ -2,12 +2,14 @@ import { BadRequestException, Injectable, Logger, OnModuleDestroy } from '@nestj
 import { randomUUID } from 'crypto';
 import type { Client } from 'pg';
 import type { Connection } from 'mysql2/promise';
+import type Redis from 'ioredis';
 import { DatabaseEngine } from '../entities/database-connection.entity';
 import type { ProbeTarget } from './database-probe.service';
 import type { ExplorerSession } from './explorer.common';
-import { openMysql, openPg } from './connection-factory';
+import { openMysql, openPg, openRedis } from './connection-factory';
 import { describeSqlError } from './database-explorer.service';
 import { describePgError } from './postgres-explorer.service';
+import { describeRedisError, redisDb, redisVersion } from './redis-explorer.service';
 
 /** Sin uso durante este tiempo, la sesión se cierra sola (pestaña abandonada, app cerrada sin avisar). */
 const IDLE_MS = 30 * 60_000;
@@ -27,6 +29,9 @@ interface Session {
   /** Base activa de la conexión MySQL (`USE`). */
   mysqlDb: string | null;
   pg: Map<string, Client>;
+  redis: Redis | null;
+  /** Base activa del cliente de Redis (`SELECT`). */
+  redisDb: number | null;
 }
 
 /**
@@ -64,12 +69,16 @@ export class DatabaseSessionService implements OnModuleDestroy {
       mysql: null,
       mysqlDb: null,
       pg: new Map(),
+      redis: null,
+      redisDb: null,
     };
     const api = this.api(session);
 
     let version: string | null;
     try {
-      if (target.engine === DatabaseEngine.POSTGRESQL) {
+      if (target.engine === DatabaseEngine.REDIS) {
+        version = await api.redis(redisDb(target.database), redisVersion);
+      } else if (target.engine === DatabaseEngine.POSTGRESQL) {
         version = await api.pg(target.database || 'postgres', async c => {
           const res = await c.query<{ v: string }>("SELECT current_setting('server_version') AS v");
           return res.rows[0]?.v?.split(' ')[0] ?? null;
@@ -151,7 +160,36 @@ export class DatabaseSessionService implements OnModuleDestroy {
         }
         return fn(client);
       }),
+      redis: <T>(db: number, fn: (client: Redis) => Promise<T>) => serial(async () => {
+        const client = await this.ensureRedis(session, db);
+        if (db !== session.redisDb) {
+          await client.select(db);
+          session.redisDb = db;
+        }
+        return fn(client);
+      }),
     };
+  }
+
+  private async ensureRedis(session: Session, db: number): Promise<Redis> {
+    if (session.redis && session.redis.status === 'ready') return session.redis;
+    this.dropRedis(session);
+    try {
+      const client = await openRedis(session.target, db);
+      /* Corte de red o servidor reiniciado: la próxima llamada reconecta. */
+      client.on('end', () => { if (session.redis === client) { session.redis = null; session.redisDb = null; } });
+      session.redis = client;
+      session.redisDb = db;
+      return client;
+    } catch (err) {
+      throw new BadRequestException(describeRedisError(err));
+    }
+  }
+
+  private dropRedis(session: Session) {
+    session.redis?.disconnect();
+    session.redis = null;
+    session.redisDb = null;
   }
 
   private async ensureMysql(session: Session): Promise<Connection> {
@@ -179,6 +217,8 @@ export class DatabaseSessionService implements OnModuleDestroy {
     session.mysql = null;
     await Promise.all([...session.pg.values()].map(c => c.end().catch(() => undefined)));
     session.pg.clear();
+    if (session.redis) await session.redis.quit().catch(() => session.redis?.disconnect());
+    session.redis = null;
   }
 
   private enforceLimit(userId: string) {
@@ -197,6 +237,7 @@ export class DatabaseSessionService implements OnModuleDestroy {
   }
 
   private describe(target: ProbeTarget, err: unknown): string {
+    if (target.engine === DatabaseEngine.REDIS) return describeRedisError(err);
     return target.engine === DatabaseEngine.POSTGRESQL ? describePgError(err) : describeSqlError(err);
   }
 }

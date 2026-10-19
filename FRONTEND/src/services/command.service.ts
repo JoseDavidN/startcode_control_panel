@@ -41,8 +41,8 @@ export interface ExecCommandInput {
 }
 
 const unwrap = <T,>(response: unknown): T => {
-  const payload = (response as any)?.data ?? response;
-  return ((payload as any)?.data ?? payload) as T;
+  const payload = (response as { data?: unknown })?.data ?? response;
+  return ((payload as { data?: unknown })?.data ?? payload) as T;
 };
 
 class CommandService {

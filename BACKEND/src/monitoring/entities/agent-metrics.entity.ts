@@ -6,6 +6,13 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Server } from '@servers/entities/server.entity';
+import type {
+  DatabasePayload,
+  FilesystemPayload,
+  ServicePayload,
+  TopProcessPayload,
+  WebsitePayload,
+} from '@monitoring/dto/agent-payload';
 
 /** Forma de cada interfaz dentro de `network_interfaces` (jsonb). */
 export interface NetworkInterfaceSnapshot {
@@ -95,7 +102,7 @@ export class AgentMetrics {
 
   // ==================== DISCO ====================
   @Column('jsonb', { nullable: true })
-  disk_filesystems: any;
+  disk_filesystems: FilesystemPayload[];
 
   // ==================== RED ====================
   @Column('varchar', { length: 45, nullable: true })
@@ -153,7 +160,7 @@ export class AgentMetrics {
   processes_zombie: number;
 
   @Column('jsonb', { nullable: true })
-  processes_top_list: any;
+  processes_top_list: TopProcessPayload[];
 
   // ==================== SERVICIOS ====================
   @Column('int', { nullable: true, default: 0 })
@@ -166,21 +173,21 @@ export class AgentMetrics {
   services_failed: number;
 
   @Column('jsonb', { nullable: true })
-  services_list: any;
+  services_list: ServicePayload[];
 
   // ==================== SITIOS WEB ====================
   @Column('int', { nullable: true, default: 0 })
   websites_count: number;
 
   @Column('jsonb', { nullable: true })
-  websites_list: any;
+  websites_list: WebsitePayload[];
 
   // ==================== BASES DE DATOS ====================
   @Column('int', { nullable: true, default: 0 })
   databases_count: number;
 
   @Column('jsonb', { nullable: true })
-  databases_list: any;
+  databases_list: DatabasePayload[];
 
   // ==================== METADATA ====================
   @Column('varchar', { length: 50, nullable: true })

@@ -4,6 +4,7 @@ import { BadRequestException } from '@nestjs/common';
 
 import type { Client as PgClient } from 'pg';
 import type { Connection as MysqlConnection } from 'mysql2/promise';
+import type Redis from 'ioredis';
 
 /**
  * Conexión abierta de la vista de consultas (`DatabaseSessionService`). Si el
@@ -15,6 +16,8 @@ export interface ExplorerSession {
   mysql<T>(database: string | null, fn: (conn: MysqlConnection) => Promise<T>): Promise<T>;
   /** PostgreSQL: un cliente por base, abierto la primera vez que se pide. */
   pg<T>(database: string, fn: (client: PgClient) => Promise<T>): Promise<T>;
+  /** Redis: un cliente; antes hace `SELECT` si la base no es la activa. */
+  redis<T>(db: number, fn: (client: Redis) => Promise<T>): Promise<T>;
 }
 
 export interface SchemaTableColumn {

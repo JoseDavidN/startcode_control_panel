@@ -14,6 +14,7 @@ import { MenuIcon } from '@components/common/ContextMenu';
 import { copyText } from '@lib/clipboard';
 import { readClipboard } from '@lib/textEditing';
 import { notify } from '@services/notification.service';
+import type { TerminalStatus } from '@contexts/terminal-dock-context';
 
 /* La terminal se pinta con su propia paleta —la de una consola— y no con los
    tokens del tema: un fondo claro con texto de color de marca no es legible
@@ -35,7 +36,7 @@ const FONT_SIZE = 13;
    para que el navegador descargue ambos subconjuntos por su unicode-range. */
 const NERD_SAMPLE = '\ue0b0\u{f0001}';
 
-type Status = 'connecting' | 'ready' | 'closed' | 'error';
+type Status = TerminalStatus;
 
 /** Líneas del final del búfer que lee el asistente. */
 const ASSISTANT_LINES = 300;
@@ -274,20 +275,23 @@ const toneOf = (status: Status) =>
 interface Props {
   serverId: string;
   serverName: string;
-  /** Oculta, las sesiones siguen vivas: al volver a abrirla está como se dejó. */
+  /** Oculta (minimizada), las sesiones siguen vivas: al volver a abrirla está como se dejó. */
   open: boolean;
-  /** Ocultar sin cerrar las sesiones. */
+  /** Minimizar sin cerrar las sesiones. */
   onClose: () => void;
   /** Cerrar todas las sesiones SSH. */
   onEnd: () => void;
+  /** Estado de cada pestaña, para la barra de la terminal minimizada. */
+  onStatuses?: (statuses: Status[]) => void;
 }
 
 /**
  * Terminal SSH del detalle de un servidor, con hasta cinco pestañas, cada una
- * con su conexión. Cerrar la ventana solo la oculta: las conexiones siguen
- * hasta que se terminan o se sale del detalle del servidor (al desmontarse).
+ * con su conexión. La monta `TerminalDockProvider` en el layout: cerrar la
+ * ventana solo la minimiza y las conexiones siguen al cambiar de vista, hasta
+ * terminarlas o entrar al detalle de otro servidor.
  */
-export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, onClose, onEnd }) => {
+export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, onClose, onEnd, onStatuses }) => {
   const { open: assistantOpen } = useAssistant();
   const [tabs, setTabs] = useState<Tab[]>(() => [{ id: 1, n: 1, status: 'connecting', message: 'Conectando por SSH…' }]);
   const [activeId, setActiveId] = useState(1);
@@ -313,6 +317,13 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
 
   const setTabStatus = (id: number, status: Status, message: string) =>
     setTabs(list => list.map(t => (t.id === id ? { ...t, status, message } : t)));
+
+  const statusesRef = useRef(onStatuses);
+  statusesRef.current = onStatuses;
+  const summary = tabs.map(t => t.status).join();
+  useEffect(() => {
+    statusesRef.current?.(summary.split(',') as Status[]);
+  }, [summary]);
 
   /* El asistente lee y escribe en la pestaña activa. Oculta no se le ofrece: no está en pantalla. */
   useAssistantSource(`terminal:${serverId}`, 'terminal', `Terminal · ${serverName}`, () => panes.current.get(active.id)?.read() ?? '', open);
@@ -363,12 +374,12 @@ export const ServerTerminal: React.FC<Props> = ({ serverId, serverName, open, on
           </button>
           <button
             onClick={onClose}
-            title="Ocultar: las sesiones siguen abiertas hasta salir del servidor"
+            title="Minimizar: las sesiones siguen abiertas y puedes ir a otras vistas"
             className="mo-tab w-9 h-9 rounded-xl glass-soft text-white/70 hover:text-white row-hit flex items-center justify-center"
-            aria-label="Ocultar terminal"
+            aria-label="Minimizar terminal"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" className="w-4 h-4">
-              <path d="M18 6L6 18M6 6l12 12" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" className="w-4 h-4" aria-hidden>
+              <path d="M5 12h14" />
             </svg>
           </button>
         </div>

@@ -34,6 +34,7 @@ import { ServerStatsDto } from './dto/server-stats.dto';
 import { DeleteServerDto } from './dto/agent-install.dto';
 import { AgentInstallService } from './services/agent-install.service';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from '@auth/types/authenticated-request.type';
 import { ServerStatus, ServerOs } from './entities/server.entity';
 
 @ApiTags('Servers')
@@ -68,7 +69,7 @@ export class ServersController {
   })
   async create(
     @Body() createServerDto: CreateServerDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.create(createServerDto, req.user);
   }
@@ -85,7 +86,7 @@ export class ServersController {
     type: [ServerResponseDto],
   })
   async findAll(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.findAll(req.user);
   }
@@ -100,7 +101,7 @@ export class ServersController {
     description: 'Estadísticas de servidores',
     type: ServerStatsDto,
   })
-  async getStats(@Request() req): Promise<ServerStatsDto> {
+  async getStats(@Request() req: AuthenticatedRequest): Promise<ServerStatsDto> {
     return await this.serversService.getStats(req.user);
   }
 
@@ -122,7 +123,7 @@ export class ServersController {
   })
   async search(
     @Query('q') query: string,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.search(query, req.user);
   }
@@ -144,7 +145,7 @@ export class ServersController {
   })
   async filterByStatus(
     @Param('status') status: ServerStatus,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.filterByStatus(status, req.user);
   }
@@ -166,7 +167,7 @@ export class ServersController {
   })
   async filterByOS(
     @Param('os') os: ServerOs,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.filterByOS(os, req.user);
   }
@@ -184,7 +185,7 @@ export class ServersController {
   @ApiResponse({ status: 403, description: 'Sin permisos sobre este servidor' })
   async generateAgentToken(
     @Param('id') id: string,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<{ token: string; serverId: string; expiresIn: string }> {
     const server = await this.serversService.findOne(id, req.user);
     const token = this.authService.generateAgentToken(server.id, server.name);
@@ -216,7 +217,7 @@ export class ServersController {
   })
   async findOne(
     @Param('id') id: string,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.findOne(id, req.user);
   }
@@ -252,7 +253,7 @@ export class ServersController {
   async update(
     @Param('id') id: string,
     @Body() updateServerDto: UpdateServerDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.update(id, updateServerDto, req.user);
   }
@@ -278,7 +279,7 @@ export class ServersController {
   async updatePrivateKey(
     @Param('id') id: string,
     @Body() updatePrivateKeyDto: UpdatePrivateKeyDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
     return await this.serversService.updatePrivateKey(
       id,
@@ -298,7 +299,7 @@ export class ServersController {
   async setFavorite(
     @Param('id') id: string,
     @Body() dto: SetFavoriteDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.setFavorite(id, dto.favorite, req.user);
   }
@@ -326,7 +327,7 @@ export class ServersController {
   async updateStatus(
     @Param('id') id: string,
     @Query('status') status: ServerStatus,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.updateStatus(id, status, req.user);
   }
@@ -362,7 +363,7 @@ export class ServersController {
   async remove(
     @Param('id') id: string,
     @Body() dto: DeleteServerDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string; warning?: string }> {
     const server = await this.serversService.findOne(id, req.user);
     const agentState = server.metadata?.agent?.state;

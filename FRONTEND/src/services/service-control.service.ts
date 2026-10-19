@@ -31,6 +31,13 @@ export interface ServiceLogsResult {
   lines: string;
 }
 
+/** El backend responde el objeto directo; axios lo envuelve en `data`. */
+function unwrap<T>(response: unknown): T {
+  const first = (response as { data?: unknown })?.data ?? response;
+  const second = (first as { data?: unknown })?.data ?? first;
+  return second as T;
+}
+
 class ServiceControlService {
   /**
    * `sudoPassword` solo hace falta cuando el backend responde `SUDO_REQUIRED`:
@@ -46,8 +53,7 @@ class ServiceControlService {
       `${API_CONFIG.ENDPOINTS.AGENT_DATA}/servers/${serverId}/services/${encodeURIComponent(serviceName)}/action`,
       sudoPassword ? { action, sudoPassword } : { action },
     );
-    const payload = (response as any)?.data ?? response;
-    return ((payload as any)?.data ?? payload) as ServiceActionResult;
+    return unwrap<ServiceActionResult>(response);
   }
 
   /** Cierra un proceso con SIGTERM (no forzado, sin -9). */
@@ -56,8 +62,7 @@ class ServiceControlService {
       `${API_CONFIG.ENDPOINTS.AGENT_DATA}/servers/${serverId}/processes/${pid}/kill`,
       sudoPassword ? { sudoPassword } : {},
     );
-    const payload = (response as any)?.data ?? response;
-    return ((payload as any)?.data ?? payload) as KillProcessResult;
+    return unwrap<KillProcessResult>(response);
   }
 
   /** Últimas líneas de `journalctl -u <unidad>` del servidor. */
@@ -72,8 +77,7 @@ class ServiceControlService {
       /* El journal de una unidad ruidosa tarda más que una acción normal. */
       { timeout: 45_000 },
     );
-    const payload = (response as any)?.data ?? response;
-    return ((payload as any)?.data ?? payload) as ServiceLogsResult;
+    return unwrap<ServiceLogsResult>(response);
   }
 
   /** Reemplaza la lista de servicios fijados del servidor. */
@@ -82,8 +86,7 @@ class ServiceControlService {
       `${API_CONFIG.ENDPOINTS.AGENT_DATA}/servers/${serverId}/services/pinned`,
       { services },
     );
-    const payload = (response as any)?.data ?? response;
-    const body = ((payload as any)?.data ?? payload) as { pinned?: string[] };
+    const body = unwrap<{ pinned?: string[] } | undefined>(response);
     return body?.pinned ?? services;
   }
 }

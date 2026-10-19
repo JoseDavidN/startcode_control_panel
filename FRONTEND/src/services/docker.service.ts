@@ -42,8 +42,8 @@ class DockerService {
       /* `docker stats --no-stream` tarda un par de segundos por sí solo. */
       { timeout: 45_000 },
     );
-    const payload = (response as any)?.data ?? response;
-    return ((payload as any)?.data ?? payload) as DockerContainersResult;
+    const payload = (response as { data?: unknown })?.data ?? response;
+    return ((payload as { data?: unknown })?.data ?? payload) as DockerContainersResult;
   }
 }
 

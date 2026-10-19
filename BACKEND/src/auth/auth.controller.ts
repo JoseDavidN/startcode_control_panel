@@ -33,6 +33,8 @@ import { UpdateProfileDto, ChangePasswordDto, ChangeExpiredPasswordDto } from '.
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
+import type { Request as ExpressRequest } from 'express';
+import type { AuthenticatedRequest } from '@auth/types/authenticated-request.type';
 
 /**
  * IP del dispositivo que hace la petición. Detrás de un proxy manda la
@@ -100,7 +102,7 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   @HttpCode(HttpStatus.OK)
   async login(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body() loginDto: LoginDto,
   ): Promise<AuthResponseDto | TwoFactorPendingDto | PasswordChangeRequiredDto> {
     return this.authService.login(loginDto, this.clientOf(req));
@@ -111,7 +113,7 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Iniciar configuración de 2FA — genera secreto y QR' })
   @ApiResponse({ status: 201, type: TwoFactorSetupResponseDto })
-  async setup2FA(@Request() req): Promise<TwoFactorSetupResponseDto> {
+  async setup2FA(@Request() req: AuthenticatedRequest): Promise<TwoFactorSetupResponseDto> {
     return this.authService.setup2FA(req.user.id);
   }
 
@@ -124,7 +126,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Setup no iniciado o ya activado' })
   @ApiResponse({ status: 401, description: 'Código inválido' })
   @ApiBody({ type: TwoFactorCodeDto })
-  async enable2FA(@Request() req, @Body() dto: TwoFactorCodeDto): Promise<TwoFactorEnabledResponseDto> {
+  async enable2FA(@Request() req: AuthenticatedRequest, @Body() dto: TwoFactorCodeDto): Promise<TwoFactorEnabledResponseDto> {
     return this.authService.enable2FA(req.user.id, dto.code);
   }
 
@@ -137,7 +139,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: '2FA no está activado' })
   @ApiResponse({ status: 401, description: 'Contraseña o código inválidos' })
   @ApiBody({ type: TwoFactorCodeWithPasswordDto })
-  async disable2FA(@Request() req, @Body() dto: TwoFactorCodeWithPasswordDto) {
+  async disable2FA(@Request() req: AuthenticatedRequest, @Body() dto: TwoFactorCodeWithPasswordDto) {
     return this.authService.disable2FA(req.user.id, dto.code, dto.password);
   }
 
@@ -149,7 +151,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Regenerar los códigos de respaldo — exige contraseña y código' })
   @ApiResponse({ status: 200, description: 'Nuevos códigos de respaldo' })
   @ApiBody({ type: TwoFactorCodeWithPasswordDto })
-  async regenerateBackupCodes(@Request() req, @Body() dto: TwoFactorCodeWithPasswordDto) {
+  async regenerateBackupCodes(@Request() req: AuthenticatedRequest, @Body() dto: TwoFactorCodeWithPasswordDto) {
     return this.authService.regenerateBackupCodes(req.user.id, dto.code, dto.password);
   }
 
@@ -161,7 +163,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Token temporal o código 2FA inválidos' })
   @ApiBody({ type: TwoFactorVerifyLoginDto })
   async verify2FALogin(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body() dto: TwoFactorVerifyLoginDto,
   ): Promise<AuthResponseDto | PasswordChangeRequiredDto> {
     return this.authService.verifyLogin2FA(
@@ -178,7 +180,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Obtener perfil del usuario actual' })
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async getProfile(@Request() req) {
+  async getProfile(@Request() req: AuthenticatedRequest) {
     return this.authService.getProfile(req.user.id);
   }
 
@@ -188,7 +190,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Actualizar perfil del usuario actual' })
   @ApiResponse({ status: 200, description: 'Perfil actualizado' })
   @ApiResponse({ status: 409, description: 'Email ya en uso' })
-  async updateProfile(@Request() req, @Body() dto: UpdateProfileDto) {
+  async updateProfile(@Request() req: AuthenticatedRequest, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(req.user.id, dto);
   }
 
@@ -199,7 +201,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Cambiar contraseña del usuario actual' })
   @ApiResponse({ status: 200, description: 'Contraseña actualizada' })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
-  async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
+  async changePassword(@Request() req: AuthenticatedRequest, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.id, dto, req.user.sessionId);
   }
 
@@ -214,7 +216,7 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiBody({ type: ChangeExpiredPasswordDto })
   async changeExpiredPassword(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body() dto: ChangeExpiredPasswordDto,
   ): Promise<AuthResponseDto> {
     return this.authService.changeExpiredPassword(dto.tempToken, dto, this.clientOf(req));
@@ -226,7 +228,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cerrar la sesión actual — revoca sus tokens' })
   @ApiResponse({ status: 200, description: 'Sesión cerrada' })
-  async logout(@Request() req): Promise<{ message: string }> {
+  async logout(@Request() req: AuthenticatedRequest): Promise<{ message: string }> {
     if (req.user.sessionId) {
       await this.authService.revokeSession(req.user.id, req.user.sessionId);
     }
@@ -238,7 +240,7 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Sesiones activas del usuario' })
   @ApiResponse({ status: 200, description: 'Lista de sesiones' })
-  async listSessions(@Request() req) {
+  async listSessions(@Request() req: AuthenticatedRequest) {
     return this.authService.listSessions(req.user.id, req.user.sessionId);
   }
 
@@ -247,7 +249,7 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Revocar una sesión concreta' })
   @ApiParam({ name: 'id', description: 'Id de la sesión' })
-  async revokeSession(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
+  async revokeSession(@Request() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.authService.revokeSession(req.user.id, id);
     return { revoked: true };
   }
@@ -256,7 +258,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Cerrar las demás sesiones, conservando la actual' })
-  async revokeOtherSessions(@Request() req) {
+  async revokeOtherSessions(@Request() req: AuthenticatedRequest) {
     const revoked = await this.authService.revokeOtherSessions(req.user.id, req.user.sessionId);
     return { revoked };
   }
@@ -266,7 +268,7 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Obtener información del usuario actual' })
   @ApiResponse({ status: 200, description: 'Información del usuario' })
-  async getMe(@Request() req) {
+  async getMe(@Request() req: AuthenticatedRequest) {
     return this.authService.getProfile(req.user.id);
   }
 
@@ -275,7 +277,7 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Preferencias del usuario actual' })
   @ApiResponse({ status: 200, description: 'Preferencias completas' })
-  async getPreferences(@Request() req) {
+  async getPreferences(@Request() req: AuthenticatedRequest) {
     return this.authService.getPreferences(req.user.id);
   }
 
@@ -285,7 +287,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Actualizar preferencias — merge por sección' })
   @ApiResponse({ status: 200, description: 'Preferencias actualizadas' })
   @ApiBody({ type: UpdatePreferencesDto })
-  async updatePreferences(@Request() req, @Body() dto: UpdatePreferencesDto) {
+  async updatePreferences(@Request() req: AuthenticatedRequest, @Body() dto: UpdatePreferencesDto) {
     return this.authService.updatePreferences(req.user.id, dto);
   }
 
@@ -305,7 +307,7 @@ export class AuthController {
     },
   })
   async refresh(
-    @Request() req,
+    @Request() req: ExpressRequest,
     @Body('refreshToken') refreshToken: string,
   ): Promise<AuthResponseDto> {
     return this.authService.refreshToken(refreshToken, this.clientOf(req));

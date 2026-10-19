@@ -13,7 +13,12 @@ export interface ProviderRequest {
   provider: AiProvider;
   model: string;
   apiKey: string;
-  system: string;
+  /**
+   * Instrucciones de sistema. En varias partes, de la más estable a la más
+   * cambiante (prompt fijo, memoria): Anthropic cachea cada una por separado;
+   * los demás proveedores las reciben unidas.
+   */
+  system: string | string[];
   messages: ProviderMessage[];
   maxTokens?: number;
 }
@@ -50,6 +55,8 @@ export interface ProviderModel {
 }
 
 const DEFAULT_MAX_TOKENS = 8000;
+
+const systemParts = (system: string | string[]): string[] => (Array.isArray(system) ? system : [system]).filter(Boolean);
 const LIST_TIMEOUT_MS = 15_000;
 /* Errores pasajeros del proveedor (sobrecarga, reinicio): se reintenta con espera creciente. */
 const TRANSIENT_STATUS = new Set([500, 502, 503, 504]);
@@ -201,8 +208,14 @@ export class AiProviderService {
       const response = await client.beta.messages.create({
         model: req.model,
         max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-        system: req.system,
-        messages: req.messages.map(m => ({ role: m.role, content: m.content })),
+        /* Caché de prompt: el sistema y el historial no cambian entre preguntas
+           seguidas, así que se cachean y la pregunta nueva solo paga lo suyo.
+           Por debajo del mínimo del modelo (1024–4096 tokens) no cachea y no cuesta más. */
+        system: systemParts(req.system).map(text => ({ type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } })),
+        messages: req.messages.map((m, i) =>
+          i === req.messages.length - 2
+            ? { role: m.role, content: [{ type: 'text' as const, text: m.content, cache_control: { type: 'ephemeral' as const } }] }
+            : { role: m.role, content: m.content }),
         /* Si un clasificador de seguridad rechaza la petición, la API la
            reintenta en otro modelo dentro de la misma llamada. */
         betas: ['server-side-fallback-2026-07-01'],
@@ -251,7 +264,7 @@ export class AiProviderService {
     const body = {
       model: req.model,
       max_completion_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-      messages: [{ role: 'system', content: req.system }, ...req.messages],
+      messages: [{ role: 'system', content: systemParts(req.system).join('\n\n') }, ...req.messages],
     };
     const data = await this.postJson<{ choices?: { message?: { content?: string | null } }[] }>(
       'OpenAI',
@@ -295,7 +308,7 @@ export class AiProviderService {
 
   private async gemini(req: ProviderRequest, timeoutMs: number, retries: number): Promise<string> {
     const body = {
-      systemInstruction: { parts: [{ text: req.system }] },
+      systemInstruction: { parts: [{ text: systemParts(req.system).join('\n\n') }] },
       contents: req.messages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],

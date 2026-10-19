@@ -1,4 +1,4 @@
-import type { RealtimeServerData } from '@contexts/RealtimeMetricsContext';
+import type { RealtimeServerData } from '@contexts/realtime-metrics-context';
 import type { ServerLiveSummary } from '@typings/monitoring.types';
 
 /**

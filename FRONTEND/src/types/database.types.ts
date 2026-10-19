@@ -73,7 +73,9 @@ export interface DatabaseConnectionForm {
 /* ── Gestión (vista de una conexión) ─────────────────────────────── */
 
 /** Motores que ya se pueden explorar y consultar desde el panel. */
-export const MANAGEABLE_ENGINES: DatabaseEngine[] = ['mysql', 'mariadb', 'postgresql'];
+export const MANAGEABLE_ENGINES: DatabaseEngine[] = ['mysql', 'mariadb', 'postgresql', 'redis'];
+/** Motores con editor SQL y árbol de bases (Redis tiene su explorador de claves). */
+export const SQL_ENGINES: DatabaseEngine[] = ['mysql', 'mariadb', 'postgresql'];
 
 export interface DatabaseSchema {
   name: string;

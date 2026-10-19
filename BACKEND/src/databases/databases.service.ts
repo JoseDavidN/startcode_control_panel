@@ -31,6 +31,15 @@ import {
 } from './services/database-explorer.service';
 import { findDangerousQuery, isReadOnlyQuery } from './services/query-policy';
 import { DatabaseSessionService } from './services/database-session.service';
+import {
+  RedisExplorerService,
+  type RedisCommandResult,
+  type RedisEditInput,
+  type RedisKeyDetail,
+  type RedisOverview,
+  type RedisScanResult,
+} from './services/redis-explorer.service';
+import { checkCommand } from './services/redis-policy';
 import { EXPORT_MAX_ROWS } from './services/explorer.common';
 import {
   DatabaseQueryAudit,
@@ -51,6 +60,7 @@ export class DatabasesService {
     private readonly probe: DatabaseProbeService,
     private readonly explorer: DatabaseExplorerService,
     private readonly sessions: DatabaseSessionService,
+    private readonly redis: RedisExplorerService,
   ) {}
 
   async findOne(userId: string, id: string): Promise<DatabaseConnectionResponseDto> {
@@ -65,9 +75,6 @@ export class DatabasesService {
   /** Abre la conexión de la vista de consultas y guarda la versión del motor. */
   async openSession(userId: string, id: string): Promise<{ sessionId: string; version: string | null }> {
     const conn = await this.findOwned(userId, id);
-    if (conn.engine === DatabaseEngine.REDIS) {
-      throw new BadRequestException('La gestión de Redis todavía no está disponible');
-    }
     const opened = await this.sessions.open(userId, id, await this.toTarget(conn));
     if (opened.version && opened.version !== conn.version) {
       await this.repo.update(conn.id, { version: opened.version });
@@ -104,8 +111,98 @@ export class DatabasesService {
   /* Con sesión, la suya (sin descifrar de nuevo la contraseña); sin ella, un
      destino para una conexión de un solo uso. */
   private async target(userId: string, id: string, sessionId?: string): Promise<ProbeTarget> {
-    if (sessionId) return this.sessions.get(userId, id, sessionId);
-    return this.toTarget(await this.findOwned(userId, id));
+    const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(await this.findOwned(userId, id));
+    assertSql(target.engine);
+    return target;
+  }
+
+  /* ── Redis ────────────────────────────────────────────────────────────
+     Mismo esquema que SQL: sesión de la vista y, sin ella, una conexión por
+     llamada. Lo que borra (claves o comandos peligrosos) queda auditado. */
+
+  private async redisTarget(userId: string, id: string, sessionId?: string): Promise<{ conn: DatabaseConnection; target: ProbeTarget }> {
+    const conn = await this.findOwned(userId, id);
+    if (conn.engine !== DatabaseEngine.REDIS) throw new BadRequestException('La conexión no es de Redis');
+    const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
+    return { conn, target };
+  }
+
+  async redisOverview(userId: string, id: string, sessionId?: string): Promise<RedisOverview> {
+    const { target } = await this.redisTarget(userId, id, sessionId);
+    return this.redis.overview(target);
+  }
+
+  async redisScan(userId: string, id: string, db: number, pattern = '*', cursor = '0', type?: string, sessionId?: string): Promise<RedisScanResult> {
+    const { target } = await this.redisTarget(userId, id, sessionId);
+    return this.redis.scan(target, db, pattern, cursor, type);
+  }
+
+  async redisKey(userId: string, id: string, db: number, key: string, sessionId?: string): Promise<RedisKeyDetail> {
+    const { target } = await this.redisTarget(userId, id, sessionId);
+    return this.redis.getKey(target, db, key);
+  }
+
+  async redisEdit(userId: string, id: string, db: number, input: RedisEditInput, sessionId?: string): Promise<{ ok: true }> {
+    const { conn, target } = await this.redisTarget(userId, id, sessionId);
+    const result = await this.redis.edit(target, db, input);
+    this.logger.log(`[${conn.name}] Redis db${db}: ${input.op} en «${input.key.slice(0, 200)}» por el usuario ${userId}`);
+    return result;
+  }
+
+  async redisDeleteKeys(userId: string, id: string, db: number, keys: string[], sessionId?: string): Promise<{ deleted: number }> {
+    const { conn, target } = await this.redisTarget(userId, id, sessionId);
+    const shown = keys.slice(0, 20).map(k => JSON.stringify(k)).join(', ');
+    const query = `UNLINK ${shown}${keys.length > 20 ? ` … (${keys.length} claves)` : ''}`;
+    return this.audited(userId, conn, `db${db}`, query, 'borra claves desde el explorador', async () => {
+      const result = await this.redis.deleteKeys(target, db, keys);
+      this.logger.warn(`[${conn.name}] ${result.deleted} claves borradas de db${db} por el usuario ${userId}`);
+      return { result, affected: result.deleted };
+    });
+  }
+
+  /**
+   * Una línea de la consola de Redis. Como en SQL, lo peligroso
+   * (`redis-policy.ts`) responde 400 `DANGEROUS_QUERY` hasta que llega con
+   * `confirm`, y entonces queda auditado.
+   */
+  async redisCommand(userId: string, id: string, db: number, line: string, confirm = false, sessionId?: string): Promise<RedisCommandResult> {
+    const { conn, target } = await this.redisTarget(userId, id, sessionId);
+    const args = this.redis.parseCommand(line);
+    const check = checkCommand(args);
+    if (check.kind !== 'dangerous') return this.redis.command(target, db, args);
+    if (!confirm) {
+      throw new BadRequestException({
+        code: 'DANGEROUS_QUERY',
+        message: `Este comando ${check.reason}.`,
+        hint: 'Confírmalo para ejecutarlo de todas formas. Quedará registrado en la auditoría.',
+      });
+    }
+    this.logger.warn(`[${conn.name}] comando de Redis peligroso confirmado (usuario ${userId}): ${line.slice(0, 200)}`);
+    return this.audited(userId, conn, `db${db}`, line, check.reason, async () => {
+      const result = await this.redis.command(target, db, args);
+      return { result, affected: typeof result.reply === 'number' ? result.reply : null };
+    });
+  }
+
+  /** Ejecuta y deja la fila de auditoría, también si falla. */
+  private async audited<T>(
+    userId: string, conn: DatabaseConnection, schema: string, query: string, reason: string,
+    fn: () => Promise<{ result: T; affected: number | null }>,
+  ): Promise<T> {
+    const started = Date.now();
+    const audit = (status: DatabaseQueryAuditStatus, extra: Partial<DatabaseQueryAudit>) =>
+      this.auditRepo
+        .save(this.auditRepo.create({ userId, connectionId: conn.id, schema, query, reason, status, durationMs: Date.now() - started, ...extra }))
+        .catch(err => this.logger.error(`No se pudo auditar: ${(err as Error).message}`));
+    try {
+      const { result, affected } = await fn();
+      await audit(DatabaseQueryAuditStatus.OK, { affectedRows: affected });
+      return result;
+    } catch (err) {
+      const message = err instanceof HttpException ? describeHttpError(err) : (err as Error).message;
+      await audit(DatabaseQueryAuditStatus.ERROR, { error: message });
+      throw err;
+    }
   }
 
   /**
@@ -122,6 +219,7 @@ export class DatabasesService {
     sessionId?: string,
   ): Promise<QueryResult> {
     const conn = await this.findOwned(userId, id);
+    assertSql(conn.engine);
     const danger = findDangerousQuery(sql, conn.engine === DatabaseEngine.POSTGRESQL ? 'postgresql' : 'mysql');
     if (danger && !confirm) {
       throw new BadRequestException({
@@ -169,6 +267,7 @@ export class DatabasesService {
    */
   async exportQuery(userId: string, id: string, sql: string, schema?: string, sessionId?: string): Promise<QueryResult> {
     const conn = await this.findOwned(userId, id);
+    assertSql(conn.engine);
     if (!isReadOnlyQuery(sql, conn.engine === DatabaseEngine.POSTGRESQL ? 'postgresql' : 'mysql')) {
       throw new BadRequestException('Solo se puede exportar el resultado completo de consultas de lectura (SELECT, WITH, SHOW…)');
     }
@@ -184,6 +283,7 @@ export class DatabasesService {
     sessionId?: string,
   ): Promise<{ affectedRows: number }> {
     const conn = await this.findOwned(userId, id);
+    assertSql(conn.engine);
     const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
     const result = await this.explorer.updateRow(target, input);
     this.logger.log(
@@ -205,6 +305,7 @@ export class DatabasesService {
     sessionId?: string,
   ): Promise<InsertRowResult> {
     const conn = await this.findOwned(userId, id);
+    assertSql(conn.engine);
     const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
     const result = await this.explorer.insertRow(target, input);
     this.logger.log(
@@ -219,6 +320,7 @@ export class DatabasesService {
    */
   async deleteRows(userId: string, id: string, input: DeleteRowsInput, sessionId?: string): Promise<{ affectedRows: number }> {
     const conn = await this.findOwned(userId, id);
+    assertSql(conn.engine);
     const target = sessionId ? this.sessions.get(userId, id, sessionId) : await this.toTarget(conn);
     const where = `${input.schema}.${input.namespace ? `${input.namespace}.` : ''}${input.table}`;
     const shown = input.keys.slice(0, 20).map(k => JSON.stringify(k)).join(', ');
@@ -382,6 +484,11 @@ export class DatabasesService {
   private withPassword() {
     return this.repo.createQueryBuilder('c').addSelect('c.passwordEnc');
   }
+}
+
+/* Las rutas de SQL no valen para Redis (y al revés: ver `redisTarget`). */
+function assertSql(engine: DatabaseEngine): void {
+  if (engine === DatabaseEngine.REDIS) throw new BadRequestException('Redis no usa SQL: usa el explorador de claves o la consola');
 }
 
 function describeHttpError(err: HttpException): string {

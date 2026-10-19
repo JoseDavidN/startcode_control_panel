@@ -1,5 +1,6 @@
 import { Client, types as pgTypes } from 'pg';
 import { createConnection, type Connection } from 'mysql2/promise';
+import Redis from 'ioredis';
 import type { ProbeTarget } from './database-probe.service';
 import { CONNECT_TIMEOUT_MS, QUERY_TIMEOUT_MS } from './explorer.common';
 
@@ -24,6 +25,37 @@ export function openMysql(t: ProbeTarget, database: string | null): Promise<Conn
     bigNumberStrings: true,
     multipleStatements: false,
   });
+}
+
+/**
+ * Redis conectado en la base indicada. Sin reintentos ni cola: si se cae, el
+ * comando falla en el momento y la siguiente llamada vuelve a conectar.
+ */
+export async function openRedis(t: ProbeTarget, db: number): Promise<Redis> {
+  const client = new Redis({
+    host: t.host,
+    port: t.port,
+    username: t.username || undefined,
+    password: t.password || undefined,
+    db,
+    lazyConnect: true,
+    connectTimeout: CONNECT_TIMEOUT_MS,
+    commandTimeout: QUERY_TIMEOUT_MS,
+    maxRetriesPerRequest: 0,
+    retryStrategy: () => null,
+    enableOfflineQueue: false,
+    /* Nombre visible en CLIENT LIST, para saber de dónde viene la conexión. */
+    connectionName: 'startcode-panel',
+  });
+  /* Sin este listener ioredis imprime cada fallo como "Unhandled error event". */
+  client.on('error', () => undefined);
+  try {
+    await client.connect();
+    return client;
+  } catch (err) {
+    client.disconnect();
+    throw err;
+  }
 }
 
 /* PostgreSQL: fechas, horas e intervalos como texto, tal cual los devuelve el

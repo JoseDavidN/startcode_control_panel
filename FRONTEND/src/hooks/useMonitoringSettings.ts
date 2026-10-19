@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
 import { DEFAULT_PREFERENCES } from '@typings/preferences.types';
 import type { MonitoringPrefs } from '@typings/preferences.types';
 

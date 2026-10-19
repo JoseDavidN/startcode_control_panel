@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, OnModuleDestroy } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 
@@ -30,10 +30,22 @@ export enum CachePrefix {
 }
 
 @Injectable()
-export class CacheService {
+export class CacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
 
-  constructor(@Inject(CACHE_MANAGER) private cacheManager: any) {}
+  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
+
+  /**
+   * Al apagar, cierra la conexión con Redis (si no, el proceso no termina
+   * limpio). A la fuerza: con Redis caído un QUIT no sale y el cliente
+   * seguiría reintentando conectar.
+   */
+  async onModuleDestroy(): Promise<void> {
+    for (const keyv of this.cacheManager.stores) {
+      const store = keyv.store as { disconnect?: (force?: boolean) => Promise<void> };
+      await store.disconnect?.(true).catch(() => undefined);
+    }
+  }
 
   /**
    * Genera una clave de caché estructurada
@@ -64,7 +76,7 @@ export class CacheService {
   ): Promise<T | null> {
     try {
       const key = this.buildKey(prefix, identifier, suffix);
-      const value = await this.cacheManager.get(key) as T;
+      const value = await this.cacheManager.get<T>(key);
 
       if (value) {
         this.logger.debug(`✅ Cache HIT: ${key}`);
@@ -74,7 +86,7 @@ export class CacheService {
 
       return value || null;
     } catch (error) {
-      this.logger.error(`Error obteniendo del caché: ${error.message}`);
+      this.logger.error(`Error obteniendo del caché: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }
@@ -99,7 +111,7 @@ export class CacheService {
       await this.cacheManager.set(key, value, ttl * 1000); // convertir a ms
       this.logger.debug(`💾 Cache SET: ${key} (TTL: ${ttl}s)`);
     } catch (error) {
-      this.logger.error(`Error guardando en caché: ${error.message}`);
+      this.logger.error(`Error guardando en caché: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -119,7 +131,7 @@ export class CacheService {
       await this.cacheManager.del(key);
       this.logger.debug(`🗑️  Cache DELETE: ${key}`);
     } catch (error) {
-      this.logger.error(`Error eliminando del caché: ${error.message}`);
+      this.logger.error(`Error eliminando del caché: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -128,11 +140,11 @@ export class CacheService {
    */
   async reset(): Promise<void> {
     try {
-      // @ts-ignore - reset method exists but not in types
-      await this.cacheManager.reset();
+      /* cache-manager v7 ya no tiene `reset()`: su equivalente es `clear()`. */
+      await this.cacheManager.clear();
       this.logger.log('🧹 Cache completamente limpiado');
     } catch (error) {
-      this.logger.error(`Error limpiando caché: ${error.message}`);
+      this.logger.error(`Error limpiando caché: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -184,7 +196,7 @@ export class CacheService {
 
       this.logger.log(`🗑️  Caché invalidado para servidor: ${serverId}`);
     } catch (error) {
-      this.logger.error(`Error invalidando caché del servidor: ${error.message}`);
+      this.logger.error(`Error invalidando caché del servidor: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

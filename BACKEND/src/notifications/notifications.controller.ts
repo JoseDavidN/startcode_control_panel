@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from '@auth/types/authenticated-request.type';
 import { NotificationsService } from './notifications.service';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
@@ -41,7 +42,7 @@ export class NotificationsController {
   })
   @ApiResponse({ status: 200, type: NotificationListResponseDto })
   findAll(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Query() query: QueryNotificationsDto,
   ): Promise<NotificationListResponseDto> {
     return this.notificationsService.findAll(req.user.id, query);
@@ -50,7 +51,7 @@ export class NotificationsController {
   @Get('unread-count')
   @ApiOperation({ summary: 'Número de notificaciones sin leer' })
   @ApiResponse({ status: 200, type: UnreadCountResponseDto })
-  async unreadCount(@Request() req): Promise<UnreadCountResponseDto> {
+  async unreadCount(@Request() req: AuthenticatedRequest): Promise<UnreadCountResponseDto> {
     return { unread: await this.notificationsService.unreadCount(req.user.id) };
   }
 
@@ -61,7 +62,7 @@ export class NotificationsController {
   })
   @ApiResponse({ status: 200, description: 'Número de filas marcadas' })
   async markRead(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Body() dto: MarkReadDto,
   ): Promise<{ updated: number }> {
     const updated = dto.all
@@ -75,7 +76,7 @@ export class NotificationsController {
   @ApiParam({ name: 'id', description: 'Id de la notificación' })
   @ApiResponse({ status: 200, description: 'Notificación borrada' })
   async remove(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<{ deleted: true }> {
     await this.notificationsService.remove(req.user.id, id);
@@ -85,7 +86,7 @@ export class NotificationsController {
   @Delete()
   @ApiOperation({ summary: 'Vaciar el historial del usuario' })
   @ApiResponse({ status: 200, description: 'Número de filas borradas' })
-  async clearAll(@Request() req): Promise<{ deleted: number }> {
+  async clearAll(@Request() req: AuthenticatedRequest): Promise<{ deleted: number }> {
     return { deleted: await this.notificationsService.clearAll(req.user.id) };
   }
 }

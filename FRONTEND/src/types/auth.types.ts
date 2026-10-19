@@ -73,6 +73,53 @@ export interface AuthResponse {
 	rememberMe?: boolean; // Sesión emitida con "Mantener sesión iniciada"
 }
 
+/**
+ * Usuario tal cual llega del backend, antes de `normalizeUser`: ya normalizado
+ * ({ email, role, isActive }) o como entidad ({ str_email, enu_role, bol_is_active }).
+ */
+export interface RawBackendUser {
+	id: string;
+	name?: string;
+	firstname?: string;
+	lastname?: string;
+	str_firstname?: string;
+	str_lastname?: string;
+	email?: string;
+	str_email?: string;
+	role?: UserRole;
+	enu_role?: UserRole;
+	roles?: UserRole[];
+	isActive?: boolean;
+	bol_is_active?: boolean;
+	twoFactorEnabled?: boolean;
+	bol_two_factor_enabled?: boolean;
+	backupCodesRemaining?: number;
+	lastLogin?: Date | string | null;
+	passwordChangedAt?: Date | string | null;
+	createdAt?: Date;
+	preferences?: UserPreferences | null;
+	permissions?: Permission[];
+}
+
+/**
+ * Cuerpo de login, verificación 2FA y cambio de contraseña caducada antes de
+ * normalizar: trae sesión ({ user, token, refreshToken }) o la pide pendiente
+ * ({ requiresTwoFactor | requiresPasswordChange, tempToken }).
+ */
+export interface RawAuthPayload {
+	user?: RawBackendUser;
+	token?: string;
+	refreshToken?: string;
+	tokens?: Partial<AuthTokens>;
+	expiresIn?: string;
+	rememberMe?: boolean;
+	requiresTwoFactor?: boolean;
+	requiresPasswordChange?: boolean;
+	tempToken?: string;
+	/** Solo tras el 2FA con «recordar este dispositivo». */
+	trustedDeviceToken?: unknown;
+}
+
 export interface TwoFactorPendingResponse {
 	requiresTwoFactor: true;
 	tempToken: string;

@@ -20,10 +20,9 @@ export class SSHService {
   /**
    * Conectar a un servidor SSH
    * @param server - El servidor a conectar
-   * @param forceNew - Si se debe forzar una nueva conexión
    * @returns La conexión SSH
    */
-  async connect(server: Server, forceNew: boolean = false): Promise<Client> {
+  async connect(server: Server): Promise<Client> {
     return new Promise((resolve, reject) => {
       try {
         // SIEMPRE crear nueva conexión para evitar problemas de canales
@@ -33,7 +32,7 @@ export class SSHService {
           if (oldConn) {
             try {
               oldConn.end();
-            } catch (e) {
+            } catch {
               // Ignorar errores al cerrar
             }
           }
@@ -82,8 +81,8 @@ export class SSHService {
         // Intentar conectar
         conn.connect(this.connectOptions(server));
       } catch (error) {
-        this.logger.error(`Error al preparar conexión: ${error.message}`);
-        reject(error);
+        this.logger.error(`Error al preparar conexión: ${error instanceof Error ? error.message : String(error)}`);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -121,17 +120,18 @@ export class SSHService {
    * @param serverId - El ID del servidor a desconectar
    * @returns void
    */
-  async disconnect(serverId: string): Promise<void> {
+  disconnect(serverId: string): Promise<void> {
     const conn = this.connections.get(serverId);
     if (conn) {
       try {
         conn.end();
         this.logger.debug(`🔌 Desconectando del servidor ${serverId}`);
       } catch (error) {
-        this.logger.warn(`Error al desconectar ${serverId}: ${error.message}`);
+        this.logger.warn(`Error al desconectar ${serverId}: ${error instanceof Error ? error.message : String(error)}`);
       }
       this.connections.delete(serverId);
     }
+    return Promise.resolve();
   }
 
   /**
@@ -293,10 +293,11 @@ export class SSHService {
         // Pequeño delay entre comandos para evitar saturar el canal
         await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (error) {
-        this.logger.error(`Error en comando "${command}": ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Error en comando "${command}": ${message}`);
         results.push({
           stdout: '',
-          stderr: error.message,
+          stderr: message,
           code: 1,
         });
 
@@ -319,7 +320,7 @@ export class SSHService {
       const result = await this.executeCommand(server, 'echo "test"');
       return result.code === 0 && result.stdout === 'test';
     } catch (error) {
-      this.logger.error(`Test de conexión falló: ${error.message}`);
+      this.logger.error(`Test de conexión falló: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }

@@ -56,12 +56,14 @@ const walk = dir => readdirSync(dir).flatMap(name => {
 });
 
 /* El nombre de cada artefacto dice la plataforma (ver matrix.artifact en el
-   workflow): startcode-panel-<target>-<arch>. */
+   workflow): startcode-panel-<target>-<arch>. `archs`: carpetas del
+   actualizador que sirve. El de macOS es universal (Intel y Apple Silicon en
+   el mismo .app): el actualizador pide darwin/<arch real del Mac>, así que el
+   mismo paquete se publica en las dos. */
 const PLATFORM_BY_ARTIFACT = {
-  'startcode-panel-linux-x86_64': { target: 'linux', arch: 'x86_64', updater: /\.AppImage$/ },
-  'startcode-panel-windows-x86_64': { target: 'windows', arch: 'x86_64', updater: /-setup\.exe$/ },
-  'startcode-panel-darwin-aarch64': { target: 'darwin', arch: 'aarch64', updater: /\.app\.tar\.gz$/ },
-  'startcode-panel-darwin-x86_64': { target: 'darwin', arch: 'x86_64', updater: /\.app\.tar\.gz$/ },
+  'startcode-panel-linux-x86_64': { target: 'linux', arch: 'x86_64', archs: ['x86_64'], updater: /\.AppImage$/ },
+  'startcode-panel-windows-x86_64': { target: 'windows', arch: 'x86_64', archs: ['x86_64'], updater: /-setup\.exe$/ },
+  'startcode-panel-darwin-universal': { target: 'darwin', arch: 'universal', archs: ['aarch64', 'x86_64'], updater: /\.app\.tar\.gz$/ },
 };
 
 const site = join(outDir, 'startcode-panel');
@@ -69,8 +71,8 @@ rmSync(site, { recursive: true, force: true });
 const filesDir = join(site, 'files', version);
 mkdirSync(filesDir, { recursive: true });
 
-/* Sin espacios en las URLs, y el .app.tar.gz de macOS no lleva arquitectura
-   en el nombre: se le añade para que las dos no choquen. */
+/* Sin espacios en las URLs, y el .app.tar.gz de macOS no lleva versión ni
+   arquitectura en el nombre: se le añaden. */
 const publishedName = (file, platform) => {
   let name = basename(file).replace(/\s+/g, '_');
   if (/\.app\.tar\.gz(\.sig)?$/.test(name)) {
@@ -102,10 +104,12 @@ for (const artifact of readdirSync(artifactsDir)) {
     url: `${BASE_URL}/files/${version}/${encodeURIComponent(publishedName(bundle, platform))}`,
     signature: readFileSync(signature, 'utf8').trim(),
   };
-  const dir = join(site, platform.target, platform.arch);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  found.push(`${platform.target}/${platform.arch}`);
+  for (const arch of platform.archs) {
+    const dir = join(site, platform.target, arch);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    found.push(`${platform.target}/${arch}`);
+  }
 }
 
 if (!found.length) fail(`No se encontró ningún artefacto en ${artifactsDir}.`);

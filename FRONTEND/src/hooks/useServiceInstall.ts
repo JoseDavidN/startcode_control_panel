@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRealtimeSocket } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeSocket } from '@hooks/useRealtimeMetrics';
 import { serviceInstallService, type InstallMode, type InstallStep } from '@services/service-install.service';
 
 /**

@@ -1,6 +1,7 @@
 import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
 import type {
+	RawAuthPayload,
 	TwoFactorEnabledResponse,
 	TwoFactorSetupResponse,
 } from '@typings/auth.types';
@@ -46,8 +47,8 @@ class TwoFactorService {
 	async verifyLogin(
 		tempToken: string,
 		payload: { code?: string; backupCode?: string },
-	): Promise<any> {
-		const response = await apiService.post<any>(
+	): Promise<RawAuthPayload> {
+		const response = await apiService.post<RawAuthPayload>(
 			API_CONFIG.ENDPOINTS.TWO_FACTOR_VERIFY_LOGIN,
 			{ tempToken, ...payload },
 		);

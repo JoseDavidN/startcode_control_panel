@@ -87,7 +87,7 @@ export class Server {
   favoritedAt: Date | null;
 
   @Column({ type: 'text', nullable: true, name: 'str_description' })
-  description: string;
+  description: string | null;
 
   @Column({ type: 'jsonb', nullable: true, name: 'json_metadata' })
   metadata: {
@@ -99,7 +99,7 @@ export class Server {
     agent?: ServerAgentMetadata;
     /** Unidades systemd que el usuario quiere ver primero en este servidor. */
     pinnedServices?: string[];
-  };
+  } | null;
 
   /* `timestamptz`: la columna guarda un instante, y el driver lo convierte en
      los dos sentidos. Con `timestamp` a secas se escribía la hora UTC como si
@@ -107,16 +107,16 @@ export class Server {
      inactividad comparaba fechas con horas de diferencia y nunca marcaba nada
      como offline. */
   @Column({ type: 'timestamptz', nullable: true, name: 'dat_last_seen' })
-  lastSeen: Date;
+  lastSeen: Date | null;
 
   @Column({ type: 'text', nullable: true, name: 'str_hostname' })
-  hostname: string;
+  hostname: string | null;
 
   @Column({ type: 'text', nullable: true, name: 'str_os_version' })
-  osVersion: string;
+  osVersion: string | null;
 
   @Column({ type: 'text', nullable: true, name: 'str_kernel_version' })
-  kernelVersion: string;
+  kernelVersion: string | null;
 
   @ManyToOne(() => User, (user) => user.servers, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'str_owner_id' })
@@ -132,5 +132,5 @@ export class Server {
   updatedAt: Date;
 
   @Column({ type: 'timestamptz', nullable: true })
-  lastCheckAt: Date;
+  lastCheckAt: Date | null;
 }

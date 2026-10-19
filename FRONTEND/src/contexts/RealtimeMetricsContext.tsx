@@ -1,103 +1,21 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TokenManager } from '@utils/tokenManager';
 import { apiService } from '@services/api.service';
 import { useAuth } from '@hooks/useAuth';
-
-// Tipos para las métricas en tiempo real
-export interface ServerMetrics {
-  cpu: number;
-  memory: number;
-  disk: number;
-  uptime: number;
-}
-
-export interface ProcessInfo {
-  total: number;
-  running: number;
-  sleeping: number;
-  stopped: number;
-  zombie: number;
-  list?: any[];
-  topList?: any[];
-}
-
-export interface ServiceInfo {
-  name: string;
-  /** Igual que en el agente: active | inactive | failed | unknown */
-  state: string;
-  pid?: number;
-  uptime?: number;
-  memory?: number;
-  cpu?: number;
-}
-
-export interface WebsiteInfo {
-  domain: string;
-  port: number;
-  ssl: boolean;
-  configPath?: string;
-  certExpiry?: number;
-}
-
-export interface DatabaseInfo {
-  type: string;
-  version: string;
-  databases: string[];
-  size: number;
-  running: boolean;
-}
-
-export interface RealtimeServerData {
-  metrics?: ServerMetrics;
-  status: 'online' | 'offline' | 'unknown';
-  timestamp?: Date;
-  serverName?: string;
-  servicesCount?: number;
-  processesCount?: number;
-  processes?: ProcessInfo;
-  services?: ServiceInfo[];
-  websites?: WebsiteInfo[];
-  databases?: DatabaseInfo[];
-  connected?: boolean;
-}
-
-export interface RealtimeData {
-  [serverId: string]: RealtimeServerData;
-}
-
-/**
- * Los datos viven fuera del estado de React: con `useState` cada evento del
- * socket re-renderizaba a todos los consumidores, aunque fuese de otro
- * servidor. Con un store externo cada uno se suscribe a lo que lee
- * (`useServerMetrics` solo a su servidor) vía `useSyncExternalStore`.
- */
-class RealtimeStore {
-  private data: RealtimeData = {};
-  private listeners = new Set<() => void>();
-
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
-  };
-
-  get = (): RealtimeData => this.data;
-
-  update(fn: (prev: RealtimeData) => RealtimeData): void {
-    this.data = fn(this.data);
-    this.listeners.forEach(listener => listener());
-  }
-}
-
-// Contexto: solo cambia al conectar/desconectar, no con cada evento.
-interface RealtimeMetricsContextType {
-  store: RealtimeStore;
-  connected: boolean;
-  socket: Socket | null;
-}
-
-const RealtimeMetricsContext = createContext<RealtimeMetricsContextType | undefined>(undefined);
+import {
+  RealtimeMetricsContext,
+  RealtimeStore,
+  type AgentConnectedPayload,
+  type AgentDisconnectedPayload,
+  type DatabasesUpdatedPayload,
+  type MetricsRealtimePayload,
+  type ProcessesUpdatedPayload,
+  type RealtimeData,
+  type ServicesUpdatedPayload,
+  type WebsitesUpdatedPayload,
+} from '@contexts/realtime-metrics-context';
 
 // Provider
 interface RealtimeMetricsProviderProps {
@@ -180,7 +98,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     // Eventos de datos del agente
 
     // 1. Métricas en tiempo real
-    newSocket.on('server:metrics:realtime', (payload: any) => {
+    newSocket.on('server:metrics:realtime', (payload: MetricsRealtimePayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -197,7 +115,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 2. Agente conectado
-    newSocket.on('agent:connected', (payload: { serverId: string; serverName: string }) => {
+    newSocket.on('agent:connected', (payload: AgentConnectedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -209,7 +127,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 3. Agente desconectado
-    newSocket.on('agent:disconnected', (payload: { serverId: string }) => {
+    newSocket.on('agent:disconnected', (payload: AgentDisconnectedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -220,7 +138,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 5. Servicios actualizados
-    newSocket.on('server:services:updated', (payload: any) => {
+    newSocket.on('server:services:updated', (payload: ServicesUpdatedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -232,7 +150,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 6. Procesos actualizados
-    newSocket.on('server:processes:updated', (payload: any) => {
+    newSocket.on('server:processes:updated', (payload: ProcessesUpdatedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -244,7 +162,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 7. Sitios web actualizados
-    newSocket.on('server:websites:updated', (payload: any) => {
+    newSocket.on('server:websites:updated', (payload: WebsitesUpdatedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -255,7 +173,7 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
     });
 
     // 8. Bases de datos actualizadas
-    newSocket.on('server:databases:updated', (payload: any) => {
+    newSocket.on('server:databases:updated', (payload: DatabasesUpdatedPayload) => {
       setData((prev) => ({
         ...prev,
         [payload.serverId]: {
@@ -283,47 +201,4 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
       {children}
     </RealtimeMetricsContext.Provider>
   );
-};
-
-const useRealtimeContext = () => {
-  const context = useContext(RealtimeMetricsContext);
-  if (context === undefined) {
-    throw new Error('useRealtimeMetrics debe usarse dentro de RealtimeMetricsProvider');
-  }
-  return context;
-};
-
-/** Solo el socket y su estado: no re-renderiza con los eventos de datos. */
-export const useRealtimeSocket = () => {
-  const { socket, connected } = useRealtimeContext();
-  return { socket, connected };
-};
-
-/** Todos los servidores: re-renderiza con cualquier evento. */
-export const useRealtimeMetrics = () => {
-  const { store, socket, connected } = useRealtimeContext();
-  const data = useSyncExternalStore(store.subscribe, store.get);
-  return useMemo(() => ({ data, socket, connected }), [data, socket, connected]);
-};
-
-const EMPTY: never[] = [];
-
-/** Un servidor: solo re-renderiza con los eventos de ese servidor. */
-export const useServerMetrics = (serverId: string) => {
-  const { store, connected } = useRealtimeContext();
-  const entry = useSyncExternalStore(store.subscribe, () => store.get()[serverId]);
-
-  return useMemo(() => ({
-    metrics: entry?.metrics,
-    status: entry?.status || 'unknown',
-    timestamp: entry?.timestamp,
-    serverName: entry?.serverName,
-    servicesCount: entry?.servicesCount,
-    processesCount: entry?.processesCount,
-    processes: entry?.processes,
-    services: entry?.services,
-    websites: entry?.websites || EMPTY,
-    databases: entry?.databases || EMPTY,
-    connected: connected && entry?.status === 'online',
-  }), [entry, connected]);
 };

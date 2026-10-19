@@ -6,6 +6,7 @@ import { AgentMetrics } from '../entities/agent-metrics.entity';
 import { AgentMetricsHistory } from '../entities/agent-metrics-history.entity';
 import { Server, ServerStatus, ServerOs } from '@servers/entities/server.entity';
 import { AgentGateway } from '../gateways/agent.gateway';
+import type { FilesystemPayload } from '@monitoring/dto/agent-payload';
 
 const mockServer: Partial<Server> = {
   id: 'server-uuid-1',
@@ -22,7 +23,7 @@ const mockMetrics: Partial<AgentMetrics> = {
   timestamp: new Date('2024-06-01T12:00:00Z'),
   cpu_usage: 45.5,
   memory_usage_percent: 72.3,
-  disk_filesystems: [{ mount: '/', usagePercent: 60 }] as any,
+  disk_filesystems: [{ mount: '/', usagePercent: 60 }] as FilesystemPayload[],
   system_hostname: 'prod-server-01',
   system_platform: 'linux',
   system_distro: 'Ubuntu 22.04',
@@ -30,7 +31,7 @@ const mockMetrics: Partial<AgentMetrics> = {
   system_uptime: 86400,
   system_boot_time: new Date('2024-05-31T12:00:00Z'),
   network_public_ip: '203.0.113.1',
-  network_private_ips: ['192.168.1.100'] as any,
+  network_private_ips: ['192.168.1.100'],
   agent_version: '1.0.0',
 };
 
@@ -168,6 +169,8 @@ describe('AgentDataService', () => {
           cpu: [],
           memory: [],
           disk: [],
+          loadAverage: [],
+          connections: [],
           startTime: new Date(),
           endTime: new Date(),
         });

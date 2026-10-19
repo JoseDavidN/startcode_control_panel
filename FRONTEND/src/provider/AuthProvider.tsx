@@ -42,12 +42,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
           pendingEmailRef.current = credentials.email;
-          return result as TwoFactorPendingResponse;
+          return result;
         }
 
         /* La contraseña caducó: el backend no emite sesión hasta cambiarla. */
         if ('requiresPasswordChange' in result && result.requiresPasswordChange) {
-          return result as PasswordChangeRequiredResponse;
+          return result;
         }
 
         /* La respuesta del login ya trae el usuario: sembrarlo deja la sesión

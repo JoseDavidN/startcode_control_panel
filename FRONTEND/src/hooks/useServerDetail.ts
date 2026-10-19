@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@services/api.service';
-import { useServerMetrics } from '@contexts/RealtimeMetricsContext';
+import { useServerMetrics } from '@hooks/useRealtimeMetrics';
 import { formatUptime } from '@utils/time';
 
 /**
@@ -156,6 +156,83 @@ export interface ServerDetailMetrics {
   status: string;           // Estado del servidor (online, offline, etc.)
 }
 
+/* Muestra cruda del agente tal y como la guarda el backend. Todo es opcional:
+   el contrato no se valida en el servidor, así que aquí se normaliza. */
+type NumLike = number | string;
+
+interface RawAgentInterface {
+  iface?: string;
+  ip4?: string;
+  ip6?: string;
+  mac?: string;
+  operstate?: string;
+  rx_bytes?: NumLike;
+  tx_bytes?: NumLike;
+}
+
+interface RawAgentFilesystem {
+  fs?: unknown;
+  mount?: string;
+  size?: NumLike;
+  used?: NumLike;
+  available?: NumLike;
+  usagePercent?: NumLike;
+}
+
+interface RawAgentMetrics {
+  serverId?: string;
+  serverName?: string;
+  timestamp?: string;
+  cpu?: {
+    usage?: NumLike;
+    cores?: NumLike;
+    physicalCores?: NumLike;
+    brand?: string;
+    manufacturer?: string;
+    usagePerCore?: number[];
+    loadAverage?: { current: number; avg5: number; avg15: number };
+  };
+  memory?: { total?: NumLike; used?: NumLike; free?: NumLike; usagePercent?: NumLike };
+  disk?: { filesystems?: RawAgentFilesystem[] };
+  network?: {
+    interfaces?: (RawAgentInterface | null)[];
+    publicIP?: string;
+    privateIPs?: string[];
+  };
+  system?: {
+    distro?: string;
+    platform?: string;
+    kernel?: string;
+    hostname?: string;
+    arch?: string;
+    uptime?: NumLike;
+  };
+  processes?: {
+    running?: number;
+    sleeping?: number;
+    stopped?: number;
+    zombie?: number;
+    total?: number;
+    topList?: Partial<TopProcess>[];
+  };
+  /* Los inventarios sí tienen forma conocida. */
+  services?: {
+    count?: number;
+    active?: number;
+    failed?: number;
+    list?: SystemdServiceInfo[];
+    pinned?: string[];
+  };
+  websites?: { count?: number; list?: WebsiteInfo[] };
+  databases?: { count?: number; list?: DatabaseInfo[] };
+}
+
+/** Desenvuelve un nivel `{ data }` si lo hay (comprobación por veracidad). */
+function unwrapData(value: unknown): unknown {
+  const inner = (value as { data?: unknown } | null | undefined)?.data;
+  return value && inner ? inner : value;
+}
+
 /**
  * Hook para obtener métricas detalladas de un servidor específico
  * Hace polling automático para mantener los datos actualizados
@@ -203,7 +280,7 @@ export function useServerDetail(
     queryFn: async () => {
       try {
         // Llamada al endpoint de métricas del agente (nuevo sistema sin SSH)
-        const response = await apiService.get<ServerDetailMetrics>(
+        const response = await apiService.get<unknown>(
           `/agent-data/servers/${serverId}/latest`,
           {
             // Timeout de 10 segundos
@@ -212,32 +289,21 @@ export function useServerDetail(
         );
 
         // Manejar respuesta del backend
-        const payload: any = response && response.data ? response.data : response;
-        const rawData: any = payload && payload.data ? payload.data : payload;
+        const payload = unwrapData(response);
+        const unwrapped = unwrapData(payload);
 
         // Validar que tenemos datos válidos
-        if (!rawData || typeof rawData !== 'object') {
+        if (!unwrapped || typeof unwrapped !== 'object') {
           throw new Error('Respuesta inválida del servidor');
         }
 
-        /* Los inventarios sí tienen forma conocida: se acotan una vez aquí en
-           lugar de hacer accesos sueltos sobre el `any` del payload. */
-        const inventory = rawData as {
-          services?: {
-            count?: number;
-            active?: number;
-            failed?: number;
-            list?: SystemdServiceInfo[];
-            pinned?: string[];
-          };
-          websites?: { count?: number; list?: WebsiteInfo[] };
-          databases?: { count?: number; list?: DatabaseInfo[] };
-        };
+        const rawData = unwrapped as RawAgentMetrics;
+        const inventory = rawData;
 
         /* Interfaces de red: el agente las manda en snake_case, que es el único
            punto donde el contrato cruza la frontera de estilo del frontend. */
         const interfaces: NetworkInterfaceInfo[] = Array.isArray(rawData.network?.interfaces)
-          ? rawData.network.interfaces.map((i: any) => ({
+          ? rawData.network.interfaces.map((i) => ({
               iface: i?.iface ?? '',
               ip4: i?.ip4 ?? '',
               ip6: i?.ip6 ?? '',
@@ -284,7 +350,7 @@ export function useServerDetail(
           },
 
           disk: Array.isArray(rawData.disk?.filesystems) && rawData.disk.filesystems.length > 0
-            ? rawData.disk.filesystems.map((fs: any) => {
+            ? rawData.disk.filesystems.map((fs) => {
                 // Los valores vienen en bytes desde el agente (size, used, available)
                 // Convertir bytes a GB: dividir entre (1024 * 1024 * 1024)
                 const bytesToGB = (bytes: number) => bytes / (1024 * 1024 * 1024);
@@ -340,7 +406,7 @@ export function useServerDetail(
             zombie: rawData.processes?.zombie || 0,
             total: rawData.processes?.total || 0,
             topList: Array.isArray(rawData.processes?.topList)
-              ? (rawData.processes.topList as Partial<TopProcess>[]).map(p => ({
+              ? rawData.processes.topList.map(p => ({
                   pid: Number(p.pid) || 0,
                   name: String(p.name ?? ''),
                   cpu: Number(p.cpu) || 0,
@@ -372,13 +438,14 @@ export function useServerDetail(
         };
 
         return transformedData;
-      } catch (error: any) {
+      } catch (error) {
         // Log detallado del error para debugging
+        const err = error as { message?: string; response?: { data?: unknown; status?: number } };
         console.error('Error al obtener métricas detalladas del servidor:', {
           serverId,
-          error: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
+          error: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
         });
 
         // Re-lanzar el error para que React Query lo maneje

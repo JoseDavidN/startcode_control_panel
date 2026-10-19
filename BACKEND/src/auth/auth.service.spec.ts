@@ -3,7 +3,9 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
+import { AuthResponseDto } from '@auth/dto/auth-response.dto';
 
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
@@ -11,6 +13,7 @@ jest.mock('bcryptjs', () => ({
 }));
 import * as bcrypt from 'bcryptjs';
 import { User, UserRole } from './entities/user.entity';
+import { Session } from '@auth/entities/session.entity';
 
 const mockUser: User = {
   id: 'user-uuid-1',
@@ -20,14 +23,32 @@ const mockUser: User = {
   password: '$2b$12$hashed_password',
   role: UserRole.USER,
   isActive: true,
+  twoFactorEnabled: false,
+  twoFactorSecret: null,
+  twoFactorLastStep: null,
+  twoFactorBackupCodes: null,
+  backupCodesGeneratedAt: null,
+  failedLoginAttempts: 0,
+  lockedUntil: null,
+  preferences: null,
   servers: [],
+  lastLogin: new Date('2024-01-01'),
+  /* Reciente: con la caducidad por defecto (90 días) el login pediría cambiarla. */
+  passwordChangedAt: new Date(),
   createdAt: new Date('2024-01-01'),
   updatedAt: new Date('2024-01-01'),
 };
 
+/** El login y el registro emiten tokens de sesión: cualquier otra respuesta es un fallo. */
+function asSession(result: object): AuthResponseDto {
+  if (!('token' in result)) throw new Error('Se esperaba una sesión emitida');
+  return result as AuthResponseDto;
+}
+
 describe('AuthService', () => {
   let service: AuthService;
   let usersRepo: Record<string, jest.Mock>;
+  let sessionsRepo: Record<string, jest.Mock>;
   let jwtService: { sign: jest.Mock; verify: jest.Mock };
 
   beforeEach(async () => {
@@ -35,6 +56,15 @@ describe('AuthService', () => {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
+      update: jest.fn(),
+    };
+
+    sessionsRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      create: jest.fn((data: Partial<Session>) => data),
+      save: jest.fn((data: Partial<Session>) => Promise.resolve({ ...data, id: 'session-uuid-1' })),
+      update: jest.fn(),
     };
 
     jwtService = {
@@ -46,6 +76,7 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: usersRepo },
+        { provide: getRepositoryToken(Session), useValue: sessionsRepo },
         { provide: JwtService, useValue: jwtService },
         {
           provide: ConfigService,
@@ -71,10 +102,12 @@ describe('AuthService', () => {
       usersRepo.findOne.mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
-      const result = await service.login({
-        email: mockUser.email,
-        password: 'correct_password',
-      });
+      const result = asSession(
+        await service.login({
+          email: mockUser.email,
+          password: 'correct_password',
+        }),
+      );
 
       expect(result.token).toBe('signed.jwt.token');
       expect(result.user.email).toBe(mockUser.email);
@@ -167,8 +200,16 @@ describe('AuthService', () => {
     });
 
     it('retorna nuevos tokens con refresh token válido', async () => {
-      jwtService.verify.mockReturnValue({ sub: mockUser.id });
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'refresh', sid: 'session-uuid-1' });
       usersRepo.findOne.mockResolvedValue(mockUser);
+      sessionsRepo.findOne.mockResolvedValue({
+        id: 'session-uuid-1',
+        userId: mockUser.id,
+        revoked: false,
+        persistent: false,
+        expiresAt: new Date(Date.now() + 60_000),
+        refreshHash: createHash('sha256').update('valid.refresh.token').digest('hex'),
+      });
 
       const result = await service.refreshToken('valid.refresh.token');
 

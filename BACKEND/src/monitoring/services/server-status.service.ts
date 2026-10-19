@@ -2,7 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { Server, ServerStatus } from '@servers/entities/server.entity';
 import { NotificationsService } from '@/notifications/notifications.service';
 
@@ -81,7 +81,7 @@ export class ServerStatusService {
           });
 
           this.logger.log(
-            `🔴 Servidor marcado como OFFLINE por inactividad: ${server.name} (última actividad: ${server.lastSeen})`,
+            `🔴 Servidor marcado como OFFLINE por inactividad: ${server.name} (última actividad: ${String(server.lastSeen)})`,
           );
 
           /* Se reutiliza el evento que el panel ya escucha, en vez de inventar
@@ -98,7 +98,7 @@ export class ServerStatusService {
             )
             .catch((err) =>
               this.logger.error(
-                `Error notificando inactividad de ${server.name}: ${err.message}`,
+                `Error notificando inactividad de ${server.name}: ${err instanceof Error ? err.message : String(err)}`,
               ),
             );
         }
@@ -107,8 +107,8 @@ export class ServerStatusService {
       }
     } catch (error) {
       this.logger.error(
-        `❌ Error verificando estado de servidores: ${error.message}`,
-        error.stack,
+        `❌ Error verificando estado de servidores: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
       );
     }
   }

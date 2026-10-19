@@ -1,7 +1,7 @@
 // src/monitoring/services/agent-data.service.ts
 import { Inject, Injectable, NotFoundException, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AgentMetrics } from '../entities/agent-metrics.entity';
 import { AgentMetricsHistory } from '../entities/agent-metrics-history.entity';
 import { Server } from '@servers/entities/server.entity';
@@ -99,11 +99,12 @@ export class AgentDataService {
    */
   static rootDiskUsage(filesystems: unknown): number {
     if (!Array.isArray(filesystems)) return 0;
-    const root =
-      filesystems.find(
-        (f: any) => f?.mount === '/' || f?.mountPoint === '/',
-      ) ?? filesystems[0];
-    return Number((root as any)?.usagePercent) || 0;
+    /* jsonb sin validar: cada entrada puede venir incompleta o nula. */
+    const list = filesystems as Array<
+      { mount?: unknown; mountPoint?: unknown; usagePercent?: unknown } | null | undefined
+    >;
+    const root = list.find((f) => f?.mount === '/' || f?.mountPoint === '/') ?? list[0];
+    return Number(root?.usagePercent) || 0;
   }
 
   async getDashboardSummary(serverId: string): Promise<ServerSummaryDto | null> {
@@ -214,8 +215,8 @@ export class AgentDataService {
       }>();
 
     const servers = await this.metricsRepository.manager
-      .getRepository('tbl_servers')
-      .count({ where: { ownerId: userId } as any });
+      .getRepository(Server)
+      .count({ where: { ownerId: userId } });
 
     const round = (v: string | null | undefined) =>
       v === null || v === undefined ? 0 : Math.round(Number(v) * 10) / 10;
@@ -286,7 +287,7 @@ export class AgentDataService {
   }
 
   /** `Number(null)` es 0, que es justo el bug que se está arreglando. */
-  private static numberOrNull(value: unknown): number | null {
+  private static numberOrNull(this: void, value: unknown): number | null {
     if (value === null || value === undefined) return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.round(parsed * 10) / 10 : null;
@@ -340,7 +341,7 @@ export class AgentDataService {
       uptime: Number(latestMetrics.system_uptime) || 0,
       bootTime: latestMetrics.system_boot_time || new Date(),
       publicIP: latestMetrics.network_public_ip || '',
-      privateIPs: (latestMetrics.network_private_ips as string[]) || [],
+      privateIPs: latestMetrics.network_private_ips || [],
     };
   }
 
@@ -411,7 +412,7 @@ export class AgentDataService {
       select: ['server_id', 'services_list'],
     });
     const list: ServicePayload[] = Array.isArray(metrics?.services_list)
-      ? (metrics.services_list as ServicePayload[])
+      ? metrics.services_list
       : [];
 
     const touched = [...present.map((s) => s.name), ...absent];
@@ -451,7 +452,7 @@ export class AgentDataService {
     });
 
     const list: ServicePayload[] = Array.isArray(metrics?.services_list)
-      ? (metrics.services_list as ServicePayload[])
+      ? metrics.services_list
       : [];
     if (list.length === 0) return null;
 

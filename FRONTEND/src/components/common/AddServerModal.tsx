@@ -9,6 +9,7 @@ import { ConnectionLoading } from './ConectionLoading';
 import type { ConnectionStatus } from './ConectionLoading';
 import { INSTALL_ACTIVITIES, resolveActivities } from '@lib/agentSteps';
 import type { AgentInstallError } from '@typings/agent.types';
+import type { RequestFailure } from '@typings/api.types';
 import { copyText } from '@lib/clipboard';
 
 interface AddServerModalProps {
@@ -94,9 +95,10 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
         const created = await createMutation.mutateAsync(serverData);
         serverId = created.id;
         setCreatedId(created.id);
-      } catch (err: any) {
+      } catch (error) {
         setConnecting(false);
         setConnStatus('running');
+        const err = error as RequestFailure;
         const msg = err.response?.data?.message || err.message || 'Error al agregar el servidor';
         if (msg.includes('authentication methods failed') || msg.includes('clave SSH'))
           setError('Error de autenticación SSH. Verifica que la clave privada sea correcta.');
@@ -126,7 +128,8 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
         setConnStatus('error');
         setInstallError(result.error ?? { code: 'UNKNOWN', message: 'No se pudo instalar el agente' });
       }
-    } catch (err: any) {
+    } catch (error) {
+      const err = error as RequestFailure;
       setConnStatus('error');
       setInstallError({
         code: 'UNKNOWN',
@@ -233,7 +236,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
           )}
         </div>
       ) : (
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
         {/* Error */}
         {error && (
           <div ref={errorRef} className="glass-soft rounded-xl p-4 border border-rose-400/20 flex items-start gap-3">

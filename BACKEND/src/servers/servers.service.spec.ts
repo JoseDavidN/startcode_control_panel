@@ -18,7 +18,17 @@ const mockUser: User = {
   password: 'hashed',
   role: UserRole.USER,
   isActive: true,
+  twoFactorEnabled: false,
+  twoFactorSecret: null,
+  twoFactorLastStep: null,
+  twoFactorBackupCodes: null,
+  backupCodesGeneratedAt: null,
+  failedLoginAttempts: 0,
+  lockedUntil: null,
+  preferences: null,
   servers: [],
+  lastLogin: new Date('2024-01-01'),
+  passwordChangedAt: new Date('2024-01-01'),
   createdAt: new Date('2024-01-01'),
   updatedAt: new Date('2024-01-01'),
 };
@@ -32,6 +42,8 @@ const mockServer: Server = {
   privateKey: '---BEGIN RSA PRIVATE KEY---',
   status: ServerStatus.OFFLINE,
   os: ServerOs.UBUNTU,
+  tag: null,
+  favoritedAt: null,
   description: null,
   metadata: null,
   lastSeen: null,
@@ -192,7 +204,7 @@ describe('ServersService', () => {
       serversRepo.findOne.mockResolvedValue({ ...mockServer, favoritedAt: null });
       serversRepo.count.mockResolvedValue(2);
       const res = await service.setFavorite(mockServer.id, true, mockUser);
-      expect(serversRepo.update).toHaveBeenCalledWith({ id: mockServer.id }, { favoritedAt: expect.any(Date) });
+      expect(serversRepo.update).toHaveBeenCalledWith({ id: mockServer.id }, { favoritedAt: expect.any(Date) as Date });
       expect(res.favoritedAt).toBeInstanceOf(Date);
     });
 

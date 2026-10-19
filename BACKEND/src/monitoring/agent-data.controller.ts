@@ -183,7 +183,7 @@ export class AgentDataController {
   @ApiResponse({ status: 404, description: 'Servidor no encontrado o sin métricas' })
   async getServerSummary(
     @Param('id') serverId: string,
-    @Request() req,
+    @Request() req: AuthedRequest,
   ): Promise<ServerSummaryDto> {
     await this.verifyServerAccess(serverId, req.user.id);
 
@@ -216,7 +216,7 @@ export class AgentDataController {
   async getHistoricalMetrics(
     @Param('id') serverId: string,
     @Query('hours', new ParseIntPipe({ optional: true })) hours: number = 24,
-    @Request() req,
+    @Request() req: AuthedRequest,
   ): Promise<HistoricalMetricsDto> {
     // Verificar acceso
     await this.verifyServerAccess(serverId, req.user.id);
@@ -237,7 +237,7 @@ export class AgentDataController {
   })
   async getSystemInfo(
     @Param('id') serverId: string,
-    @Request() req,
+    @Request() req: AuthedRequest,
   ): Promise<SystemInfoResponseDto> {
     // Verificar acceso
     await this.verifyServerAccess(serverId, req.user.id);
@@ -264,7 +264,7 @@ export class AgentDataController {
   })
   async getAgentStatus(
     @Param('id') serverId: string,
-    @Request() req,
+    @Request() req: AuthedRequest,
   ): Promise<AgentConnectionStatusDto> {
     // Verificar acceso
     await this.verifyServerAccess(serverId, req.user.id);
@@ -282,7 +282,7 @@ export class AgentDataController {
       'Totales de servicios, sitios, bases de datos y procesos de todos los servidores del usuario, con las medias de CPU y memoria y la fecha del último reporte.',
   })
   @ApiResponse({ status: 200, type: AccountOverviewDto })
-  async getOverview(@Request() req): Promise<AccountOverviewDto> {
+  async getOverview(@Request() req: AuthedRequest): Promise<AccountOverviewDto> {
     return this.agentDataService.getAccountOverview(req.user.id);
   }
 
@@ -293,7 +293,7 @@ export class AgentDataController {
       'CPU, memoria, disco, uptime y contadores de cada servidor en una sola consulta. Un campo en null significa "todavía sin dato", no cero.',
   })
   @ApiResponse({ status: 200, type: ServersSummaryDto })
-  async getServersSummary(@Request() req): Promise<ServersSummaryDto> {
+  async getServersSummary(@Request() req: AuthedRequest): Promise<ServersSummaryDto> {
     /* Sin `verifyServerAccess`: no hay `:id`, el filtro por dueño dentro de la
        consulta es la frontera de autorización, igual que en `overview`. */
     return this.agentDataService.getServersSummary(req.user.id);
@@ -318,7 +318,7 @@ export class AgentDataController {
     @Param('id') serverId: string,
     @Param('serviceName') serviceName: string,
     @Body() dto: ServiceActionDto,
-    @Request() req,
+    @Request() req: AuthedRequest,
   ) {
     await this.verifyServerAccess(serverId, req.user.id);
     return this.serviceControlService.executeAction(

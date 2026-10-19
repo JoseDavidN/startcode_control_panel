@@ -7,7 +7,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import { Logger, UseFilters } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
@@ -36,6 +36,14 @@ import {
 import { NotificationsService } from '@/notifications/notifications.service';
 import { AgentDataService } from '../services/agent-data.service';
 import { ServerStatusService } from '../services/server-status.service';
+import type { JwtPayload } from '@auth/strategies/jwt.strategy';
+
+/** Claims del token de un agente (`AuthService.generateAgentToken`). */
+interface AgentTokenPayload {
+  sub: string;
+  type?: string;
+  serverName?: string;
+}
 
 /**
  * WebSocket Gateway para comunicación con agentes de monitoreo
@@ -94,7 +102,7 @@ export class AgentGateway
   /**
    * Lifecycle: Gateway inicializado
    */
-  afterInit(server: Server) {
+  afterInit() {
     this.logger.log('🚀 Agent WebSocket Gateway inicializado');
 
     /* El service avisa por aquí cuando crea una notificación. Sin payload: el
@@ -135,7 +143,7 @@ export class AgentGateway
     }
 
     try {
-      const payload = this.jwtService.verify(token, {
+      const payload = this.jwtService.verify<JwtPayload>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
@@ -194,7 +202,7 @@ export class AgentGateway
           await this.notificationsService
             .serverWentOffline(offline)
             .catch((err) =>
-              this.logger.error(`Error notificando desconexión: ${err.message}`),
+              this.logger.error(`Error notificando desconexión: ${err instanceof Error ? err.message : String(err)}`),
             );
         }
         break;
@@ -208,7 +216,7 @@ export class AgentGateway
    * Este es el handler principal que procesa TODOS los mensajes
    */
   @SubscribeMessage('agent:message')
-  async handleMessage(client: Socket, payload: any) {
+  async handleMessage(client: Socket, payload: Partial<AgentMessageDto> | null | undefined) {
     try {
       // Validar estructura básica del mensaje
       if (!payload || !payload.token || !payload.serverId || !payload.type) {
@@ -255,7 +263,7 @@ export class AgentGateway
           await this.notificationsService
             .serverCameBack(server)
             .catch((err) =>
-              this.logger.error(`Error notificando reconexión: ${err.message}`),
+              this.logger.error(`Error notificando reconexión: ${err instanceof Error ? err.message : String(err)}`),
             );
         }
       }
@@ -268,8 +276,8 @@ export class AgentGateway
       client.emit('ack', { messageId: message.messageId });
     } catch (error) {
       this.logger.error(
-        `❌ Error procesando mensaje: ${error.message}`,
-        error.stack,
+        `❌ Error procesando mensaje: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
       );
       client.emit('error', { message: 'Error procesando mensaje' });
     }
@@ -285,7 +293,7 @@ export class AgentGateway
     message: AgentMessageDto,
   ): Promise<ServerEntity | null> {
     try {
-      const payload = this.jwtService.verify(message.token, {
+      const payload = this.jwtService.verify<AgentTokenPayload>(message.token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
@@ -310,7 +318,7 @@ export class AgentGateway
 
       return server;
     } catch (error) {
-      this.logger.warn(`Token de agente inválido o expirado para ${message.serverId}: ${error.message}`);
+      this.logger.warn(`Token de agente inválido o expirado para ${message.serverId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }
@@ -380,7 +388,7 @@ export class AgentGateway
       }
 
       default:
-        this.logger.warn(`Tipo de mensaje desconocido: ${message.type}`);
+        this.logger.warn(`Tipo de mensaje desconocido: ${String(message.type)}`);
         return false;
     }
   }
@@ -570,7 +578,7 @@ export class AgentGateway
         system_uptime: metricsData.system.uptime,
       })
       .catch((err) =>
-        this.logger.error(`Error guardando historial de métricas: ${err.message}`),
+        this.logger.error(`Error guardando historial de métricas: ${err instanceof Error ? err.message : String(err)}`),
       );
 
     await this.touchLastSeen(server.id);
@@ -595,7 +603,7 @@ export class AgentGateway
     await this.notificationsService
       .evaluateMetrics(server, live)
       .catch((err) =>
-        this.logger.error(`Error evaluando umbrales: ${err.message}`),
+        this.logger.error(`Error evaluando umbrales: ${err instanceof Error ? err.message : String(err)}`),
       );
   }
 

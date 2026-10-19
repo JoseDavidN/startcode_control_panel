@@ -3,6 +3,32 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.9.0",
+      "type": "minor",
+      "date": "2026-10-19",
+      "title": "Terminal minimizada y gestión de Redis",
+      "changes": {
+        "added": [
+          "Bases de datos: gestión de Redis. Explora las claves de cada base con buscador y filtro por tipo, mira y edita su valor (texto, hash, lista, conjunto, conjunto ordenado y stream), cambia la caducidad, renombra, borra y crea claves, y usa la consola de comandos como en redis-cli. Los comandos peligrosos, como FLUSHDB, piden confirmación y quedan en la auditoría",
+          "Asistente IA: ahora enseña. Con cada comando explica qué hace y para qué sirve cada opción, y te indica dónde aprender más, para que dependas menos de él. Si ya dominas algo no lo vuelve a explicar, y si pides solo el comando lo da sin más",
+          "Asistente IA: antes de proponer comandos o consultas comprueba el sistema del servidor (distribución, gestor de paquetes y arranque) o el motor y la versión de la base que tienes abierta, y te los da para ese sistema. Si no sabe cuál es, pregunta o te da primero el comando para averiguarlo",
+          "Asistente IA: comando /clear para limpiar el chat. Solo despeja la pantalla: el asistente sigue recordando la conversación y las preguntas anteriores",
+          "Servidores: la terminal se minimiza en una barra abajo a la derecha y sus sesiones siguen abiertas mientras navegas por otras vistas, como Bases de datos. Un clic la vuelve a abrir donde estés y la x termina las sesiones. Entrar al detalle de otro servidor cierra la terminal minimizada"
+        ],
+        "changed": [
+          "Asistente IA: gasta bastantes menos tokens por pregunta. Envía solo los datos de los servidores de los que hablas, recorta el historial y lo que adjunta de la pantalla, y con Claude reutiliza la caché entre preguntas seguidas",
+          "Barra lateral: el título lleva el logo de StartCode",
+          "Configuración → Sistema: el logo de StartCode encabeza la pestaña",
+          "Servidores: el botón de la esquina de la terminal ahora la minimiza en lugar de ocultarla",
+          "macOS: un solo instalador universal para Mac con Intel y con Apple Silicon"
+        ],
+        "fixed": [
+          "Terminal: los acentos y los iconos (por ejemplo los de nvim o de un prompt con Nerd Fonts) ya no salen a veces como � (requiere el backend 0.11.0)",
+          "Configuración: copiar los códigos de respaldo ya no deja un error sin manejar si falla el portapapeles"
+        ]
+      }
+    },
+    {
       "version": "0.8.0",
       "type": "minor",
       "date": "2026-10-15",

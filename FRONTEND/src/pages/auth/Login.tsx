@@ -421,7 +421,7 @@ export const Login = () => {
 
             {pwdChangePending ? (
               /* ── Contraseña caducada ── */
-              <form onSubmit={handleExpiredPasswordChange} className="w-full max-w-[420px] mx-auto space-y-6">
+              <form onSubmit={(e) => void handleExpiredPasswordChange(e)} className="w-full max-w-[420px] mx-auto space-y-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
@@ -479,7 +479,7 @@ export const Login = () => {
               </form>
             ) : twoFactorPending ? (
               /* ── 2FA step ── */
-              <form onSubmit={handleVerify2FA} className="w-full max-w-[420px] mx-auto space-y-6">
+              <form onSubmit={(e) => void handleVerify2FA(e)} className="w-full max-w-[420px] mx-auto space-y-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />
@@ -583,7 +583,7 @@ export const Login = () => {
               </form>
             ) : (
               /* ── Login step ── */
-              <form onSubmit={handleSubmit} className="w-full max-w-[420px] mx-auto">
+              <form onSubmit={(e) => void handleSubmit(e)} className="w-full max-w-[420px] mx-auto">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative">
                     <div className="absolute inset-0 grad-brand blur-2xl opacity-50 rounded-2xl" />

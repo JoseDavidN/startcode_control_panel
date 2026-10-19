@@ -5,7 +5,8 @@ import { useAssistant } from '@hooks/useAssistantBridge';
 import { useAssistantConfig, useAssistantMessages, useClearAssistantMemory, useSendAssistantMessage, useSummarizeAssistantMemory } from '@hooks/useAssistant';
 import { notify } from '@services/notification.service';
 import { copyText } from '@lib/clipboard';
-import { ROUTES } from '@utils/constants';
+import { ROUTES, STORAGE_KEYS } from '@utils/constants';
+import { useAuth } from '@hooks/useAuth';
 import type { AssistantTarget } from '@contexts/assistant-context';
 import { AI_PROVIDERS, type AssistantTargetKind, type ChatMessage } from '@typings/assistant.types';
 import { AddServerModal } from '@components/common/AddServerModal';
@@ -26,19 +27,23 @@ const PasteIcon = ({ className = 'w-3.5 h-3.5' }) => <svg {...sp} className={cla
 const EyeIcon = ({ className = 'w-3 h-3' }) => <svg {...sp} className={className}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>;
 const LockIcon = ({ className = 'w-3 h-3' }) => <svg {...sp} className={className}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>;
 
-/** Tope de lo que se adjunta por fuente: lo más reciente es lo que importa. */
-const MAX_SOURCE_CHARS = 30_000;
+/** Tope de lo que se adjunta por fuente (~3000 tokens): lo más reciente es lo que importa. */
+const MAX_SOURCE_CHARS = 12_000;
 
 const SHELL_LANGS = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'terminal']);
+
+/* La consola de Redis se registra como destino `command`, pero solo recibe bloques de Redis. */
+const isRedisConsole = (t: AssistantTarget) => t.id.startsWith('redis-console:');
 
 /** Destinos que tienen sentido para el lenguaje del bloque. */
 function targetsFor(lang: string, targets: AssistantTarget[]): AssistantTarget[] {
   const l = lang.toLowerCase();
+  if (l === 'redis') return targets.filter(isRedisConsole);
   const kinds: AssistantTargetKind[] =
     l === 'sql' || l === 'mysql' || l === 'postgresql' || l === 'pgsql' ? ['sql']
       : SHELL_LANGS.has(l) ? ['terminal', 'command']
         : ['terminal', 'command', 'sql'];
-  return targets.filter(t => kinds.includes(t.kind));
+  return targets.filter(t => kinds.includes(t.kind) && !isRedisConsole(t));
 }
 
 type Part = { kind: 'text'; text: string } | { kind: 'code'; lang: string; code: string };
@@ -165,9 +170,19 @@ const SUGGESTIONS = [
  */
 /* Comandos del chat: se escriben solos en la entrada (p. ej. `/resume`) y no se envían al modelo. */
 const COMMANDS = [
+  { name: '/clear', hint: 'Limpia la vista del chat; el asistente conserva la conversación y la memoria' },
   { name: '/resume', hint: 'Guarda la conversación en la memoria del asistente y limpia el chat' },
 ] as const;
 type CommandName = typeof COMMANDS[number]['name'];
+
+/* `/clear` solo oculta: se guarda en el equipo la fecha del último mensaje visto
+   (la del servidor, no la del reloj local) y se muestran los posteriores. */
+const readCleared = (key: string): string | null => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const writeCleared = (key: string, value: string) => {
+  try { localStorage.setItem(key, value); } catch { /* bloqueado: solo dura esta sesión */ }
+};
 
 export const AssistantPanel: React.FC = () => {
   const navigate = useNavigate();
@@ -175,6 +190,16 @@ export const AssistantPanel: React.FC = () => {
   const { data: config, isLoading } = useAssistantConfig();
   /* La conversación es la memoria del backend: sigue ahí al recargar, en otro equipo o con otro proveedor. */
   const { data: messages = [] } = useAssistantMessages(open);
+  const { user } = useAuth();
+  const clearedKey = `${STORAGE_KEYS.ASSISTANT_CLEARED}${user?.id ?? ''}`;
+  const [clearedAt, setClearedAt] = useState(() => readCleared(clearedKey));
+  useEffect(() => { setClearedAt(readCleared(clearedKey)); }, [clearedKey]);
+  /* Lo que se ve: lo posterior al último `/clear`. El backend sigue usándolo todo como contexto. */
+  const visible = useMemo(
+    /* La pregunta en vuelo lleva la hora local: se muestra siempre. */
+    () => (clearedAt ? messages.filter(m => m.id.startsWith('pending-') || Date.parse(m.createdAt) > Date.parse(clearedAt)) : messages),
+    [messages, clearedAt],
+  );
   const chat = useSendAssistantMessage();
   const clear = useClearAssistantMemory();
   const summarize = useSummarizeAssistantMemory();
@@ -211,6 +236,14 @@ export const AssistantPanel: React.FC = () => {
 
   const runCommand = (name: CommandName) => {
     setInput('');
+    if (name === '/clear') {
+      const last = messages[messages.length - 1];
+      if (!last || !visible.length) { notify.info('El chat ya está limpio'); return; }
+      chat.reset();
+      writeCleared(clearedKey, last.createdAt);
+      setClearedAt(last.createdAt);
+      return;
+    }
     if (name === '/resume') {
       if (!messages.length) { notify.info('No hay conversación que resumir'); return; }
       chat.reset();
@@ -302,7 +335,7 @@ export const AssistantPanel: React.FC = () => {
           </div>
         )}
 
-        {ready && messages.length === 0 && (
+        {ready && visible.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-white/70 leading-relaxed">
               Pregunta sobre tus servidores, bases de datos, la terminal o una consulta. Te propongo comandos y SQL para que los pegues y decidas si ejecutarlos, y puedo preparar el alta de un servidor o de una conexión a base de datos.
@@ -318,7 +351,7 @@ export const AssistantPanel: React.FC = () => {
           </div>
         )}
 
-        {messages.map(m => <Bubble key={m.id} message={m} targets={targets} onReview={review} />)}
+        {visible.map(m => <Bubble key={m.id} message={m} targets={targets} onReview={review} />)}
 
         {busy && (
           <div className="flex items-center gap-2.5 text-xs text-white/45">
@@ -384,7 +417,7 @@ export const AssistantPanel: React.FC = () => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
               if (e.key === 'Escape') setOpen(false);
             }}
-            placeholder={ready ? 'Escribe tu pregunta… (Shift+Enter, nueva línea · /resume)' : 'Conecta un asistente en Configuración'}
+            placeholder={ready ? 'Escribe tu pregunta… (Shift+Enter, nueva línea · /clear · /resume)' : 'Conecta un asistente en Configuración'}
             className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm text-white/90 placeholder:text-white/30 max-h-40 scroll-thin disabled:opacity-50"
           />
           <button type="button" onClick={() => send(input)} disabled={!ready || !input.trim() || busy}

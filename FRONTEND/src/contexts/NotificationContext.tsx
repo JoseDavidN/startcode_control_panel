@@ -1,48 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { notify, nativePermission, type NativePermission } from '@services/notification.service';
 import { storeGet, storeSet } from '@lib/tauriStore';
 import { STORAGE_KEYS } from '@utils/constants';
 import { notificationsApi } from '@services/notifications.api';
-import { useRealtimeSocket } from '@contexts/RealtimeMetricsContext';
+import { useRealtimeSocket } from '@hooks/useRealtimeMetrics';
 import { useAuth } from '@hooks/useAuth';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
+import {
+  NotificationContext,
+  type NotifPrefs,
+  type NotifThresholds,
+} from '@contexts/notification-context';
 import type { AppNotification } from '@typings/notification.types';
-
-/* ── Tipos ────────────────────────────────────────────────────────── */
-export interface NotifPrefs {
-  serverOffline: boolean;
-  highCpuUsage: boolean;
-  highMemoryUsage: boolean;
-  highDiskUsage: boolean;
-  weeklyReport: boolean;
-  productNews: boolean;
-}
-
-export interface NotifThresholds {
-  cpuThreshold: number;
-  memoryThreshold: number;
-  diskThreshold: number;
-}
-
-interface NotificationContextType {
-  prefs: NotifPrefs;
-  setPrefs: (p: NotifPrefs) => void;
-  thresholds: NotifThresholds;
-  setThresholds: (t: NotifThresholds) => void;
-  testToast: (type: keyof NotifPrefs) => void;
-  testNative: () => void;
-  /** Alertas de seguridad como notificación del sistema. Se guarda en este
-      equipo, no en la cuenta: el permiso y el soporte cambian con el sistema. */
-  securityAlerts: boolean;
-  setSecurityAlerts: (on: boolean) => void;
-  /** Permiso del sistema operativo para notificar; null mientras se consulta. */
-  permission: NativePermission | null;
-  requestPermission: () => Promise<NativePermission>;
-}
-
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 /* ── Puente con el backend ────────────────────────────────────────────
    La detección de umbrales y de servidor caído vive en el servidor: es el
@@ -198,11 +169,4 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </NotificationContext.Provider>
   );
-};
-
-/* ── Hook ─────────────────────────────────────────────────────────── */
-export const useNotifications = (): NotificationContextType => {
-  const ctx = useContext(NotificationContext);
-  if (!ctx) throw new Error('useNotifications debe usarse dentro de NotificationProvider');
-  return ctx;
 };

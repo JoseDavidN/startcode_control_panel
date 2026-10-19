@@ -7,6 +7,7 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { StringDecoder } from 'node:string_decoder';
 import { Logger } from '@nestjs/common';
 import { Server as IoServer, Socket } from 'socket.io';
 import type { ClientChannel, Client as SSHClient } from 'ssh2';
@@ -84,12 +85,19 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       this.sessions.set(client.id, { ssh, stream, serverId: server.id, userId: user.id });
 
-      stream.on('data', (chunk: Buffer) =>
-        client.emit('terminal:output', chunk.toString('utf8')),
-      );
-      stream.stderr?.on('data', (chunk: Buffer) =>
-        client.emit('terminal:output', chunk.toString('utf8')),
-      );
+      /* Un carácter de varios bytes (acentos, iconos Nerd Font de nvim) puede
+         llegar partido entre dos fragmentos: el decodificador guarda los bytes
+         sueltos hasta completarlo, en vez de convertir cada fragmento aparte. */
+      const out = new StringDecoder('utf8');
+      const err = new StringDecoder('utf8');
+      stream.on('data', (chunk: Buffer) => {
+        const text = out.write(chunk);
+        if (text) client.emit('terminal:output', text);
+      });
+      stream.stderr?.on('data', (chunk: Buffer) => {
+        const text = err.write(chunk);
+        if (text) client.emit('terminal:output', text);
+      });
       stream.on('close', () => {
         client.emit('terminal:closed', { reason: 'La sesión remota terminó' });
         this.cleanup(client.id);

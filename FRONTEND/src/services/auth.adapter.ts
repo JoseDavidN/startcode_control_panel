@@ -1,7 +1,14 @@
 // src/services/auth.adapter.ts
 // Adaptador para normalizar respuestas del backend a formato del frontend
 
-import type { User, AuthResponse, Permission } from '@typings/auth.types';
+import type {
+	User,
+	AuthResponse,
+	Permission,
+	RawAuthPayload,
+	RawBackendUser,
+	UserRole,
+} from '@typings/auth.types';
 
 /**
  * Mapea roles a permisos predeterminados
@@ -47,7 +54,7 @@ export function getPermissionsFromRole(role: string): Permission[] {
  * - Formato ya normalizado: { id, email, name, role, isActive, createdAt }
  * - Entidad completa: { id, str_email, str_firstname, str_lastname, enu_role, bol_is_active, createdAt }
  */
-export function normalizeUser(user: any): User {
+export function normalizeUser(user: RawBackendUser): User {
 	// Determinar firstname/lastname
 	const firstname: string | undefined =
 		user.firstname ?? user.str_firstname;
@@ -59,9 +66,11 @@ export function normalizeUser(user: any): User {
 		user.name ||
 		(firstname && lastname ? `${firstname} ${lastname}` : firstname || lastname || '');
 
-	const role = user.enu_role || user.role;
-	const email = user.str_email || user.email;
-	const isActive = user.bol_is_active !== undefined ? user.bol_is_active : user.isActive;
+	/* Una de las dos formas siempre trae cada campo; el backend no manda
+	   usuarios sin rol, email ni estado. */
+	const role = (user.enu_role || user.role) as UserRole;
+	const email = (user.str_email || user.email) as string;
+	const isActive = (user.bol_is_active !== undefined ? user.bol_is_active : user.isActive) as boolean;
 
 	return {
 		id: user.id,
@@ -87,9 +96,12 @@ export function normalizeUser(user: any): User {
  * Backend: { user, token, refreshToken, expiresIn }
  * Frontend: { user, tokens: { accessToken, refreshToken } }
  */
-export function normalizeAuthResponse(response: any): AuthResponse {
+export function normalizeAuthResponse(response: unknown): AuthResponse {
 	// Aceptar tanto respuesta directa { user, token } como envuelta { data: { ... } }
-	const payload = response?.data ?? response;
+	const payload = ((response as { data?: unknown } | null | undefined)?.data ?? response) as
+		| RawAuthPayload
+		| null
+		| undefined;
 
 	if (!payload || !payload.user) {
 		throw new Error('Respuesta inválida del servidor en login');

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { usePreferences } from '@contexts/PreferencesContext';
+import { usePreferences } from '@hooks/usePreferences';
 import type { AppearancePrefs, FontFamily, ServersView, SidebarMode, Theme } from '@typings/preferences.types';
 
 export type { SidebarMode, ServersView, Theme, FontFamily };

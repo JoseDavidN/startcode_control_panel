@@ -5,12 +5,18 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
 import { DatabaseEngine, DatabaseTag } from '../entities/database-connection.entity';
+import { IsHost } from '@/common/security/network';
+
+/* Sin bytes nulos ni caracteres de control: los drivers cortan o malinterpretan el valor. */
+// eslint-disable-next-line no-control-regex
+const NO_CONTROL = /^[^\x00-\x1f\x7f]*$/;
 
 export class CreateDatabaseConnectionDto {
   @ApiProperty({ enum: DatabaseEngine, example: DatabaseEngine.POSTGRESQL })
@@ -26,7 +32,8 @@ export class CreateDatabaseConnectionDto {
   @ApiProperty({ example: '10.0.0.12' })
   @IsString()
   @IsNotEmpty({ message: 'El host es requerido' })
-  @MaxLength(255)
+  @MaxLength(253)
+  @IsHost()
   host: string;
 
   @ApiProperty({ example: 5432 })
@@ -39,6 +46,7 @@ export class CreateDatabaseConnectionDto {
   @IsOptional()
   @IsString()
   @MaxLength(128)
+  @Matches(NO_CONTROL, { message: 'El usuario no puede llevar caracteres de control' })
   username?: string;
 
   @ApiPropertyOptional({
@@ -57,6 +65,7 @@ export class CreateDatabaseConnectionDto {
   @IsOptional()
   @IsString()
   @MaxLength(128)
+  @Matches(NO_CONTROL, { message: 'El nombre de la base no puede llevar caracteres de control' })
   database?: string;
 
   @ApiPropertyOptional({ enum: DatabaseTag, nullable: true, description: 'Una sola, opcional. null la quita' })

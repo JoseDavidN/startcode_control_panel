@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Server } from 'http';
 import { AppModule } from './app.module';
 import { resolveCorsOrigins } from './common/cors-origins';
+import { requestBodyTimeout, securityHeaders } from './common/http-hardening';
 import { APP_VERSION } from './common/version';
 
 async function bootstrap() {
@@ -15,6 +16,9 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.disable('x-powered-by');
+  app.use(securityHeaders);
+  app.use(requestBodyTimeout());
 
   /* Private Network Access: el webview de la app de escritorio puede tratar
      `tauri.localhost` como origen público y, antes de llamar a una IP
@@ -26,8 +30,12 @@ async function bootstrap() {
     next();
   });
 
+  const origins = resolveCorsOrigins();
+  if (origins === '*' && nodeEnv === 'production') {
+    console.warn('CORS_ORIGIN=*: cualquier web puede llamar a la nube. Con la app de escritorio basta dejarlo vacío.');
+  }
   app.enableCors({
-    origin: resolveCorsOrigins(),
+    origin: origins,
     credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     /* El panel lee el nombre y el tamaño de las descargas. */
@@ -45,8 +53,9 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  /* Subidas y descargas grandes tardan más que el límite por defecto de
-     Node (5 min por petición): sin límite total, pero sí para cabeceras. */
+  /* Subidas grandes tardan más que el límite por defecto de Node (5 min por
+     petición): sin límite total, pero sí para cabeceras, y el cuerpo lo
+     vigila `requestBodyTimeout`. */
   const server: Server = app.getHttpServer();
   server.requestTimeout = 0;
   server.headersTimeout = 60_000;

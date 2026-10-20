@@ -72,6 +72,19 @@ export function useSetServerFavorite() {
 	});
 }
 
+/** Acepta la nueva clave de host SSH de un servidor (aviso de huella cambiada). */
+export function useAcceptHostKey() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, fingerprint }: { id: string; fingerprint: string }) =>
+			serverService.acceptHostKey(id, fingerprint),
+		onSuccess: (_res, { id }) => {
+			void queryClient.invalidateQueries({ queryKey: ['servers'] });
+			void queryClient.invalidateQueries({ queryKey: ['server', id] });
+		},
+	});
+}
+
 /** Cambia la llave privada SSH de un servidor. */
 export function useUpdateServerKey() {
 	return useMutation({

@@ -1,4 +1,6 @@
 // src/types/api.types.ts
+import type { HostKeyMismatch } from '@typings/hostKey.types';
+
 export interface ApiResponse<T = any> {
 	success: boolean;
 	data: T;
@@ -14,6 +16,8 @@ export interface ApiError {
 	code?: string;
 	/** Indicación accionable que acompaña al error, si la hay. */
 	hint?: string;
+	/** Con `code: 'HOST_KEY_MISMATCH'`: las dos huellas de la clave de host. */
+	hostKey?: HostKeyMismatch;
 }
 
 /**

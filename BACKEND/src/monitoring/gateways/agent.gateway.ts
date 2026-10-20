@@ -7,7 +7,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
@@ -36,14 +36,33 @@ import {
 import { NotificationsService } from '@/notifications/notifications.service';
 import { AgentDataService } from '../services/agent-data.service';
 import { ServerStatusService } from '../services/server-status.service';
-import type { JwtPayload } from '@auth/strategies/jwt.strategy';
+import { WsAuthService } from '@auth/ws-auth.service';
+import {
+  AgentTokenService,
+  type AgentTokenCheck,
+  type AgentTokenRejection,
+} from '@servers/services/agent-token.service';
 
-/** Claims del token de un agente (`AuthService.generateAgentToken`). */
-interface AgentTokenPayload {
-  sub: string;
-  type?: string;
-  serverName?: string;
+/** Cuánto se espera el ACK de una rotación antes de darla por perdida. */
+const ROTATION_ACK_TIMEOUT_MS = 60_000;
+/** Entre rotaciones automáticas fallidas (p. ej. un agente que no las entiende). */
+const ROTATION_RETRY_MS = 15 * 60_000;
+
+/** Una rotación enviada al agente, a la espera de su ACK. */
+interface PendingRotation {
+  jti: string;
+  socketId: string;
+  timer: NodeJS.Timeout;
 }
+
+/** Texto para el log del agente: le dice qué hacer, no solo que falló. */
+const REJECTION_TEXT: Record<AgentTokenRejection, string> = {
+  invalid: 'Token inválido o caducado',
+  wrong_type: 'El token no es de agente',
+  wrong_server: 'El token es de otro servidor',
+  server_not_found: 'El servidor ya no existe en el panel',
+  revoked: 'Token revocado: reinstala el agente o regenera su token desde el panel',
+};
 
 /**
  * WebSocket Gateway para comunicación con agentes de monitoreo
@@ -97,7 +116,16 @@ export class AgentGateway
     private configService: ConfigService,
     private notificationsService: NotificationsService,
     private serverStatusService: ServerStatusService,
+    private wsAuth: WsAuthService,
+    private agentTokens: AgentTokenService,
   ) {}
+
+  /** Rotaciones de token en vuelo, por servidor. */
+  private rotations = new Map<string, PendingRotation>();
+  /** Último intento de rotación automática, por servidor. */
+  private rotationAttempts = new Map<string, number>();
+  /** Servidores con una instalación en curso: su token pendiente es el del instalador. */
+  private rotationHolds = new Set<string>();
 
   /**
    * Lifecycle: Gateway inicializado
@@ -143,17 +171,17 @@ export class AgentGateway
     }
 
     try {
-      const payload = this.jwtService.verify<JwtPayload>(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-      });
+      /* Mismo contrato que la terminal y SFTP: token de acceso de una sesión
+         viva y usuario activo. Con solo verificar la firma, un token de una
+         sesión ya revocada (logout, «cerrar otras sesiones») seguía recibiendo
+         las métricas y notificaciones de la cuenta hasta caducar. */
+      /* Con el socket: queda registrado en su sesión y se corta al revocarla.
+         Recibir métricas no es actividad del usuario: no llama a `touch`. */
+      const user = await this.wsAuth.authenticate(token, client);
 
-      if (payload.type !== 'access' || !payload.sub) {
-        throw new Error('Token no válido para esta conexión');
-      }
-
-      await client.join(this.userRoom(payload.sub));
+      await client.join(this.userRoom(user.id));
       client.emit('panel:ready');
-      this.logger.debug(`👤 Panel suscrito a la room del usuario ${payload.sub}`);
+      this.logger.debug(`👤 Panel suscrito a la room del usuario ${user.id}`);
     } catch (error) {
       this.logger.warn(
         `Panel rechazado: ${error instanceof Error ? error.message : 'token inválido'}`,
@@ -180,6 +208,12 @@ export class AgentGateway
    * Lifecycle: Cliente desconectado
    */
   async handleDisconnect(client: Socket) {
+    /* Una rotación enviada por este socket ya no recibirá ACK por él. El
+       pendiente se sigue aceptando: si el agente lo guardó, volverá con él. */
+    for (const [serverId, rotation] of this.rotations.entries()) {
+      if (rotation.socketId === client.id) this.clearRotation(serverId);
+    }
+
     // Buscar y eliminar de conexiones activas
     for (const [serverId, socket] of this.connections.entries()) {
       if (socket.id === client.id) {
@@ -229,15 +263,15 @@ export class AgentGateway
       this.logger.debug(`📨 Mensaje recibido - Tipo: ${message.type}, Servidor: ${message.serverId}`);
 
       // Autenticar el mensaje
-      const server = await this.authenticateMessage(message);
-      if (!server) {
+      const auth = await this.authenticateMessage(message);
+      if (!auth.ok) {
         this.logger.warn(
-          `🔐 Autenticación fallida para servidor: ${message.serverId}`,
+          `🔐 Autenticación fallida para servidor: ${message.serverId} (${auth.reason})`,
         );
-        client.emit('error', { message: 'Autenticación fallida' });
-        client.disconnect();
+        this.rejectAgent(client, auth.reason);
         return;
       }
+      const server = auth.server;
 
       // Registrar conexión activa
       if (!this.connections.has(server.id)) {
@@ -268,6 +302,13 @@ export class AgentGateway
         }
       }
 
+      /* Token heredado o con edad de rotar: se le manda uno nuevo por este
+         mismo socket, ya autenticado. */
+      if (auth.needsRotation) this.maybeRotate(server, client);
+      /* Firmado con el token pendiente: la rotación quedó confirmada por uso
+         (el ACK se perdió o aún no ha llegado). */
+      if (auth.slot === 'pending') this.rotationConfirmed(server);
+
       // Procesar según tipo de mensaje
       const processed = await this.processMessage(message, server, client);
       if (!processed) return;
@@ -284,42 +325,136 @@ export class AgentGateway
   }
 
   /**
-   * Autentica un mensaje verificando el token
-   *
-   * @param message - Mensaje del agente
-   * @returns Servidor si la autenticación es exitosa, null en caso contrario
+   * Autentica un mensaje: firma, tipo, servidor y que el token sea el que el
+   * servidor tiene registrado (vigente, pendiente de ACK o anterior en gracia).
+   * Un error de base de datos se propaga: no es un 401.
    */
-  private async authenticateMessage(
-    message: AgentMessageDto,
-  ): Promise<ServerEntity | null> {
+  private async authenticateMessage(message: AgentMessageDto): Promise<AgentTokenCheck> {
+    return this.agentTokens.verify(message.token, message.serverId);
+  }
+
+  /**
+   * Rechazo de credencial. `status: 401` es lo que el agente (2.2.0+) lee para
+   * pasar a la espera larga en vez de reintentar cada minuto.
+   */
+  private rejectAgent(client: Socket, reason: AgentTokenRejection): void {
+    client.emit('error', {
+      status: 401,
+      code: 'AGENT_TOKEN_REJECTED',
+      reason,
+      message: REJECTION_TEXT[reason],
+    });
+    client.disconnect(true);
+  }
+
+  /* ── Token del agente: rotación ──────────────────────────────────── */
+
+  /** Rotación automática, como mucho una cada `ROTATION_RETRY_MS` por servidor. */
+  private maybeRotate(server: ServerEntity, client: Socket): void {
+    if (this.rotations.has(server.id) || this.rotationHolds.has(server.id)) return;
+    const last = this.rotationAttempts.get(server.id) ?? 0;
+    if (Date.now() - last < ROTATION_RETRY_MS) return;
+
+    void this.sendRotation(server, client).catch((err) =>
+      this.logger.error(
+        `No se pudo iniciar la rotación del token de ${server.name}: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
+  /**
+   * Emite un token nuevo como pendiente y se lo manda al agente. El vigente no
+   * cambia hasta el ACK (o hasta que el agente se presente con el nuevo).
+   */
+  private async sendRotation(
+    server: Pick<ServerEntity, 'id' | 'name'>,
+    client: Socket,
+  ): Promise<void> {
+    this.rotationAttempts.set(server.id, Date.now());
+    const { token, jti } = await this.agentTokens.beginRotation(server);
+
+    this.clearRotation(server.id);
+    const timer = setTimeout(() => {
+      if (this.rotations.get(server.id)?.jti !== jti) return;
+      this.rotations.delete(server.id);
+      /* Sin ACK no se invalida nada: el pendiente sigue aceptándose por si el
+         agente lo guardó, y el vigente también. */
+      this.logger.warn(`🔑 Rotación del token de ${server.name} sin ACK; se reintentará`);
+    }, ROTATION_ACK_TIMEOUT_MS);
+    timer.unref?.();
+
+    this.rotations.set(server.id, { jti, socketId: client.id, timer });
+    client.emit('agent:token:rotate', { token });
+    this.logger.log(`🔑 Token nuevo enviado al agente de ${server.name}`);
+  }
+
+  private rotationConfirmed(server: Pick<ServerEntity, 'id' | 'ownerId'>): void {
+    this.clearRotation(server.id);
+    this.rotationAttempts.delete(server.id);
+    this.emitToOwner(server.ownerId, 'agent:token:rotated', { serverId: server.id });
+  }
+
+  private clearRotation(serverId: string): void {
+    const pending = this.rotations.get(serverId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.rotations.delete(serverId);
+  }
+
+  /**
+   * Rotación pedida desde el panel. Solo con el agente conectado: el token
+   * nuevo viaja por su socket. Sin agente, quien llama debe revocar.
+   */
+  public async rotateAgentToken(server: Pick<ServerEntity, 'id' | 'name'>): Promise<'rotating' | 'offline'> {
+    if (this.rotationHolds.has(server.id)) {
+      throw new ConflictException('Hay una instalación del agente en curso; espera a que termine.');
+    }
+    const socket = this.connections.get(server.id);
+    if (!socket?.connected) return 'offline';
+    await this.sendRotation(server, socket);
+    return 'rotating';
+  }
+
+  /** Suspende las rotaciones de un servidor mientras se (re)instala su agente. */
+  public holdRotations(serverId: string, hold: boolean): void {
+    if (hold) this.rotationHolds.add(serverId);
+    else this.rotationHolds.delete(serverId);
+  }
+
+  /** Corta el socket del agente de un servidor cuyo token se acaba de revocar. */
+  public disconnectAgent(serverId: string): void {
+    this.clearRotation(serverId);
+    const socket = this.connections.get(serverId);
+    if (socket) this.rejectAgent(socket, 'revoked');
+  }
+
+  /**
+   * ACK de rotación: el agente guardó el token nuevo en disco. Trae ese token,
+   * que se valida como cualquier otro; al coincidir con el pendiente,
+   * `AgentTokenService.verify` lo promueve a vigente y deja el anterior en
+   * gracia.
+   */
+  @SubscribeMessage('agent:token:ack')
+  async handleTokenAck(
+    client: Socket,
+    payload: { serverId?: unknown; token?: unknown } | null | undefined,
+  ): Promise<void> {
     try {
-      const payload = this.jwtService.verify<AgentTokenPayload>(message.token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-      });
+      if (typeof payload?.serverId !== 'string' || typeof payload?.token !== 'string') return;
 
-      if (payload.type !== 'agent') {
-        this.logger.warn(`Token de tipo incorrecto para ${message.serverId}: tipo="${payload.type}"`);
-        return null;
+      const auth = await this.agentTokens.verify(payload.token, payload.serverId);
+      if (!auth.ok) {
+        this.logger.warn(`🔑 ACK de rotación rechazado para ${payload.serverId} (${auth.reason})`);
+        this.rejectAgent(client, auth.reason);
+        return;
       }
 
-      if (payload.sub !== message.serverId) {
-        this.logger.warn(`Token no corresponde al serverId declarado: token.sub="${payload.sub}" mensaje.serverId="${message.serverId}"`);
-        return null;
-      }
-
-      const server = await this.serversRepository.findOne({
-        where: { id: message.serverId },
-      });
-
-      if (!server) {
-        this.logger.warn(`Servidor no encontrado: ${message.serverId}`);
-        return null;
-      }
-
-      return server;
+      this.logger.log(`🔑 ACK de rotación de ${auth.server.name}`);
+      this.rotationConfirmed(auth.server);
     } catch (error) {
-      this.logger.warn(`Token de agente inválido o expirado para ${message.serverId}: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
+      this.logger.error(
+        `Error procesando el ACK de rotación: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

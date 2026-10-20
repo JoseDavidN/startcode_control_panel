@@ -55,6 +55,36 @@ export function useUninstallAgent() {
 	});
 }
 
+/** «Regenerar token del agente»: rota por el socket o revoca si no está conectado. */
+export function useRegenerateAgentToken() {
+	const invalidate = useAgentInvalidation();
+
+	return useMutation({
+		mutationFn: (vars: { id: string }) => serverService.regenerateAgentToken(vars.id),
+		onSettled: (_result, _error, vars) => invalidate(vars.id),
+	});
+}
+
+/** Refresca el estado del agente cuando confirma un token rotado. */
+export function useAgentTokenRotated(serverId: string) {
+	const { socket } = useRealtimeSocket();
+	const queryClient = useQueryClient();
+
+	useEffect(() => {
+		if (!socket || !serverId) return;
+
+		const onRotated = (payload: { serverId: string }) => {
+			if (payload.serverId !== serverId) return;
+			void queryClient.invalidateQueries({ queryKey: ['agent-state', serverId] });
+		};
+
+		socket.on('agent:token:rotated', onRotated);
+		return () => {
+			socket.off('agent:token:rotated', onRotated);
+		};
+	}, [socket, serverId, queryClient]);
+}
+
 export function useAgentState(serverId: string, enabled = true) {
 	return useQuery<AgentState>({
 		queryKey: ['agent-state', serverId],

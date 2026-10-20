@@ -26,9 +26,18 @@ const RULES: [RegExp, string | ((...m: string[]) => string)][] = [
   [/(\bmysql(?:dump|admin)?\b[^\n]*?\s-p)(?!\s)(\S+)/gi, (_m, k) => `${k}${REDACTED}`],
   /* sshpass -p x */
   [/(\bsshpass\s+-p\s*)(\S+)/gi, (_m, k) => `${k}${REDACTED}`],
+  /* Cabeceras de autenticación: Authorization: Bearer x, Basic x, curl -u usuario:clave. */
+  [/\b(Authorization\s*:\s*(?:Bearer|Basic|Token)?\s*)[A-Za-z0-9._~+/=-]{8,}/gi, (_m, k) => `${k}${REDACTED}`],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g, `Bearer ${REDACTED}`],
+  [/(\bcurl\b[^\n]*?\s(?:-u|--user)\s+)(["']?)[^\s:"']+:[^\s"']+\2/gi, (_m, k) => `${k}${REDACTED}`],
+  /* JWT (cabecera.carga.firma), como los tokens del propio panel y del agente. */
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, REDACTED],
   /* Claves de API con prefijo conocido. */
   [/\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}/g, REDACTED],
   [/\bAIza[0-9A-Za-z_-]{30,}/g, REDACTED],
+  [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, REDACTED],
+  [/\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|glpat-[A-Za-z0-9_-]{20,})/g, REDACTED],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, REDACTED],
   /* Hashes de contraseña de /etc/shadow o bcrypt. */
   [/\$(?:2[aby]|1|5|6|y)\$[^\s:]{20,}/g, REDACTED],
 ];

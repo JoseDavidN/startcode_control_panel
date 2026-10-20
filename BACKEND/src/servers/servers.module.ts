@@ -11,6 +11,9 @@ import { Server } from './entities/server.entity';
 import { AuthModule } from '@auth/auth.module';
 import { MonitoringModule } from '@monitoring/monitoring.module';
 import { DatabasesModule } from '@/databases/databases.module';
+import { NotificationsModule } from '@/notifications/notifications.module';
+import { HostKeyService } from '@servers/services/host-key.service';
+import { AgentTokenService } from '@servers/services/agent-token.service';
 
 @Module({
   imports: [
@@ -19,6 +22,8 @@ import { DatabasesModule } from '@/databases/databases.module';
     /* Por `CredentialsCipherService`: la llave SSH se guarda cifrada. */
     DatabasesModule,
     forwardRef(() => MonitoringModule),
+    /* La aceptación de una clave de host nueva queda como aviso de seguridad. */
+    NotificationsModule,
   ],
   controllers: [ServersController, AgentController, AgentReleasesController],
   providers: [
@@ -26,7 +31,9 @@ import { DatabasesModule } from '@/databases/databases.module';
     AgentInstallService,
     AgentBinariesService,
     AgentInstallTokenGuard,
+    HostKeyService,
+    AgentTokenService,
   ],
-  exports: [ServersService, AgentInstallService, AgentBinariesService],
+  exports: [ServersService, AgentInstallService, AgentBinariesService, AgentTokenService],
 })
 export class ServersModule {}

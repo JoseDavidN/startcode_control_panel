@@ -50,11 +50,20 @@ const mockServer: Server = {
   hostname: null,
   osVersion: null,
   kernelVersion: null,
+  hostKeyAlgorithm: null,
+  hostKeyFingerprint: null,
+  hostKeyVerifiedAt: null,
   owner: mockUser,
   ownerId: mockUser.id,
   createdAt: new Date('2024-01-01'),
   updatedAt: new Date('2024-01-01'),
   lastCheckAt: null,
+  agentTokenId: null,
+  agentTokenPendingId: null,
+  agentTokenPreviousId: null,
+  agentTokenPreviousUntil: null,
+  agentTokenIssuedAt: null,
+  agentTokenLegacy: false,
 };
 
 const createServerDto = {

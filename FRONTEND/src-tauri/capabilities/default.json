@@ -1,12 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Permisos mínimos de la ventana principal: solo los plugins y comandos que usa la app. fs sin ámbito propio: solo lo elegido en los diálogos.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default",
+    "core:app:default",
+    "core:event:default",
+    "core:path:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:resources:default",
     "core:window:allow-set-fullscreen",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
@@ -16,10 +21,9 @@
     "store:default",
     "updater:default",
     "process:allow-restart",
-    "notification:default",
+    "notification:allow-is-permission-granted",
     "notification:allow-notify",
     "notification:allow-request-permission",
-    "notification:allow-check-permissions",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-file",
@@ -28,8 +32,17 @@
     "fs:allow-write-file",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
-    "opener:allow-open-url",
-    "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    },
     "opener:allow-reveal-item-in-dir"
   ]
 }

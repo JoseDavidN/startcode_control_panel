@@ -9,9 +9,68 @@ import { CorsIoAdapter } from './adapters/cors-io.adapter';
 import { resolveCorsOrigins } from './adapters/cors-origins';
 import { join } from 'path';
 import type { NextFunction, Request, Response } from 'express';
+import helmet from 'helmet';
+import { rejectDeepBodies } from '@/common/security/body-depth';
+
+/**
+ * `TRUST_PROXY`: saltos o rangos de proxies de confianza (`1`, `loopback`,
+ * `10.0.0.0/8,127.0.0.1`…). Con proxy inverso delante, sin esto todas las
+ * peticiones llegan con la IP del proxy y los límites por IP serían globales.
+ * Sin valor no se confía en `X-Forwarded-For`, que cualquiera puede inventar.
+ */
+function trustProxyOf(
+  raw = process.env.TRUST_PROXY?.trim() ?? '',
+): boolean | number | string | null {
+  if (!raw || raw === 'false') return null;
+  if (raw === 'true') return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  /* El parser se registra a mano para fijar el límite de tamaño del cuerpo. */
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+
+  /* Tras crear la app: ConfigModule ya cargó .env en process.env. */
+  const nodeEnv = process.env.NODE_ENV;
+  const validEnvs = ['development', 'production', 'test'];
+
+  if (!nodeEnv || !validEnvs.includes(nodeEnv)) {
+    throw new Error(
+      `NODE_ENV no está definido o es inválido: "${nodeEnv}". ` +
+        `Valores aceptados: ${validEnvs.join(', ')}. ` +
+        `Defínelo en .env antes de arrancar.`,
+    );
+  }
+  const production = nodeEnv === 'production';
+
+  const bodyLimit = process.env.BODY_LIMIT?.trim() || '100kb';
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { limit: bodyLimit, extended: true });
+  app.use(rejectDeepBodies());
+
+  const trustProxy = trustProxyOf();
+  if (trustProxy !== null) {
+    if (trustProxy === true) {
+      console.warn(
+        '[HTTP] TRUST_PROXY=true confía en cualquier X-Forwarded-For: usa el número de saltos o la IP del proxy.',
+      );
+    }
+    app.set('trust proxy', trustProxy);
+  }
+
+  /* Cabeceras de seguridad. La API solo sirve JSON y estáticos: CSP estricta en
+     producción (en desarrollo la desactiva Swagger UI, que usa scripts en línea).
+     CORP cross-origin: la app de escritorio carga /public desde otro origen. */
+  app.disable('x-powered-by');
+  app.use(
+    helmet({
+      contentSecurityPolicy: production ? undefined : false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   // Servir archivos estáticos desde la carpeta public
   app.useStaticAssets(join(__dirname, '..', 'public'), {
@@ -58,49 +117,44 @@ async function bootstrap() {
   // Prefijo global para todas las rutas
   app.setGlobalPrefix('api/v1');
 
-  // Configuracion de Swagger
-  const config = new DocumentBuilder()
-    .setTitle('StartCode Panel API')
-    .setDescription('API para administracion y gestion de servidores')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT-auth',
-        description: 'JWT Authorization header using the Bearer scheme',
-        in: 'header',
-      },
-      'JWT-auth',
-    )
-    .addTag('Auth', 'Endpoints de autenticacion y autorizacion')
-    .addTag('Servers', 'Gestion de servidores')
-    .addTag('Monitoring', 'Monitoreo y metricas de servidores')
-    .build();
+  // Configuracion de Swagger: nunca en producción (expone el mapa completo de la API)
+  if (!production) {
+    const config = new DocumentBuilder()
+      .setTitle('StartCode Panel API')
+      .setDescription('API para administracion y gestion de servidores')
+      .setVersion('1.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          name: 'JWT-auth',
+          description: 'JWT Authorization header using the Bearer scheme',
+          in: 'header',
+        },
+        'JWT-auth',
+      )
+      .addTag('Auth', 'Endpoints de autenticacion y autorizacion')
+      .addTag('Servers', 'Gestion de servidores')
+      .addTag('Monitoring', 'Monitoreo y metricas de servidores')
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/v1/docs', app, document, {
-    customSiteTitle: 'StartCode Panel - API Documentation',
-    customCssUrl: '/public/swagger-theme.css',
-    customfavIcon: '/public/favicon_black.png',
-  });
-
-  const nodeEnv = process.env.NODE_ENV;
-  const validEnvs = ['development', 'production', 'test'];
-
-  if (!nodeEnv || !validEnvs.includes(nodeEnv)) {
-    throw new Error(
-      `NODE_ENV no está definido o es inválido: "${nodeEnv}". ` +
-      `Valores aceptados: ${validEnvs.join(', ')}. ` +
-      `Defínelo en .env antes de arrancar.`,
-    );
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/v1/docs', app, document, {
+      customSiteTitle: 'StartCode Panel - API Documentation',
+      customCssUrl: '/public/swagger-theme.css',
+      customfavIcon: '/public/favicon_black.png',
+    });
   }
 
   if (nodeEnv === 'development') {
     console.warn('');
-    console.warn('⚠️  [TypeORM] synchronize=true — el esquema se sincroniza automáticamente.');
-    console.warn('    NO ejecutar con NODE_ENV=development en un servidor de producción.');
+    console.warn(
+      '⚠️  [TypeORM] synchronize=true — el esquema se sincroniza automáticamente.',
+    );
+    console.warn(
+      '    NO ejecutar con NODE_ENV=development en un servidor de producción.',
+    );
     console.warn('');
   }
 
@@ -111,7 +165,8 @@ async function bootstrap() {
   console.log('🚀 StartCode Panel Backend');
   console.log('================================');
   console.log(`📡 Server: http://localhost:${port}/api/v1`);
-  console.log(`📚 API Docs: http://localhost:${port}/api/v1/docs`);
+  if (!production)
+    console.log(`📚 API Docs: http://localhost:${port}/api/v1/docs`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log('================================');
   console.log('');

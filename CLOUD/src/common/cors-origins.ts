@@ -11,7 +11,8 @@ export const TAURI_ORIGINS = [
   'https://tauri.localhost', // Windows con useHttpsScheme
 ];
 
-export function resolveCorsOrigins(raw = process.env.CORS_ORIGIN ?? '*'): '*' | string[] {
+/* Sin CORS_ORIGIN, solo la app de escritorio: `*` hay que pedirlo. */
+export function resolveCorsOrigins(raw = process.env.CORS_ORIGIN ?? ''): '*' | string[] {
   if (raw.trim() === '*') return '*';
   const configured = raw
     .split(',')

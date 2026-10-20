@@ -24,6 +24,8 @@ docker compose --env-file .env.production exec cloud node dist/cli/user-add <usu
 ```
 Reinicia la nube después para que lea el cambio.
 
+Cada usuario tiene su propio Home y Backups y nadie puede leer, listar ni tocar los de otro. Al arrancar, quien aún no tenga rutas recibe `<primera de CLOUD_ALLOWED_ROOTS>/users/<usuario>/{home,backups}`; solo si nadie tiene rutas todavía (instalación nueva o anterior a esta separación), el usuario más antiguo se queda con `CLOUD_DEFAULT_HOME`/`CLOUD_DEFAULT_BACKUPS` y lo que ya hubiera allí. Desde el panel se pueden cambiar, pero nunca a una carpeta de otro usuario (ni dentro ni por encima) ni a la carpeta `users` salvo la propia.
+
 ## Producción (docker compose, imagen de Docker Hub)
 La imagen se publica como `<DOCKERHUB_USER>/startcode-cloud` (`make push`; ver `docs/IMAGENES_DOCKER.md`) y el compose la descarga:
 ```bash
@@ -103,4 +105,4 @@ ffmpeg genera al ritmo que lee el reproductor y se corta al cerrar el video o sa
 | POST | `/entries/move` | `{ section, path, toSection, toParent? }` (entre secciones también) |
 | DELETE | `/entries?section&path` | Elimina (carpetas con su contenido) |
 
-Las rutas son relativas a la raíz de la sección (`Documentos/Contratos`). Se rechazan rutas absolutas, `.`/`..`, nombres con `/ \ : * ? " < > |` y cualquier camino que atraviese un enlace simbólico. Los errores llevan `{ code, message, hint? }` en español.
+Las rutas son relativas a la raíz de la sección (`Documentos/Contratos`). Se rechazan rutas absolutas, `.`/`..`, nombres con `/ \ : * ? " < > |` o caracteres de control, y cualquier camino que atraviese un enlace simbólico o cuya ruta real salga de la sección. Las subidas deben ir como `application/octet-stream` (415 si no) y se rechazan antes de leerlas si el tamaño declarado pasa de `CLOUD_MAX_UPLOAD_BYTES` (413) o del espacio libre (507). `stream-ticket` solo admite video y audio. Toda respuesta lleva `nosniff`, `Content-Security-Policy: sandbox` y `Cache-Control: no-store` (salvo la reproducción). Sin `CORS_ORIGIN` solo se admite la app de escritorio. Los errores llevan `{ code, message, hint? }` en español.

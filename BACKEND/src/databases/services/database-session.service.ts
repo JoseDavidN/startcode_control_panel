@@ -112,9 +112,10 @@ export class DatabaseSessionService implements OnModuleDestroy {
     return { ...session.target, session: this.api(session) };
   }
 
-  async close(userId: string, sessionId: string): Promise<void> {
+  async close(userId: string, sessionId: string, connectionId?: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session || session.userId !== userId) return;
+    if (connectionId !== undefined && session.connectionId !== connectionId) return;
     await this.dispose(session);
   }
 

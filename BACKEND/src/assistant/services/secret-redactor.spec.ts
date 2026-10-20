@@ -18,12 +18,19 @@ describe('redactSecrets', () => {
     ['sshpass -p S3cret ssh host', 'S3cret'],
     ['export OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
     ['root:$6$saltsalt$abcdefghijklmnopqrstuvwxyz0123:19000', 'abcdefghijklmnopqrstuvwxyz0123'],
+    ['curl -H "Authorization: Bearer abcDEF123456ghiJKL" https://x', 'abcDEF123456ghiJKL'],
+    ['Authorization: Basic dXNlcjpwYXNzd29yZA==', 'dXNlcjpwYXNzd29yZA=='],
+    ['curl -u admin:S3cretPass https://x', 'S3cretPass'],
+    ['token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'],
+    ['aws_access AKIAIOSFODNN7EXAMPLE', 'AKIAIOSFODNN7EXAMPLE'],
+    ['git clone https://ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/x', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789'],
+    ['SLACK xoxb-123456789012-abcdefghij', 'xoxb-123456789012-abcdefghij'],
   ])('oculta el secreto de %s', (text, secret) => {
     expect(redactSecrets(text)).not.toContain(secret);
   });
 
   it('respeta el texto sin secretos', () => {
-    const text = 'Filesystem Size Used\n/dev/sda1 40G 12G\nmysql -u root -p';
+    const text = 'Filesystem Size Used\n/dev/sda1 40G 12G\nmysql -u root -p\nToken generado correctamente con Basic auth';
     expect(redactSecrets(text)).toBe(text);
   });
 });

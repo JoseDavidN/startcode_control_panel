@@ -3,12 +3,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Client as SSHClient } from 'ssh2';
 import { SSHService } from '@monitoring/services/ssh.service';
+import { HostKeyMismatchError } from '@monitoring/services/host-key';
 import { AgentGateway } from '@monitoring/gateways/agent.gateway';
+import { shellQuote } from '@/common/security/shell';
 import { AuthService } from '@auth/auth.service';
 import { User } from '@auth/entities/user.entity';
 import { Server, ServerStatus } from '../entities/server.entity';
 import { ServersService } from '../servers.service';
 import { AgentBinariesService, type AgentArch } from './agent-binaries.service';
+import { AgentTokenService } from '@servers/services/agent-token.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { NotificationSeverity, NotificationType } from '@/notifications/entities/notification.entity';
 import {
   STEP_LABELS,
   type AgentInstallError,
@@ -43,6 +48,8 @@ export class AgentInstallService {
     private readonly auth: AuthService,
     private readonly gateway: AgentGateway,
     private readonly config: ConfigService,
+    private readonly agentTokens: AgentTokenService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* ── Instalación ────────────────────────────────────────────────── */
@@ -80,7 +87,12 @@ export class AgentInstallService {
       const arch = await this.detectArch(conn, sudo, steps);
 
       const binary = this.binaries.resolve(arch);
-      const script = this.buildInstallScript(server, binary, arch, panel);
+      /* El token nuevo entra como pendiente: si la instalación falla antes de
+         escribir la configuración, el agente que ya corría sigue valiendo. Sin
+         rotaciones automáticas mientras tanto, que pisarían ese pendiente. */
+      this.gateway.holdRotations(server.id, true);
+      const agentToken = await this.agentTokens.issueForInstall(server);
+      const script = this.buildInstallScript(server, binary, arch, panel, agentToken.token);
 
       const result = await this.runPrivilegedScript(conn, sudo, script, {
         timeoutMs: INSTALL_TIMEOUT_MS,
@@ -90,6 +102,9 @@ export class AgentInstallService {
       if (result.code !== 0) {
         throw this.fromScript(result, server, panel);
       }
+
+      /* Reinstalado: el token nuevo es el único válido, sin gracia para el anterior. */
+      await this.agentTokens.activate(server.id, agentToken.jti);
 
       /* Último paso sin SSH: el agente tiene que aparecer en el gateway. */
       steps.set('handshake', 'running');
@@ -125,6 +140,8 @@ export class AgentInstallService {
           : `El agente se instaló pero no ha conectado con el panel. Comprueba que ${server.host} alcanza ${panel.ws}.`,
       };
     } catch (error) {
+      /* Clave de host cambiada: no se tocó la máquina y el panel enseña el aviso (409). */
+      if (error instanceof HostKeyMismatchError) throw error;
       const failure = this.translate(error, server);
       steps.failCurrent(failure.message);
 
@@ -154,6 +171,7 @@ export class AgentInstallService {
         error: failure,
       };
     } finally {
+      this.gateway.holdRotations(server.id, false);
       try {
         conn?.end();
       } catch {
@@ -202,6 +220,10 @@ export class AgentInstallService {
 
       const removed = /@@REMOVED:1/.test(result.stdout);
 
+      /* El token que tuviera la máquina deja de valer, aunque alguien guardara
+         una copia de la configuración. */
+      await this.revokeAgentToken(server.id);
+
       await this.servers.setAgentState(server.id, {
         state: 'not_installed',
         version: undefined,
@@ -218,6 +240,8 @@ export class AgentInstallService {
 
       return { ok: true, removed, steps: steps.all() };
     } catch (error) {
+      /* Clave de host cambiada: no se tocó la máquina y el panel enseña el aviso (409). */
+      if (error instanceof HostKeyMismatchError) throw error;
       const failure = this.translate(error, server);
       steps.failCurrent(failure.message);
 
@@ -233,6 +257,70 @@ export class AgentInstallService {
         /* ya cerrada */
       }
     }
+  }
+
+  /* ── Token del agente ───────────────────────────────────────────── */
+
+  /** Ningún token vale ya para este servidor; corta el socket si lo hay. */
+  async revokeAgentToken(serverId: string): Promise<void> {
+    await this.agentTokens.revoke(serverId);
+    this.gateway.disconnectAgent(serverId);
+  }
+
+  /**
+   * Token para instalar a mano (`deploy/install.sh`). Pasa a ser el único
+   * válido: el que tuviera el agente deja de servir.
+   */
+  async issueManualToken(server: Pick<Server, 'id' | 'name'>): Promise<string> {
+    const token = await this.agentTokens.issueAndActivate(server);
+    this.gateway.disconnectAgent(server.id);
+    return token;
+  }
+
+  /** Tras borrar el servidor: la fila ya no existe, solo queda cortar el socket. */
+  forgetAgent(serverId: string): void {
+    this.gateway.disconnectAgent(serverId);
+  }
+
+  /**
+   * «Regenerar token del agente». Con el agente conectado se rota por su
+   * socket: el anterior vale hasta el ACK y unos minutos de gracia. Sin
+   * agente no hay por dónde mandarle uno nuevo, así que se revoca y hay que
+   * reinstalar. Queda como aviso de seguridad para el dueño.
+   */
+  async regenerateAgentToken(
+    serverId: string,
+    user: User,
+  ): Promise<{ mode: 'rotating' | 'revoked' }> {
+    const server = await this.servers.findOne(serverId, user);
+
+    const sent = await this.gateway.rotateAgentToken(server);
+    const mode = sent === 'rotating' ? 'rotating' : 'revoked';
+    if (mode === 'revoked') await this.revokeAgentToken(server.id);
+
+    this.logger.log(
+      `🔑 Token del agente de ${server.name} ${mode === 'rotating' ? 'en rotación' : 'revocado'} por ${user.email}`,
+    );
+
+    await this.notifications
+      .create(user.id, {
+        type: NotificationType.SECURITY,
+        severity: mode === 'rotating' ? NotificationSeverity.INFO : NotificationSeverity.WARNING,
+        title: 'Token del agente regenerado',
+        body:
+          mode === 'rotating'
+            ? `Se envió un token nuevo al agente de ${server.name}. El anterior deja de valer en cuanto el agente lo confirme.`
+            : `El agente de ${server.name} no estaba conectado: su token quedó revocado. Reinstala el agente para que vuelva a reportar.`,
+        serverId: server.id,
+        metadata: { serverName: server.name },
+      })
+      .catch((err) =>
+        this.logger.warn(
+          `Aviso de regeneración de token no guardado: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+
+    return { mode };
   }
 
   /* ── Sondas ─────────────────────────────────────────────────────── */
@@ -395,13 +483,13 @@ export class AgentInstallService {
     binary: { sha256: string; version: string },
     arch: AgentArch,
     panel: { http: string; ws: string },
+    agentToken: string,
   ): string {
-    const agentToken = this.auth.generateAgentToken(server.id, server.name);
     const installToken = this.auth.generateAgentInstallToken(server.id);
 
     /* Las variables van en comillas simples y con los apóstrofos escapados: un
        nombre de servidor con comillas no debe poder cerrar la cadena. */
-    const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+    const quote = shellQuote;
 
     return [
       `SC_MODE=install`,
@@ -432,6 +520,14 @@ export class AgentInstallService {
       /\/+$/,
       '',
     );
+
+    if (base && !isHttpUrl(base)) {
+      throw new InstallFailure(
+        'PANEL_URL_MISSING',
+        'La URL pública del panel no es válida.',
+        'Debe ser http:// o https:// seguida del host y, si hace falta, el puerto (por ejemplo http://192.168.1.50:3001).',
+      );
+    }
 
     if (!base) {
       throw new InstallFailure(
@@ -633,5 +729,17 @@ class ProgressParser {
         detail?.trim() || undefined,
       );
     }
+  }
+}
+
+/** URL http(s) sin credenciales, espacios ni caracteres de control: va al instalador del servidor remoto. */
+function isHttpUrl(value: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  if (/[\s\x00-\x1f\x7f]/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password && Boolean(url.hostname);
+  } catch {
+    return false;
   }
 }

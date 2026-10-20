@@ -1,7 +1,8 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAssistant } from '@hooks/useAssistantBridge';
+import { onSessionRevoked } from '@lib/sessionRevoked';
 import {
 	TerminalDockContext,
 	type TerminalDockContextValue,
@@ -45,6 +46,9 @@ export const TerminalDockProvider = ({ children }: { children: ReactNode }) => {
 		setSession(null);
 		setStatuses([]);
 	}, []);
+
+	/* Sesión terminada en el backend: fuera la terminal, también la minimizada. */
+	useEffect(() => onSessionRevoked(end), [end]);
 
 	const value = useMemo<TerminalDockContextValue>(
 		() => ({ session, open, openTerminal, minimize, end, setViewing }),

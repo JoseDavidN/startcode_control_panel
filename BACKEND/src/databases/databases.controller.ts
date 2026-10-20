@@ -128,9 +128,10 @@ export class DatabasesController {
   @ApiParam({ name: 'sessionId' })
   async closeSession(
     @Request() req: AuthedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
   ): Promise<{ closed: true }> {
-    await this.databasesService.closeSession(req.user.id, sessionId);
+    await this.databasesService.closeSession(req.user.id, id, sessionId);
     return { closed: true };
   }
 

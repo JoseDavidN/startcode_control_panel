@@ -1,6 +1,6 @@
 // src/servers/dto/agent-install.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class InstallAgentDto {
   @ApiPropertyOptional({
@@ -20,6 +20,10 @@ export class InstallAgentDto {
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true, require_tld: false, allow_underscores: true, disallow_auth: true },
+    { message: 'La URL del panel debe empezar por http:// o https://' },
+  )
   panelUrl?: string;
 
   @ApiPropertyOptional({ description: 'Reinstalar aunque ya estuviera instalado' })

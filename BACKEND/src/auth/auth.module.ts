@@ -12,6 +12,8 @@ import { JwtAuthGuard } from './jwt-auth/jwt-auth.guard';
 import { RolesGuard } from './roles/roles.guard';
 import { DefaultUserSeeder } from './seeders/default-user.seeder';
 import { WsAuthService } from './ws-auth.service';
+import { SessionSocketsService } from '@auth/session-sockets.service';
+import { JWT_ALGORITHM, jwtSecretOf } from '@auth/jwt-config';
 
 @Module({
   imports: [
@@ -20,16 +22,20 @@ import { WsAuthService } from './ws-auth.service';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
+        /* Falla al arrancar con un secreto ausente, corto o de ejemplo. */
+        secret: jwtSecretOf(configService),
         signOptions: {
+          algorithm: JWT_ALGORITHM,
           expiresIn: configService.get('JWT_EXPIRES_IN', '30m'),
         },
+        /* Se fusiona en cada `jwtService.verify` del proyecto: ningún token con otro `alg`. */
+        verifyOptions: { algorithms: [JWT_ALGORITHM] },
       }),
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, DefaultUserSeeder, WsAuthService],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule, WsAuthService],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, DefaultUserSeeder, WsAuthService, SessionSocketsService],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule, WsAuthService, SessionSocketsService],
 })
 export class AuthModule {}

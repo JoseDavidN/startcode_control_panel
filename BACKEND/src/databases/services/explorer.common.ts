@@ -158,6 +158,42 @@ export interface DeleteRowsInput extends TableRef {
   keys: Record<string, unknown>[];
 }
 
+/** Tope de nombre de identificador: MySQL admite 64 caracteres y PostgreSQL 63 bytes; con margen. */
+const MAX_IDENTIFIER = 128;
+
+/**
+ * Nombre de base, esquema, tabla o columna que llega del cliente: texto, no
+ * vacío, acotado y sin byte nulo. El escapado lo pone cada motor después
+ * (`quoteMysqlId`, `escapeIdentifier` de pg); esto evita que llegue basura.
+ */
+export function assertIdentifier(name: unknown, what = 'identificador'): string {
+  if (typeof name !== 'string' || !name || name.length > MAX_IDENTIFIER || name.includes('\0')) {
+    throw new BadRequestException(`El nombre de ${what} no es válido`);
+  }
+  return name;
+}
+
+/**
+ * Identificador de MySQL/MariaDB entre comillas invertidas, con las internas
+ * duplicadas. A diferencia de `conn.escapeId`, no parte por los puntos: una
+ * tabla que se llame `a.b` sigue siendo una sola tabla y no `a`.`b`.
+ */
+export function quoteMysqlId(name: string): string {
+  return `\`${assertIdentifier(name).replace(/`/g, '``')}\``;
+}
+
+/**
+ * Valor de una celda para un parámetro `?` de mysql2. El driver expande un
+ * objeto a `col = valor, …` y un array a una lista: un valor que llega como
+ * JSON se convertiría en SQL. Se mandan como texto JSON (las columnas JSON lo
+ * admiten tal cual).
+ */
+export function toMysqlParam(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return JSON.stringify(value);
+  return value;
+}
+
 /** Filas que se pueden borrar de una vez desde los resultados. */
 export const MAX_DELETE_ROWS = 1_000;
 

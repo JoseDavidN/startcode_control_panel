@@ -98,6 +98,15 @@ export class ServersService implements OnModuleInit {
       os: createServerDto.os,
       tag: createServerDto.tag ?? null,
       description: createServerDto.description,
+      /* Huella vista al probar la conexión antes de guardar: se fija ya, y la
+         primera conexión real no tiene que confiar a ciegas. */
+      ...(createServerDto.hostKeyFingerprint
+        ? {
+            hostKeyFingerprint: createServerDto.hostKeyFingerprint,
+            hostKeyAlgorithm: createServerDto.hostKeyAlgorithm ?? null,
+            hostKeyVerifiedAt: new Date(),
+          }
+        : {}),
       ownerId: user.id,
       /* PENDING, no OFFLINE: el servidor todavía no está caído, es que aún no
          tiene agente. El gateway lo pondrá ONLINE en cuanto el agente hable. */
@@ -162,6 +171,10 @@ export class ServersService implements OnModuleInit {
         'createdAt',
         'updatedAt',
         'lastCheckAt',
+        /* El hostVerifier de SSHService compara con esta huella. */
+        'hostKeyAlgorithm',
+        'hostKeyFingerprint',
+        'hostKeyVerifiedAt',
       ],
     });
 
@@ -207,6 +220,17 @@ export class ServersService implements OnModuleInit {
           `Ya tienes un servidor con el host "${updateServerDto.host}"`,
         );
       }
+    }
+
+    /* Otro host u otro puerto es otra máquina: la clave fijada ya no aplica y
+       la próxima conexión vuelve a ser un primer uso. */
+    if (
+      (updateServerDto.host !== undefined && updateServerDto.host !== server.host) ||
+      (updateServerDto.port !== undefined && updateServerDto.port !== server.port)
+    ) {
+      server.hostKeyAlgorithm = null;
+      server.hostKeyFingerprint = null;
+      server.hostKeyVerifiedAt = null;
     }
 
     // Actualizar los campos - Mapeo manual necesario

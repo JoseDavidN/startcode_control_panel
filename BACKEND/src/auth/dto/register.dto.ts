@@ -3,11 +3,12 @@ import {
   IsString,
   MinLength,
   MaxLength,
-  Matches,
   IsOptional,
   IsIn,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { RawValue } from '@auth/dto/raw-value.decorator';
+import { IsStrongPassword } from '@auth/dto/password-policy';
 
 export class RegisterDto {
   @ApiProperty({ description: 'Nombres del usuario', example: 'Juan Carlos' })
@@ -29,6 +30,9 @@ export class RegisterDto {
     description: 'El correo electronico del usuario',
     example: 'usuario@example.com',
   })
+  @RawValue()
+  @IsString({ message: 'El email no es valido' })
+  @MaxLength(254, { message: 'El email no es valido' })
   @IsEmail({}, { message: 'El email no es valido' })
   email: string;
 
@@ -46,15 +50,6 @@ export class RegisterDto {
     description: 'La contraseña del usuario',
     example: 'Pasword1234!',
   })
-  @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(50, { message: 'La contraseña debe tener menos de 50 caracteres' })
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-    {
-      message:
-        'La contraseña debe tener al menos una letra mayuscula, una minuscula, un numero y un caracter especial',
-    },
-  )
+  @IsStrongPassword()
   password: string;
 }

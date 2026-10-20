@@ -4,6 +4,7 @@ import { join } from 'path';
 import { hash } from 'bcryptjs';
 import { CloudConfig } from '@/common/cloud-config';
 import type { SectionPaths } from '@/common/sections';
+import { assignMissingPaths } from '@/paths/user-paths';
 
 export interface CloudUser {
   username: string;
@@ -56,6 +57,7 @@ export class StateStore implements OnModuleInit {
     };
     await this.purgeExpired();
     await this.seedAdmin();
+    await this.assignPaths();
   }
 
   /* ── Usuarios ── */
@@ -63,6 +65,10 @@ export class StateStore implements OnModuleInit {
   findUser(username: string): CloudUser | undefined {
     const key = username.toLowerCase();
     return this.state.users.find(u => u.username.toLowerCase() === key);
+  }
+
+  listUsers(): readonly CloudUser[] {
+    return this.state.users;
   }
 
   async upsertUser(user: CloudUser): Promise<void> {
@@ -129,6 +135,18 @@ export class StateStore implements OnModuleInit {
       createdAt: new Date().toISOString(),
     });
     this.logger.log(`Usuario inicial «${adminUsername}» creado.`);
+  }
+
+  /** Rutas propias para quien aún no tiene: sin ellas no hay acceso (ver `assignMissingPaths`). */
+  private async assignPaths(): Promise<void> {
+    const assigned = assignMissingPaths(this.state.users, this.config.defaultPaths, this.config.allowedRoots[0]);
+    for (const user of this.state.users) {
+      if (user.paths) continue;
+      const paths = assigned.get(user.username);
+      if (paths) user.paths = paths;
+      else this.logger.error(`El usuario «${user.username}» no tiene carpetas: las suyas se solapan con las de otro. Revisa users.json.`);
+    }
+    if (assigned.size > 0) await this.persist('users.json', this.state.users);
   }
 
   private async read<T>(file: string, fallback: T): Promise<T> {

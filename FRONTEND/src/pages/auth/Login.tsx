@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ROUTES } from '@utils/constants';
 import { useAuth } from '@hooks/useAuth';
 
@@ -283,6 +283,9 @@ export const Login = () => {
   const [showPwd, setShowPwd]      = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError]          = useState('');
+  /* Por qué se cerró la sesión anterior (`auth:revoked`): revocada, expirada, inactividad… */
+  const location = useLocation();
+  const [notice, setNotice] = useState(() => (location.state as { notice?: string } | null)?.notice ?? '');
   const [twoFactorPending, set2FA] = useState(false);
   const [tempToken, setTempToken]  = useState('');
   const [code, setCode]            = useState(['', '', '', '', '', '']);
@@ -311,6 +314,7 @@ export const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     try {
       const result = await login({ email, password, rememberMe });
       if (result && 'requiresTwoFactor' in result) {
@@ -375,7 +379,10 @@ export const Login = () => {
   const handleExpiredPasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (newPwd.length < 8) { setError('La nueva contraseña debe tener al menos 8 caracteres.'); return; }
+    if (newPwd.length < 8 || newPwd.length > 72 || !/^(?=.*\p{Ll})(?=.*\p{Lu})(?=.*\p{Nd})(?=.*[^\p{L}\p{Nd}])/u.test(newPwd)) {
+      setError('La nueva contraseña debe tener entre 8 y 72 caracteres, con mayúscula, minúscula, número y un carácter especial.');
+      return;
+    }
     if (newPwd !== confirmPwd) { setError('Las contraseñas no coinciden.'); return; }
     try {
       await completeExpiredPasswordChange(tempToken, password, newPwd);
@@ -653,6 +660,10 @@ export const Login = () => {
                       {I.shield} <span>TLS 1.3 · E2E</span>
                     </span>
                   </div>
+
+                  {notice && !error && (
+                    <div role="status" className="glass-soft rounded-xl p-3 text-amber-300 text-sm border border-amber-400/20">{notice}</div>
+                  )}
 
                   {error && (
                     <div className="glass-soft rounded-xl p-3 text-rose-300 text-sm border border-rose-400/20">{error}</div>

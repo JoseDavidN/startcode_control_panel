@@ -5,6 +5,7 @@ import {
   Post,
   Put,
   Param,
+  ParseUUIDPipe,
   Query,
   Body,
   HttpCode,
@@ -80,7 +81,7 @@ export class AgentDataController {
     description: 'Métricas más recientes',
   })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
-  async getLatestMetrics(@Param('id') serverId: string, @Request() req: AuthedRequest) {
+  async getLatestMetrics(@Param('id', ParseUUIDPipe) serverId: string, @Request() req: AuthedRequest) {
     const serverName = await this.verifyServerAccess(serverId, req.user.id);
 
     const [metrics, pinned] = await Promise.all([
@@ -182,7 +183,7 @@ export class AgentDataController {
   @ApiResponse({ status: 200, description: 'Resumen de métricas', type: ServerSummaryDto })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado o sin métricas' })
   async getServerSummary(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Request() req: AuthedRequest,
   ): Promise<ServerSummaryDto> {
     await this.verifyServerAccess(serverId, req.user.id);
@@ -214,7 +215,7 @@ export class AgentDataController {
     type: HistoricalMetricsDto,
   })
   async getHistoricalMetrics(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Query('hours', new ParseIntPipe({ optional: true })) hours: number = 24,
     @Request() req: AuthedRequest,
   ): Promise<HistoricalMetricsDto> {
@@ -236,7 +237,7 @@ export class AgentDataController {
     type: SystemInfoResponseDto,
   })
   async getSystemInfo(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Request() req: AuthedRequest,
   ): Promise<SystemInfoResponseDto> {
     // Verificar acceso
@@ -263,7 +264,7 @@ export class AgentDataController {
     type: AgentConnectionStatusDto,
   })
   async getAgentStatus(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Request() req: AuthedRequest,
   ): Promise<AgentConnectionStatusDto> {
     // Verificar acceso
@@ -315,7 +316,7 @@ export class AgentDataController {
   })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
   async executeServiceAction(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Param('serviceName') serviceName: string,
     @Body() dto: ServiceActionDto,
     @Request() req: AuthedRequest,
@@ -346,7 +347,7 @@ export class AgentDataController {
   @ApiResponse({ status: 400, description: 'Comando vacío, demasiado largo o peligroso sin confirmar (DANGEROUS_COMMAND)' })
   @ApiResponse({ status: 403, description: 'Con sudo, el usuario SSH necesita contraseña (SUDO_REQUIRED)' })
   async execCommand(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: ExecCommandDto,
     @Request() req: AuthedRequest,
   ) {
@@ -362,7 +363,7 @@ export class AgentDataController {
   @ApiParam({ name: 'id', description: 'ID del servidor' })
   @ApiResponse({ status: 200, description: 'Últimos comandos: quién, cuándo, dónde y cómo terminaron' })
   async commandHistory(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Query('limit') limit: string | undefined,
     @Request() req: AuthedRequest,
   ) {
@@ -385,7 +386,7 @@ export class AgentDataController {
   @ApiResponse({ status: 403, description: 'El usuario SSH no puede usar docker y sudo pide contraseña (SUDO_REQUIRED)' })
   @ApiResponse({ status: 503, description: 'Docker no está instalado o el daemon no responde (DOCKER_UNAVAILABLE)' })
   async listDockerContainers(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: DockerContainersDto,
     @Request() req: AuthedRequest,
   ) {
@@ -407,7 +408,7 @@ export class AgentDataController {
   @ApiResponse({ status: 200, description: '`ok` y los pasos; si falla, `error` con el motivo y las últimas líneas de la salida' })
   @ApiResponse({ status: 403, description: 'Hace falta la contraseña de sudo (SUDO_REQUIRED)' })
   async installService(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: InstallServiceDto,
     @Request() req: AuthedRequest,
   ) {
@@ -423,7 +424,7 @@ export class AgentDataController {
   @ApiOperation({ summary: 'Saber si un servicio del catálogo ya está instalado', description: 'Por SSH y sin privilegios: sistema, gestor de paquetes, si está instalado y su versión.' })
   @ApiParam({ name: 'id', description: 'ID del servidor' })
   async serviceInstallStatus(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: InstallServiceDto,
     @Request() req: AuthedRequest,
   ) {
@@ -445,7 +446,7 @@ export class AgentDataController {
   @ApiResponse({ status: 200, description: '`ok` y los pasos; si queda algún resto, `error` RESIDUE_LEFT con la lista' })
   @ApiResponse({ status: 403, description: 'Hace falta la contraseña de sudo (SUDO_REQUIRED)' })
   async uninstallService(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: InstallServiceDto,
     @Request() req: AuthedRequest,
   ) {
@@ -468,7 +469,7 @@ export class AgentDataController {
   @ApiResponse({ status: 403, description: 'El kubeconfig solo lo lee root y sudo pide contraseña (SUDO_REQUIRED)' })
   @ApiResponse({ status: 503, description: 'Sin kubectl o el clúster no responde (KUBERNETES_UNAVAILABLE)' })
   async listKubernetesPods(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: KubernetesPodsDto,
     @Request() req: AuthedRequest,
   ) {
@@ -492,7 +493,7 @@ export class AgentDataController {
   @ApiResponse({ status: 403, description: 'El proceso es de otro usuario y sudo pide contraseña (SUDO_REQUIRED)' })
   @ApiResponse({ status: 404, description: 'El proceso ya no existe (PROCESS_NOT_FOUND)' })
   async killProcess(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Param('pid', ParseIntPipe) pid: number,
     @Body() dto: KillProcessDto,
     @Request() req: AuthedRequest,
@@ -516,7 +517,7 @@ export class AgentDataController {
   @ApiResponse({ status: 200, description: 'Líneas del journal' })
   @ApiResponse({ status: 403, description: 'El journal exige privilegios (SUDO_REQUIRED)' })
   async getServiceLogs(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Param('serviceName') serviceName: string,
     @Body() dto: ServiceLogsDto,
     @Request() req: AuthedRequest,
@@ -540,7 +541,7 @@ export class AgentDataController {
   @ApiParam({ name: 'id', description: 'ID del servidor' })
   @ApiResponse({ status: 200, description: 'Lista de servicios fijados ya guardada' })
   async setPinnedServices(
-    @Param('id') serverId: string,
+    @Param('id', ParseUUIDPipe) serverId: string,
     @Body() dto: PinnedServicesDto,
     @Request() req: AuthedRequest,
   ): Promise<{ pinned: string[] }> {

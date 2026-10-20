@@ -1,3 +1,5 @@
+import { shellQuote } from '@/common/security/shell';
+
 /**
  * Recetas para instalar servicios en el servidor remoto. Puras: a partir del
  * sistema detectado devuelven los comandos; quien los ejecuta (con la
@@ -10,6 +12,7 @@
  */
 
 export type PackageManager = 'apt-get' | 'dnf' | 'yum' | 'zypper' | 'apk' | 'pacman';
+const PACKAGE_MANAGERS: readonly PackageManager[] = ['apt-get', 'dnf', 'yum', 'zypper', 'apk', 'pacman'];
 export type InitSystem = 'systemd' | 'openrc' | 'unknown';
 
 export interface RemoteOs {
@@ -60,18 +63,21 @@ export function parseOs(stdout: string): RemoteOs {
       .filter(l => l.includes('='))
       .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).replace(/^"|"$/g, '')] as const),
   );
-  const pm = kv.get('PM') as PackageManager | undefined;
+  const pm = kv.get('PM');
   const init = kv.get('INIT');
+  /* Lo que se interpola en comandos (codename en repositorios, versión, arquitectura)
+     solo con caracteres de identificador: un os-release raro no se convierte en shell. */
+  const token = (key: string) => (kv.get(key) ?? '').replace(/[^A-Za-z0-9._ -]/g, '').slice(0, 64);
   return {
-    id: kv.get('ID') ?? '',
-    like: kv.get('LIKE') ?? '',
-    name: kv.get('NAME') || 'Linux',
-    version: kv.get('VER') ?? '',
-    codename: kv.get('CODE') ?? '',
-    pm: pm ?? null,
+    id: token('ID'),
+    like: token('LIKE'),
+    name: (kv.get('NAME') ?? '').replace(/[^\p{L}\p{N} ._()/+-]/gu, '').slice(0, 80) || 'Linux',
+    version: token('VER'),
+    codename: token('CODE').replace(/ /g, ''),
+    pm: PACKAGE_MANAGERS.includes(pm as PackageManager) ? (pm as PackageManager) : null,
     init: init === 'systemd' || init === 'openrc' ? init : 'unknown',
     snap: kv.get('SNAP') === '1',
-    arch: kv.get('ARCH') ?? '',
+    arch: token('ARCH').replace(/ /g, ''),
     avx: kv.get('AVX') === '1',
   };
 }
@@ -111,7 +117,7 @@ export interface InstallPlan {
 export const SSH_CLIENT_IP = '{{SSH_CLIENT_IP}}';
 
 /* Comandos compuestos van en `sh -c` para que el prefijo de sudo los cubra enteros. */
-export const sh = (script: string) => `sh -c '${script.replace(/'/g, `'"'"'`)}'`;
+export const sh = (script: string) => `sh -c ${shellQuote(script)}`;
 
 /* Instalar un paquete sin preguntar, según el gestor. apt necesita la lista al día. */
 function packageInstall(pm: PackageManager, pkg: string): string[] {
@@ -1295,7 +1301,9 @@ export const INSTALLABLE = {
 
 export type InstallableService = keyof typeof INSTALLABLE;
 
-export const isInstallable = (name: string): name is InstallableService => name in INSTALLABLE;
+/* `Object.hasOwn`, no `in`: `toString` o `constructor` también están «en» el objeto. */
+export const isInstallable = (name: string): name is InstallableService =>
+  typeof name === 'string' && Object.hasOwn(INSTALLABLE, name);
 
 /** Grupos del catálogo: `kubernetes` → k3s, microk8s, k0s, rke2. */
 export const INSTALL_GROUPS = {
@@ -1303,4 +1311,5 @@ export const INSTALL_GROUPS = {
   mysql: ['mysql', 'mariadb'],
 } as const satisfies Record<string, InstallableService[]>;
 export type InstallGroup = keyof typeof INSTALL_GROUPS;
-export const isInstallGroup = (name: string): name is InstallGroup => name in INSTALL_GROUPS;
+export const isInstallGroup = (name: string): name is InstallGroup =>
+  typeof name === 'string' && Object.hasOwn(INSTALL_GROUPS, name);

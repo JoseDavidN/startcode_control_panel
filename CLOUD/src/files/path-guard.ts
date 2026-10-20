@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { lstat } from 'fs/promises';
-import { join } from 'path';
+import { lstat, realpath } from 'fs/promises';
+import { dirname, join } from 'path';
 import { cloudError } from '@/common/errors';
+import { inside } from '@/paths/user-paths';
 
 /* ── Seguridad de rutas ───────────────────────────────────────────────
    Toda ruta que llega del panel es relativa a la raíz de una sección y se
@@ -10,6 +11,11 @@ import { cloudError } from '@/common/errors';
    fuera de la raíz). Las reglas de nombre son las del panel (entryNameError). */
 
 const FORBIDDEN = /[\\/:*?"<>|\0]/;
+/* Caracteres de control (saltos de línea en cabeceras y registros) y los de
+   dirección del texto, que disfrazan la extensión
+   (U+202E hace que `fotogpj.exe` se lea como `fotoexe.jpg`). */
+// eslint-disable-next-line no-control-regex -- justamente se buscan los de control
+const INVISIBLE = /[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/;
 
 /** Por qué no vale un nombre de carpeta o archivo, o null si vale. */
 export function nameError(name: string): string | null {
@@ -18,6 +24,7 @@ export function nameError(name: string): string | null {
   if (clean !== name) return 'El nombre no puede empezar ni terminar con espacios.';
   if (clean.length > 120) return 'El nombre no puede pasar de 120 caracteres.';
   if (FORBIDDEN.test(clean)) return 'El nombre no puede llevar / \\ : * ? " < > |';
+  if (INVISIBLE.test(clean)) return 'El nombre no puede llevar caracteres de control.';
   if (clean === '.' || clean === '..') return 'Ese nombre no está permitido.';
   return null;
 }
@@ -61,6 +68,36 @@ export async function assertNoSymlinks(root: string, segments: string[]): Promis
       throw error;
     }
   }
+}
+
+const outside = () =>
+  cloudError(ForbiddenException, 'PATH_OUTSIDE', 'La ruta sale de tu carpeta de la nube.');
+
+/**
+ * Segunda barrera tras `assertNoSymlinks`: la ruta real (o la de su
+ * antepasado más cercano que exista, si se va a crear) sigue dentro de la
+ * raíz real de la sección.
+ */
+export async function assertInsideRoot(root: string, full: string): Promise<void> {
+  const realRoot = await realpath(root);
+  let probe = full;
+  for (;;) {
+    try {
+      if (!inside(await realpath(probe), realRoot)) throw outside();
+      return;
+    } catch (error) {
+      const parent = dirname(probe);
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || parent === probe || !inside(probe, root)) throw error;
+      probe = parent;
+    }
+  }
+}
+
+/** La raíz de la sección, ya resuelta, cae dentro de alguna carpeta permitida. */
+export async function assertRootAllowed(root: string, allowedRoots: string[]): Promise<void> {
+  const real = await realpath(root);
+  const roots = await Promise.all(allowedRoots.map(r => realpath(r).catch(() => r)));
+  if (!roots.some(r => inside(real, r))) throw outside();
 }
 
 /** Ruta relativa POSIX a partir de segmentos (los `id` del árbol). */

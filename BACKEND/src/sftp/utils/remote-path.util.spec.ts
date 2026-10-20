@@ -89,3 +89,14 @@ describe('formatMode', () => {
     expect(formatMode(mode)).toBe(esperado);
   });
 });
+
+describe('valores que no son texto o llevan control', () => {
+  it('rechaza DEL y tipos inesperados con 400, sin TypeError', () => {
+    expect(() => normalizeAbsolute('/tmp/a\x7fb', HOME)).toThrow(BadRequestException);
+    expect(() => normalizeAbsolute(['/etc'] as unknown as string, HOME)).toThrow(BadRequestException);
+    expect(() => normalizeAbsolute({} as unknown as string, HOME)).toThrow(BadRequestException);
+    expect(() => resolveInside('/srv', 42 as unknown as string)).toThrow(BadRequestException);
+    expect(() => assertSegment({} as unknown as string)).toThrow(BadRequestException);
+    expect(() => resolveInside('/srv', `a${NUL}b`)).toThrow(BadRequestException);
+  });
+});

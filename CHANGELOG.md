@@ -9,6 +9,164 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.9.1] — 2026-10-19
+
+Versión **parche** de seguridad sobre 0.9.0. Requiere el backend 0.11.1.
+
+### Seguridad
+- `src-tauri/src/cloud_download.rs`: el comando `cloud_download` valida sus argumentos antes de tocar la red o el disco (`validate()`): `id` alfanumérico de hasta 64 caracteres, URL http(s) con host, token de una línea de hasta 8 KB y `dest` absoluto, que no sea carpeta y dentro del ámbito de `fs` (solo lo elegido en el diálogo de guardar). Antes aceptaba cualquier ruta: un XSS podía escribir o, con una descarga fallida, borrar cualquier archivo del usuario. Si la validación falla no se borra nada
+- `src-tauri/src/macos_notify.rs`: título y cuerpo de la notificación recortados a 256 y 4096 caracteres
+- `src-tauri/capabilities/default.json`, privilegio mínimo:
+  - `core:default` pasa a ser solo app, event, path, window, webview y resources;
+  - notificaciones: solo `is-permission-granted`, `request-permission` y `notify`;
+  - `opener` solo abre direcciones `http://` y `https://`
+- `src-tauri/tauri.conf.json`: la CSP añade `object-src 'none'`, `frame-src 'none'`, `base-uri 'self'`, `form-action 'none'`, `frame-ancestors 'none'`, `font-src 'self' data:` y `worker-src 'self' blob:`
+- Enlaces externos (`lib/openExternal.ts`): solo se abren direcciones http(s) comprobadas con `new URL`. Lo usan `MarkdownView.tsx` y `InstallServiceModal.tsx`; el enlace de acceso que imprime el servidor ya no se abre sin validar
+- Cerrar sesión limpia siempre los tokens y la caché de react-query, aunque falle la petición (`AuthProvider.tsx`), y también cuando falla la renovación de sesión (`api.service.ts`)
+- Cambiar la contraseña (Configuración y contraseña caducada en `Login.tsx`) valida en el cliente la misma política que el backend: de 8 a 72 caracteres, con mayúscula, minúscula, número y un carácter especial. Configuración muestra el requisito de minúscula
+- Dependencias actualizadas sin cambiar de versión mayor (`pnpm audit --prod`: de 63 vulnerabilidades a 2): axios 1.20.0, react-router-dom 6.30.6, socket.io-client 4.8.4, vite 7.3.7 y las transitivas (form-data, follow-redirects, lodash, nanoid, picomatch, postcss, rollup, source-map-js, socket.io-parser, ws). Quedan 2 moderadas de react-router que solo se corrigen en la v7 y aquí no se pueden explotar: todas las navegaciones usan rutas fijas y la app no usa el modo framework
+- Descarga de la nube (`cloud_download.rs`): ya no sigue redirecciones, así el token de la nube no sale hacia otro servidor
+- Huella SSH:
+  - el detalle del servidor muestra su clave de host (fila «Clave de host»);
+  - si la huella no coincide con la guardada (por HTTP, terminal o SFTP, `lib/hostKeyAlert.ts`), `HostKeyMismatchModal.tsx` avisa de un posible ataque de intermediario, muestra la huella esperada y la recibida, y ofrece «Aceptar nueva huella» (con confirmación) o «Cancelar»
+- Si el backend cierra la sesión por reutilizar un token de renovación (401 `REFRESH_REUSED`), `api.service.ts` lo pasa a `sessionRevoked` y el login muestra el motivo, sin recargar la página
+- Sesión revocada (`lib/sessionRevoked.ts`): al recibir `auth:revoked` por cualquier socket, la app borra los tokens y la caché, cierra la terminal minimizada, deja de reconectar las métricas y vuelve al login con el motivo en un aviso ámbar. Un corte de red normal sigue reconectando
+- Agente (`AgentCard.tsx`):
+  - «Regenerar token», con confirmación: si el agente está conectado lo rota, y si no lo revoca y ofrece «Reinstalar agente»;
+  - la tarjeta muestra la edad del token o «rotando token»
+
+---
+
+## [0.11.1] — 2026-10-19
+
+Versión **parche** de seguridad sobre 0.11.0.
+
+### Seguridad
+- Autenticación:
+  - `POST /auth/register` responde 403 salvo con `AUTH_ALLOW_REGISTRATION=true`. La app no lo usa
+  - Login sin enumeración de cuentas: compara siempre contra un hash bcrypt, aunque el email no exista; «usuario inactivo» solo lo ve quien acierta la contraseña, y el bloqueo y sus mensajes son iguales para emails existentes e inexistentes
+  - Fuerza bruta (`auth/login-attempts.ts`, en memoria):
+    - por cuenta, 5 fallos en 15 minutos bloquean 15 minutos, con retardo creciente;
+    - por IP, 30 fallos en 15 minutos dan 429;
+    - en la renovación de sesión, límites por IP y por usuario.
+    La IP sale de `req.ip`, no de `X-Forwarded-For`
+  - DTO estrictos (`RawValue`): un objeto o array en un campo de texto ya no se convierte en `"[object Object]"`. Topes de longitud en email, contraseña y tokens, y formato JWT en `tempToken` y `refreshToken` (`RefreshTokenDto`)
+  - JWT (`auth/jwt-config.ts`):
+    - al arrancar, `JWT_SECRET` debe tener al menos 32 caracteres y no ser el de ejemplo;
+    - algoritmo fijo HS256 al firmar y al verificar;
+    - el hash del refresh se compara en tiempo constante;
+    - los sockets rechazan las sesiones caducadas.
+  - Política de contraseña (`auth/dto/password-policy.ts`): de 8 a 72 caracteres, con mayúscula, minúscula, número y símbolo, en el registro, el cambio de contraseña y el cambio de contraseña caducada. En producción, el seeder no crea el administrador inicial con una contraseña débil o de ejemplo
+- Arranque (`main.ts`):
+  - helmet, con CSP estricta en producción, y sin `x-powered-by`;
+  - límite del cuerpo con `BODY_LIMIT` (100kb por defecto) y `TRUST_PROXY` opcional;
+  - Swagger desactivado en producción;
+  - CORS (`adapters/cors-origins.ts`): en producción se ignora `CORS_ORIGIN=*` y solo quedan los orígenes configurados y los de Tauri
+- Control de acceso:
+  - el namespace `/agent` autentica la conexión del panel con `WsAuthService`: un token de una sesión cerrada o revocada, o de un usuario desactivado, ya no recibe métricas ni notificaciones, y la sala sale del usuario del token;
+  - `:id` de servers, servers/agent y agent-data con `ParseUUIDPipe`: un id inválido da 400 en vez de 500;
+  - terminal y SFTP validan el `serverId` como UUID antes de consultar;
+  - nuevo `app.access-control.spec.ts`: recorre todas las rutas y comprueba que sin token válido, o con token caducado, de otro tipo, de otra sesión o revocado, solo responden las públicas
+- Comandos por SSH (`common/security/shell.ts`):
+  - un solo `shellQuote`, usado también por las recetas, los comandos y la instalación del agente;
+  - `assertUnitName` impide que una unidad que empiece por `-` se lea como opción de systemctl o journalctl, y los comandos llevan `-- 'unidad'`;
+  - acción validada contra el enum y tope en el PID
+- Recetas de instalación: `isInstallable` e `isInstallGroup` usan `Object.hasOwn` (`toString` ya no pasa) y se sanean `codename`, `version`, `arch` y el gestor de paquetes que reporta el servidor
+- Hosts y puertos (`common/security/network.ts`):
+  - `@IsHost`, puerto entero y usuario SSH que no empiece por `-` en los DTO de servidor y de conexión;
+  - llave privada de hasta 32 KB;
+  - comprobación también al conectar (`ssh.service.ts`, `connection-factory.ts`, `database-probe.service.ts`);
+  - `panelUrl` del agente debe ser http(s) sin credenciales
+- Bases de datos:
+  - `runQuery` de MySQL y PostgreSQL lee fila a fila y guarda solo `MAX_ROWS`: un `SELECT` enorme ya no agota la memoria;
+  - MySQL: identificadores con punto bien escapados (`quoteMysqlId`), valores objeto o array rechazados (`toMysqlParam`) y `LOCAL_FILES` desactivado;
+  - `query-policy.ts`: los comentarios ejecutables de MySQL (`/*! … */`, `/*M! … */`) cuentan como SQL, y `DO` y `PREPARE` piden confirmación;
+  - `redis-policy.ts`: `EVAL`, `EVALSHA`, `FCALL`, `SCRIPT LOAD` y `FUNCTION LOAD` piden confirmación
+- SFTP:
+  - un `SFTP_MAX_UPLOAD_BYTES` inválido vuelve al tope de 2 GiB en lugar de quedar sin límite;
+  - se rechaza antes de abrir nada si el tamaño declarado supera el tope;
+  - `mkdirp` admite hasta 10 000 carpetas por lote;
+  - rutas sin el carácter DEL y con tipos validados
+- Asistente IA: `secret-redactor.ts` oculta además cabeceras `Authorization`/`Bearer`, `curl -u`, JWT y claves de AWS, GitHub, GitLab y Slack, y el estado del panel y los destinos pasan por `hidePanelInternals`
+- Huella SSH (TOFU, `monitoring/services/host-key.ts`):
+  - todas las conexiones ssh2 (terminal, SFTP, comandos, monitorización, Docker, Kubernetes, instalación de servicios y del agente) pasan por un único `open()` en `ssh.service.ts` con `hostVerifier`;
+  - la primera conexión guarda el algoritmo y la huella `SHA256:…` al quedar autenticada, con un UPDATE condicionado a que siga vacía;
+  - si no coincide, responde 409 `HOST_KEY_MISMATCH` con la huella esperada y la recibida, y también por `terminal:error` y `sftp:error`;
+  - `POST servers/:id/host-key/accept` (solo el dueño) vuelve a leer la clave sin autenticarse y la reemplaza. Si la huella que vio el usuario ya no es la actual, responde 409 `HOST_KEY_CHANGED`. Queda en una notificación de seguridad;
+  - cambiar el host o el puerto borra la huella guardada;
+  - columnas `hostKeyAlgorithm`, `hostKeyFingerprint` y `hostKeyVerifiedAt` (migración `add_host_key_to_servers.sql`)
+- Sockets y sesión (`auth/session-sockets.service.ts`):
+  - registro sesión → sockets: al revocar una sesión (logout, cerrar una u otras sesiones, cambio de contraseña, tope de sesiones, inactividad por HTTP) su terminal, su SFTP y su conexión a `/agent` reciben `auth:revoked` con el motivo y se cortan; la terminal cierra su SSH. Los sockets de las demás sesiones siguen abiertos;
+  - un barrido cada 30 s corta los sockets de sesiones caducadas, inactivas o de usuarios desactivados;
+  - cuentan como actividad abrir la terminal o el SFTP, escribir en la terminal y cada operación de SFTP. No cuentan el cambio de tamaño ni lo que empuja el servidor (métricas, avisos). La actividad renueva `lastUsed` como máximo una vez por minuto, así una terminal en uso no caduca por falta de peticiones HTTP
+- Tokens del agente (`servers/services/agent-token.service.ts`):
+  - duran 30 días (`AGENT_TOKEN_EXPIRES_IN=30d`, antes 365d) y llevan un `jti` que se guarda en el servidor: solo vale el vigente. Reinstalar, desinstalar, borrar el servidor o pedir un token nuevo invalidan el anterior;
+  - rotación automática a los 7 días por el socket ya autenticado (`agent:token:rotate`): el nuevo queda pendiente hasta el `agent:token:ack`, o hasta que el agente lo usa (ACK perdido). El anterior se acepta 10 minutos más;
+  - los tokens antiguos sin `jti` se aceptan una vez, se fijan por su sha256 y se rotan al esquema nuevo;
+  - un token rechazado recibe `AGENT_TOKEN_REJECTED` y se corta el socket. Un fallo de la base no cuenta como rechazo;
+  - `POST servers/:id/agent/token` (solo el dueño) regenera el token: si el agente está conectado lo rota, y si no lo revoca. Queda en una notificación de seguridad. `GET servers/:id/agent` devuelve `tokenIssuedAt` y `tokenRotating`;
+  - columnas en `servers` (migración `add_agent_token_revocation_to_servers.sql`)
+- Agente 2.2.0-go (en `agent-dist`):
+  - guarda el token rotado de forma atómica (archivo temporal 0600, fsync y rename) antes de confirmarlo;
+  - relee el token del disco en cada intento de conexión, así vuelve con el token vigente o con el rotado;
+  - tras un 401 espera 30 minutos, comprobando cada 30 s si cambió el token del disco;
+  - reconoce el cierre del namespace por parte del panel;
+  - la unidad de systemd permite escribir en `/etc/startcode-agent`.
+  Los agentes anteriores siguen funcionando con su token pero no rotan hasta reinstalarlos
+- Reutilización del refresh token (`auth.service.ts`):
+  - cada rotación guarda el hash del anterior y cuándo se rotó, con un UPDATE condicionado al hash leído; si dos renovaciones se cruzan, la que pierde recibe 401 sin revocar nada;
+  - el anterior se acepta 30 s más (`REFRESH_REUSE_GRACE_MS`) para cubrir una respuesta perdida por la red, sin alargar la ventana;
+  - pasado ese margen, o con cualquier otro refresh ya rotado de la sesión, se revoca la sesión entera. Sus sockets reciben `auth:revoked` con el motivo `reuse`, la respuesta es 401 `REFRESH_REUSED` y queda una notificación de seguridad con la IP y el dispositivo;
+  - columnas `str_previous_refresh_hash` y `dat_refresh_rotated_at` en `tbl_sessions` (migración `add_refresh_reuse_to_sessions.sql`)
+- Migraciones a aplicar antes de levantar la API: `add_host_key_to_servers.sql`, `add_agent_token_revocation_to_servers.sql` y `add_refresh_reuse_to_sessions.sql`
+- Pruebas contra el backend en marcha:
+  - `GET /servers/filter/status/:status`, `GET /servers/filter/os/:os` y `PATCH /servers/:id/status` con un valor fuera del enum daban 500; ahora usan `ParseEnumPipe` y dan 400
+  - `DELETE /databases/:id/sessions/:sessionId` respondía 200 con una conexión ajena, aunque no cerraba la sesión. Ahora valida el UUID, comprueba que la conexión es del usuario (404 si no) y solo cierra la sesión si es de esa conexión
+  - Un JSON muy anidado de unos 10 KB daba 500 incluso en el login. `common/security/body-depth.ts` rechaza con 400 los cuerpos de más de 64 niveles
+- `docker/postgres/initdb/01-schema.sql` regenerado con las columnas nuevas
+- Variables nuevas en `.env.production.example`:
+  - `TRUST_PROXY`, obligatoria detrás de un proxy inverso para que el límite por IP no sea global;
+  - `BODY_LIMIT`;
+  - `AUTH_ALLOW_REGISTRATION`
+- Dependencia nueva: `helmet` 8.3.0
+- Dependencias actualizadas sin cambiar de versión mayor (`pnpm audit --prod`: de 54 vulnerabilidades, una crítica, a 0):
+  - NestJS 11.2.7, `@nestjs/swagger` 11.4.7, typeorm 0.3.31 (inyección SQL en UpdateQueryBuilder), socket.io 4.8.4 y class-validator 0.14.4;
+  - por dependencias transitivas: proxy-addr (crítica, la IP de `trust proxy` que alimenta el bloqueo por fuerza bruta), engine.io, socket.io-parser y ws (DoS en los WebSocket), qs, body-parser y path-to-regexp (DoS en HTTP), jws, multer, validator y lodash;
+  - override de `js-yaml` 5.4.2 bajo `@nestjs/swagger`, en `pnpm-workspace.yaml`, porque pnpm 12 ya no lee el campo `pnpm` de `package.json`.
+  En desarrollo quedan `braces` y `sprintf-js` (jest y typescript-eslint), que no tienen versión corregida
+
+---
+
+## [Cloud 0.2.2] — 2026-10-19
+
+Versión **parche** de seguridad sobre 0.2.1. Sin variables de entorno nuevas.
+
+### Seguridad
+- **Crítico: aislamiento entre usuarios.** Antes, los usuarios sin rutas propias compartían las carpetas Home y Backups por defecto, y cualquiera podía apuntar las suyas (`PUT /config/paths`) a las de otro, así que un usuario podía leer, listar y borrar archivos ajenos. Ahora:
+  - al arrancar, `state.store.ts` asigna a cada usuario sin rutas `<raíz>/users/<usuario>/{home,backups}`, con `paths/user-paths.ts`;
+  - la carpeta compartida de antes solo se la queda el usuario más antiguo, y solo si nadie tiene rutas todavía;
+  - `get()` devuelve 403 si un usuario no tiene rutas, en vez de caer en las compartidas;
+  - `set()` rechaza una carpeta igual a la de otro usuario, dentro de ella o por encima. Lo comprueba con el texto de la ruta, con realpath y otra vez justo antes de guardar. También rechaza `users`, salvo la carpeta propia, y la carpeta de datos internos.
+  En una instalación con varios usuarios que ya compartían carpeta, los demás empiezan con carpetas vacías: hay que repartir los archivos a mano.
+- Enlaces simbólicos (`files/path-guard.ts`):
+  - la raíz de cada sección debe estar, ya resuelta con realpath, dentro de `CLOUD_ALLOWED_ROOTS` (`assertRootAllowed`);
+  - toda operación comprueba que la ruta real sigue dentro de la sección (`assertInsideRoot`);
+  - leer y reproducir abren el archivo con `O_NOFOLLOW`.
+  Un enlace hacia fuera da 403 y no aparece en el árbol ni en el zip
+- Subidas:
+  - exigen `application/octet-stream` (415 si no); antes, una subida en JSON o formulario llegaba vacía y pisaba el archivo;
+  - responden 413 sin leer el cuerpo si el tamaño declarado supera el máximo, y 507 si no queda espacio en disco
+- `common/http-hardening.ts`: una petición tiene 60 s para enviar el cuerpo completo, y una subida se corta tras 120 s sin recibir datos. Antes `requestTimeout = 0` permitía retener conexiones (slowloris) sin sesión. Las descargas lentas no se cortan
+- La reproducción solo admite vídeo y audio (`isStreamable`), tanto al emitir el ticket como al usarlo. Antes se podía servir un SVG o un HTML en línea
+- Cabeceras en todas las respuestas: `nosniff`, CSP `default-src 'none'; sandbox`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` y `Cache-Control: no-store` (la reproducción mantiene su caché). Sin `x-powered-by`
+- JWT: solo se acepta HS256 al verificar. El hash de relleno del login se calcula al arrancar, así que el primer intento con un usuario inexistente no tarda distinto
+- CORS (`common/cors-origins.ts`): con `CORS_ORIGIN` vacío, antes `*`, ahora solo se admite la app de escritorio; en producción con `*` sale un aviso
+- Renombrar un archivo cambiando solo mayúsculas ya no pisa otro archivo que exista con ese nombre: devuelve 409
+- Los nombres de archivo con caracteres de control o de dirección (como U+202E, que disfraza la extensión) se rechazan
+- Los árboles que un usuario pide a la vez para la misma sección comparten un solo recorrido. El zip tiene un tope de `CLOUD_TREE_MAX_ENTRIES × 10` elementos (413) y no sigue enlaces
+
+---
+
 ## [App de escritorio 0.9.0] — 2026-10-19
 
 Versión **menor** sobre 0.8.0.

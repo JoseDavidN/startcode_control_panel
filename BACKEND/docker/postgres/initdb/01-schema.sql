@@ -1,4 +1,4 @@
--- Esquema inicial de StartCode Panel (backend 0.7.0).
+-- Esquema inicial de StartCode Panel (backend 0.11.1).
 -- Generado por docker/generate-schema.sh desde las entidades de TypeORM: no editar a mano.
 -- Postgres lo ejecuta solo al crear el volumen de datos (docker-entrypoint-initdb.d).
 
@@ -414,10 +414,19 @@ CREATE TABLE public.tbl_servers (
     str_hostname text,
     str_os_version text,
     str_kernel_version text,
+    str_host_key_algorithm text,
+    str_host_key_fingerprint text,
+    dat_host_key_verified timestamp with time zone,
     str_owner_id uuid NOT NULL,
     "createdAt" timestamp without time zone DEFAULT now() NOT NULL,
     "updatedAt" timestamp without time zone DEFAULT now() NOT NULL,
-    "lastCheckAt" timestamp with time zone
+    "lastCheckAt" timestamp with time zone,
+    str_agent_token_id character varying(80),
+    str_agent_token_pending_id character varying(80),
+    str_agent_token_previous_id character varying(80),
+    dat_agent_token_previous_until timestamp with time zone,
+    dat_agent_token_issued timestamp with time zone,
+    bol_agent_token_legacy boolean DEFAULT true NOT NULL
 );
 
 
@@ -429,6 +438,8 @@ CREATE TABLE public.tbl_sessions (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     str_user_id uuid NOT NULL,
     str_refresh_hash character varying(64) NOT NULL,
+    str_previous_refresh_hash character varying(64),
+    dat_refresh_rotated_at timestamp with time zone,
     str_user_agent text,
     str_ip character varying(64),
     dat_last_used timestamp with time zone NOT NULL,

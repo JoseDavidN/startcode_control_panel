@@ -5,6 +5,7 @@ import type {
 	AgentInstallResult,
 	AgentInstallState,
 	AgentState,
+	AgentTokenRegenerateResult,
 	AgentUninstallResult,
 } from '@typings/agent.types';
 import type { ResourceTag } from '@utils/tags';
@@ -52,6 +53,14 @@ export interface UpdateServerDto {
 	description?: string;
 }
 
+export interface AcceptHostKeyResult {
+	serverId: string;
+	previous: { algorithm: string | null; fingerprint: string | null };
+	hostKeyAlgorithm: string;
+	hostKeyFingerprint: string;
+	hostKeyVerifiedAt: string;
+}
+
 // Interfaz que coincide con ServerResponseDto del backend
 export interface Server {
 	id: string;
@@ -84,6 +93,10 @@ export interface Server {
 	lastSeen?: string | null;
 	hostname?: string | null;
 	osVersion?: string | null;
+	/** Clave de host SSH fijada en la primera conexión (TOFU); null hasta entonces. */
+	hostKeyAlgorithm?: string | null;
+	hostKeyFingerprint?: string | null;
+	hostKeyVerifiedAt?: string | null;
 	createdAt: string;
 	updatedAt: string;
 	lastCheckAt: string;
@@ -118,6 +131,19 @@ class ServerService {
 	/** Cambia la llave privada SSH. El backend la guarda cifrada y nunca la devuelve. */
 	async updatePrivateKey(id: string, privateKey: string): Promise<void> {
 		await apiService.put(`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/private-key`, { privateKey });
+	}
+
+	/**
+	 * Acepta la clave de host que presenta ahora el servidor. `fingerprint` es la
+	 * que vio el usuario en el aviso: si el servidor presenta otra, responde 409
+	 * y no cambia nada.
+	 */
+	async acceptHostKey(id: string, fingerprint: string): Promise<AcceptHostKeyResult> {
+		const response = await apiService.post<AcceptHostKeyResult>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/host-key/accept`,
+			{ fingerprint },
+		);
+		return unwrapPayload(response) as AcceptHostKeyResult;
 	}
 
 	/** Marca o quita un favorito. Con 3 ya marcados, marcar otro responde 409. */
@@ -174,6 +200,15 @@ class ServerService {
 			{ data: body, timeout: AGENT_OPERATION_TIMEOUT },
 		);
 		return unwrapAgent<AgentUninstallResult>(response);
+	}
+
+	/** Regenera el token del agente: lo rota si está conectado, si no lo revoca. */
+	async regenerateAgentToken(id: string): Promise<AgentTokenRegenerateResult> {
+		const response = await apiService.post<AgentTokenRegenerateResult>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/agent/token`,
+			{},
+		);
+		return unwrapAgent<AgentTokenRegenerateResult>(response);
 	}
 
 	async getAgentState(id: string): Promise<AgentState> {

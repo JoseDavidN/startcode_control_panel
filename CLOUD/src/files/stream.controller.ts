@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import { AuthService } from '@/auth/auth.service';
 import { cloudError } from '@/common/errors';
 import { SECTIONS } from '@/common/sections';
-import { fileTypeFromName, mimeFromName } from './file-types';
+import { fileTypeFromName, isStreamable, mimeFromName } from './file-types';
 import { FilesService, openFileRange } from './files.service';
 import { MediaService } from './media.service';
 
@@ -109,7 +109,9 @@ export class StreamController {
   private async verify(ticket: string | undefined) {
     if (!ticket) throw cloudError(BadRequestException, 'TICKET_MISSING', 'Falta el enlace de reproducción.');
     const verified = await this.auth.verifyStreamTicket(ticket);
-    if (!SECTIONS.includes(verified.section)) throw cloudError(BadRequestException, 'TICKET_INVALID', 'El enlace de reproducción no es válido.');
+    if (!SECTIONS.includes(verified.section) || !isStreamable(verified.path)) {
+      throw cloudError(BadRequestException, 'TICKET_INVALID', 'El enlace de reproducción no es válido.');
+    }
     return verified;
   }
 }

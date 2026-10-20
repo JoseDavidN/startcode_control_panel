@@ -17,6 +17,7 @@ import { AuthService } from './auth.service';
 import type { ClientContext } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { RefreshTokenDto } from '@auth/dto/refresh-token.dto';
 import {
   AuthResponseDto,
   PasswordChangeRequiredDto,
@@ -79,6 +80,8 @@ export class AuthController {
       userAgent: app ? `${userAgent ?? ''} StartCodePanel/${app[1]}`.trim() : userAgent,
       ip: clientIp(req),
       device,
+      /* `req.ip` respeta `trust proxy` (TRUST_PROXY): no se puede falsear con cabeceras. */
+      remoteIp: req.ip ?? null,
     };
   }
 
@@ -230,7 +233,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Sesión cerrada' })
   async logout(@Request() req: AuthenticatedRequest): Promise<{ message: string }> {
     if (req.user.sessionId) {
-      await this.authService.revokeSession(req.user.id, req.user.sessionId);
+      await this.authService.revokeSession(req.user.id, req.user.sessionId, 'logout');
     }
     return { message: 'Sesión cerrada' };
   }
@@ -297,19 +300,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Renovar token de acceso' })
   @ApiResponse({ status: 200, description: 'Token renovado exitosamente' })
   @ApiResponse({ status: 401, description: 'Token de actualización inválido o expirado' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        refreshToken: { type: 'string' },
-      },
-      required: ['refreshToken'],
-    },
-  })
+  @ApiBody({ type: RefreshTokenDto })
   async refresh(
     @Request() req: ExpressRequest,
-    @Body('refreshToken') refreshToken: string,
+    @Body() dto: RefreshTokenDto,
   ): Promise<AuthResponseDto> {
-    return this.authService.refreshToken(refreshToken, this.clientOf(req));
+    return this.authService.refreshToken(dto.refreshToken, this.clientOf(req));
   }
 }

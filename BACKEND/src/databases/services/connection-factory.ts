@@ -3,6 +3,21 @@ import { createConnection, type Connection } from 'mysql2/promise';
 import Redis from 'ioredis';
 import type { ProbeTarget } from './database-probe.service';
 import { CONNECT_TIMEOUT_MS, QUERY_TIMEOUT_MS } from './explorer.common';
+import { isValidHost, isValidPort } from '@/common/security/network';
+
+/**
+ * Host y puerto con formato válido antes de abrir nada: un valor raro
+ * guardado antes de la validación de los DTO da un error claro en vez de
+ * llegar al driver (que con un puerto fuera de rango lanza un RangeError).
+ */
+export function assertEndpoint(t: Pick<ProbeTarget, 'host' | 'port'>): void {
+  if (!isValidHost(t.host) || !isValidPort(t.port)) {
+    throw Object.assign(new Error('El host o el puerto de la conexión no son válidos'), { code: 'EINVALIDENDPOINT' });
+  }
+}
+
+/* Sin LOCAL_FILES: un servidor MySQL malicioso no puede pedir archivos del panel con LOAD DATA LOCAL. */
+export const MYSQL_FLAGS = ['-LOCAL_FILES'];
 
 /*
  * Cómo se abre una conexión de gestión a cada motor. Lo usan los
@@ -11,6 +26,7 @@ import { CONNECT_TIMEOUT_MS, QUERY_TIMEOUT_MS } from './explorer.common';
  */
 
 export function openMysql(t: ProbeTarget, database: string | null): Promise<Connection> {
+  assertEndpoint(t);
   return createConnection({
     host: t.host,
     port: t.port,
@@ -24,6 +40,7 @@ export function openMysql(t: ProbeTarget, database: string | null): Promise<Conn
     supportBigNumbers: true,
     bigNumberStrings: true,
     multipleStatements: false,
+    flags: MYSQL_FLAGS,
   });
 }
 
@@ -32,6 +49,7 @@ export function openMysql(t: ProbeTarget, database: string | null): Promise<Conn
  * comando falla en el momento y la siguiente llamada vuelve a conectar.
  */
 export async function openRedis(t: ProbeTarget, db: number): Promise<Redis> {
+  assertEndpoint(t);
   const client = new Redis({
     host: t.host,
     port: t.port,
@@ -71,6 +89,7 @@ const typeParsers = {
 
 /** Cliente conectado; si falla al conectar, lo cierra y relanza el error. */
 export async function openPg(t: ProbeTarget, database: string): Promise<Client> {
+  assertEndpoint(t);
   const client = new Client({
     host: t.host,
     port: t.port,

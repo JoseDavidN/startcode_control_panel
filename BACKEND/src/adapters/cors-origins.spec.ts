@@ -1,8 +1,25 @@
-import { resolveCorsOrigins, TAURI_ORIGINS } from './cors-origins';
+import { DEV_ORIGINS, resolveCorsOrigins, TAURI_ORIGINS } from './cors-origins';
 
 describe('resolveCorsOrigins', () => {
-  it('mantiene * tal cual', () => {
-    expect(resolveCorsOrigins('*')).toBe('*');
+  it('mantiene * fuera de producción', () => {
+    expect(resolveCorsOrigins('*', 'development')).toBe('*');
+  });
+
+  it('ignora * en producción y deja solo los orígenes de Tauri', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(resolveCorsOrigins('*', 'production')).toEqual(TAURI_ORIGINS);
+    expect(resolveCorsOrigins('*,https://panel.example.com', 'production')).toEqual([
+      'https://panel.example.com',
+      ...TAURI_ORIGINS,
+    ]);
+  });
+
+  it('sin CORS_ORIGIN en producción solo admite la app de escritorio', () => {
+    expect(resolveCorsOrigins('', 'production')).toEqual(TAURI_ORIGINS);
+  });
+
+  it('en desarrollo añade el servidor de Vite', () => {
+    expect(resolveCorsOrigins('', 'development')).toEqual([...TAURI_ORIGINS, ...DEV_ORIGINS]);
   });
 
   it('separa la lista, quita barras finales y añade los orígenes de Tauri', () => {

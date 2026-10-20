@@ -1,5 +1,7 @@
-import { IsString, IsNumber, IsEnum, IsOptional, ValidateIf, IsNotEmpty, MinLength, MaxLength, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsEnum, IsOptional, ValidateIf, IsNotEmpty, MinLength, MaxLength, Min, Max, Matches } from 'class-validator';
+import { IsHost, SSH_USERNAME } from '@/common/security/network';
 import { ApiProperty } from '@nestjs/swagger';
+import { HOST_KEY_FINGERPRINT } from '@monitoring/services/host-key';
 import { ServerOs, ServerTag } from '../entities/server.entity';
 
 export class CreateServerDto {
@@ -16,10 +18,12 @@ export class CreateServerDto {
   @ApiProperty({ description: 'Host del servidor', example: '192.168.1.1' })
   @IsString()
   @IsNotEmpty({ message: 'El host es requerido' })
+  @MaxLength(253)
+  @IsHost()
   host: string;
 
   @ApiProperty({ description: 'Puerto del servidor', example: 22, default: 22 })
-  @IsNumber()
+  @IsInt({ message: 'El puerto debe ser un número entero' })
   @Min(1, { message: 'El puerto debe ser mayor a 0' })
   @Max(65535, { message: 'El puerto debe ser menor a 65535' })
   @IsOptional({ message: 'El puerto es opcional' })
@@ -28,6 +32,8 @@ export class CreateServerDto {
   @ApiProperty({ description: 'Usuario del servidor', example: 'root' })
   @IsString()
   @IsNotEmpty({ message: 'El usuario es requerido' })
+  @MaxLength(64)
+  @Matches(SSH_USERNAME, { message: 'El usuario no puede empezar por guion ni llevar espacios, «:» ni caracteres de control' })
   username: string;
 
   @ApiProperty({
@@ -37,6 +43,7 @@ export class CreateServerDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'La clave privada es requerida' })
+  @MaxLength(32_768, { message: 'La clave privada es demasiado larga' })
   privateKey: string;
 
   @ApiProperty({
@@ -64,4 +71,20 @@ export class CreateServerDto {
   @IsOptional({ message: 'La descripción es opcional' })
   @MaxLength(255, { message: 'La descripción debe tener menos de 255 caracteres' })
   description?: string;
+
+  @ApiProperty({
+    description: 'Huella SHA256 de la clave de host vista al probar la conexión; se fija al crear',
+    example: 'SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(HOST_KEY_FINGERPRINT, { message: 'La huella debe tener el formato SHA256:<base64>' })
+  hostKeyFingerprint?: string;
+
+  @ApiProperty({ description: 'Algoritmo de esa clave de host', example: 'ssh-ed25519', required: false })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9@.-]{2,63}$/, { message: 'Algoritmo de clave de host no válido' })
+  hostKeyAlgorithm?: string;
 }

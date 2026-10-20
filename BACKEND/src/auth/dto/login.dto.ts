@@ -1,13 +1,20 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { RawValue } from '@auth/dto/raw-value.decorator';
+import { PASSWORD_INPUT_MAX_LENGTH } from '@auth/dto/password-policy';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
   @ApiProperty({ description: 'El correo electronico del usuario', example: 'usuario@example.com' })
+  @RawValue()
+  @IsString({ message: 'El email no es valido' })
+  @MaxLength(254, { message: 'El email no es valido' })
   @IsEmail({}, { message: 'El email no es valido' })
   email: string;
 
   @ApiProperty({ description: 'La contraseña del usuario', example: 'Pasword1234!' })
-  @IsString()
+  @RawValue()
+  @IsString({ message: 'La contraseña debe ser texto' })
+  @Length(1, PASSWORD_INPUT_MAX_LENGTH, { message: 'La contraseña no es valida' })
   password: string;
 
   @ApiProperty({
@@ -16,6 +23,7 @@ export class LoginDto {
     example: true,
   })
   @IsOptional()
+  @RawValue()
   @IsBoolean()
   rememberMe?: boolean;
 
@@ -24,6 +32,7 @@ export class LoginDto {
     required: false,
   })
   @IsOptional()
+  @RawValue()
   @IsString()
   @MaxLength(2048)
   trustedDeviceToken?: string;

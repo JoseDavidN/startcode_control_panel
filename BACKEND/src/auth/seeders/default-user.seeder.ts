@@ -4,6 +4,20 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { User, UserRole } from '../entities/user.entity';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, STRONG_PASSWORD } from '@auth/dto/password-policy';
+
+/** Contraseñas de los `.env.*.example` y la de respaldo del código. */
+const KNOWN_DEFAULTS = new Set(['admin123!', 'cambia_esta_password']);
+
+export function isAcceptableAdminPassword(password: string | undefined): boolean {
+  return (
+    !!password &&
+    password.length >= PASSWORD_MIN_LENGTH &&
+    password.length <= PASSWORD_MAX_LENGTH &&
+    STRONG_PASSWORD.test(password) &&
+    !KNOWN_DEFAULTS.has(password.toLowerCase())
+  );
+}
 
 /**
  * Seeder que crea un usuario administrador por defecto al inicializar la aplicación.
@@ -11,7 +25,7 @@ import { User, UserRole } from '../entities/user.entity';
  *
  * Las credenciales se configuran mediante variables de entorno:
  * - DEFAULT_ADMIN_EMAIL: Email del admin (default: admin@startcode.local)
- * - DEFAULT_ADMIN_PASSWORD: Contraseña del admin (default: Admin123!)
+ * - DEFAULT_ADMIN_PASSWORD: Contraseña del admin (default: Admin123!, solo fuera de producción)
  * - DEFAULT_ADMIN_FIRSTNAME: Nombre del admin (default: Admin)
  * - DEFAULT_ADMIN_LASTNAME: Apellido del admin (default: System)
  */
@@ -43,7 +57,20 @@ export class DefaultUserSeeder implements OnModuleInit {
 
     // Obtener credenciales desde variables de entorno o usar valores por defecto
     const email = this.configService.get<string>('DEFAULT_ADMIN_EMAIL', 'admin@startcode.local');
-    const password = this.configService.get<string>('DEFAULT_ADMIN_PASSWORD', 'Admin123!');
+    const configured = this.configService.get<string>('DEFAULT_ADMIN_PASSWORD');
+    const password = configured || 'Admin123!';
+
+    /* En producción no se crea un administrador con la contraseña por defecto,
+       la de ejemplo o una que no cumpla la política: sería la primera que
+       probaría un atacante. */
+    if (this.configService.get<string>('NODE_ENV') === 'production' && !isAcceptableAdminPassword(configured)) {
+      this.logger.error(
+        'DEFAULT_ADMIN_PASSWORD falta, es la de ejemplo o no cumple la política ' +
+          `(${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} caracteres con mayúscula, minúscula, número y símbolo). ` +
+          'No se crea el administrador inicial.',
+      );
+      return;
+    }
     const firstname = this.configService.get<string>('DEFAULT_ADMIN_FIRSTNAME', 'Admin');
     const lastname = this.configService.get<string>('DEFAULT_ADMIN_LASTNAME', 'System');
 

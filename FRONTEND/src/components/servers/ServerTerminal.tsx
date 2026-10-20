@@ -14,6 +14,8 @@ import { MenuIcon } from '@components/common/ContextMenu';
 import { copyText } from '@lib/clipboard';
 import { readClipboard } from '@lib/textEditing';
 import { notify } from '@services/notification.service';
+import { watchSessionRevoked } from '@lib/sessionRevoked';
+import { reportHostKeyMismatch } from '@lib/hostKeyAlert';
 import type { TerminalStatus } from '@contexts/terminal-dock-context';
 
 /* La terminal se pinta con su propia paleta —la de una consola— y no con los
@@ -172,6 +174,7 @@ const TerminalPane = forwardRef<PaneHandle, PaneProps>(({ serverId, visible, ass
       },
     });
     socketRef.current = socket;
+    watchSessionRevoked(socket);
 
     let current: Status = 'connecting';
     const report = (status: Status, message: string) => {
@@ -188,7 +191,9 @@ const TerminalPane = forwardRef<PaneHandle, PaneProps>(({ serverId, visible, ass
 
     socket.on('terminal:output', (data: string) => term.write(data));
 
-    socket.on('terminal:error', (payload: { message: string }) => {
+    socket.on('terminal:error', (payload: { message: string; code?: string }) => {
+      /* Clave de host cambiada: el modal global enseña las dos huellas. */
+      reportHostKeyMismatch(payload);
       report('error', payload?.message ?? 'No se pudo abrir la terminal');
       term.writeln(`\r\n\x1b[31m${payload?.message ?? 'Error de conexión'}\x1b[0m`);
     });

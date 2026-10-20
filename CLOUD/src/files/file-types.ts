@@ -23,6 +23,12 @@ export function fileTypeFromName(name: string): CloudFileType {
   return TYPE_BY_EXT.get(ext) ?? 'text';
 }
 
+/** Lo único que se sirve por ticket (`/files/stream`, `/files/play`), sin descarga. */
+export const isStreamable = (name: string) => {
+  const type = fileTypeFromName(name);
+  return type === 'video' || type === 'audio';
+};
+
 const MIME: Partial<Record<string, string>> = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

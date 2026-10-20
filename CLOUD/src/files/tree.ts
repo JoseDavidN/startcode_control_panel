@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 import { fileTypeFromName } from './file-types';
@@ -64,15 +64,26 @@ export async function scanTree(root: string, name: string, maxEntries: number): 
   return { tree, truncated };
 }
 
-/** Todos los archivos regulares bajo `dir`, con su ruta relativa (para el zip). */
-export async function listFiles(dir: string, prefix: string): Promise<{ path: string; name: string }[]> {
+/**
+ * Todos los archivos regulares bajo `dir`, con su ruta relativa (para el zip).
+ * Salta enlaces simbólicos y especiales; pasar de `maxEntries` (archivos y
+ * carpetas) es un error 413 en vez de llenar la memoria.
+ */
+export async function listFiles(dir: string, prefix: string, maxEntries = Infinity): Promise<{ path: string; name: string }[]> {
   const out: { path: string; name: string }[] = [];
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const path = join(dir, entry.name);
-    const name = `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...(await listFiles(path, name)));
-    else if (entry.isFile()) out.push({ path, name });
-  }
+  let count = 0;
+  const walk = async (current: string, base: string) => {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      if (!entry.isDirectory() && !entry.isFile()) continue;
+      if (++count > maxEntries) {
+        throw new HttpException({ code: 'TOO_MANY_FILES', message: `La carpeta tiene más de ${maxEntries} elementos y no se puede comprimir de una vez.`, hint: 'Descarga sus subcarpetas por separado.' }, HttpStatus.PAYLOAD_TOO_LARGE);
+      }
+      const path = join(current, entry.name);
+      const name = `${base}/${entry.name}`;
+      if (entry.isDirectory()) await walk(path, name);
+      else out.push({ path, name });
+    }
+  };
+  await walk(dir, prefix);
   return out;
 }

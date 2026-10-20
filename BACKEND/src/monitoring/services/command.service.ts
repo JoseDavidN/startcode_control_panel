@@ -7,6 +7,7 @@ import { SSHService, SSHExecResult } from './ssh.service';
 import { ServiceControlService } from './service-control.service';
 import { CommandAudit, CommandAuditStatus } from '../entities/command-audit.entity';
 import { checkCommandPolicy } from './command-policy';
+import { shellQuote } from '@/common/security/shell';
 
 export interface CommandResult {
   id: string;
@@ -77,8 +78,6 @@ const DANGEROUS: { pattern: RegExp; reason: string }[] = [
  */
 const LEADING_SUDO = /^sudo\s+(?!-)/;
 
-/** Comilla simple de shell: `'` → `'\''`. */
-const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 @Injectable()
 export class CommandService {

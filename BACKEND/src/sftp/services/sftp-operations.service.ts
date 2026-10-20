@@ -21,6 +21,10 @@ import {
   resolveInside,
 } from '../utils/remote-path.util';
 
+const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+/** Carpetas por lote de `mkdirp`: una subida de árbol real no se acerca. */
+export const MAX_MKDIRP_DIRS = 10_000;
+
 /** Corta el stream en cuanto se pasa del límite, sin esperar al final. */
 class ByteCounter extends Transform {
   bytes = 0;
@@ -45,9 +49,11 @@ export class SftpOperationsService {
   private readonly maxUploadBytes: number;
 
   constructor(config: ConfigService) {
-    this.maxUploadBytes = Number(
-      config.get('SFTP_MAX_UPLOAD_BYTES', 2 * 1024 * 1024 * 1024),
-    );
+    /* Un valor mal escrito en el .env (NaN, 0, negativo) dejaría la subida sin
+       límite: `bytes > NaN` nunca es cierto. Entonces vale el de por defecto. */
+    const configured = Number(config.get('SFTP_MAX_UPLOAD_BYTES', DEFAULT_MAX_UPLOAD_BYTES));
+    this.maxUploadBytes =
+      Number.isSafeInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_UPLOAD_BYTES;
   }
 
   /* ── Navegación ─────────────────────────────────────────────────── */
@@ -147,6 +153,9 @@ export class SftpOperationsService {
     baseDir: string,
     relDirs: string[],
   ): Promise<number> {
+    if (!Array.isArray(relDirs) || relDirs.length > MAX_MKDIRP_DIRS) {
+      throw new BadRequestException(`Se admiten hasta ${MAX_MKDIRP_DIRS} carpetas por lote`);
+    }
     const base = normalizeAbsolute(baseDir, session.home);
     await this.ensureDir(session, base, '/');
 
@@ -176,6 +185,12 @@ export class SftpOperationsService {
   ): Promise<{ path: string; bytes: number; overwritten: boolean }> {
     const base = normalizeAbsolute(opts.destDir, session.home);
     const target = resolveInside(base, opts.relPath);
+
+    /* Si el cliente ya avisa de que no cabe, se rechaza sin abrir nada en el servidor. */
+    const declared = opts.declaredSize ?? this.contentLength(opts.source);
+    if (declared !== undefined && declared > this.maxUploadBytes) {
+      throw new PayloadTooLargeException('El archivo supera el tamaño máximo permitido');
+    }
 
     await this.ensureDir(session, parentOf(target), base);
 
@@ -242,6 +257,13 @@ export class SftpOperationsService {
   }
 
   /* ── Internos ───────────────────────────────────────────────────── */
+
+  /** `Content-Length` de la petición, si viene y es un número. */
+  private contentLength(source: Readable): number | undefined {
+    const header = (source as Readable & { headers?: Record<string, unknown> }).headers?.['content-length'];
+    const value = typeof header === 'string' ? Number(header) : NaN;
+    return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+  }
 
   /** Cierra un stream de escritura y espera a que el canal lo confirme. */
   private closeStream(stream: Writable): Promise<void> {

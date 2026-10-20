@@ -16,11 +16,13 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
+use tauri_plugin_fs::FsExt;
 use tokio::sync::Notify;
 
 const REPORT_EVERY: Duration = Duration::from_millis(150);
@@ -43,6 +45,9 @@ fn running() -> &'static Mutex<HashMap<String, Arc<Notify>>> {
 async fn run(url: &str, token: &str, dest: &str, progress: &Channel<DownloadProgress>) -> Result<u64, String> {
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
+        /* La nube nunca redirige: seguir una redirección llevaría el token
+           (o la descarga) a otro sitio. */
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("UNREACHABLE:{e}"))?;
     let mut res = client
@@ -80,16 +85,41 @@ async fn run(url: &str, token: &str, dest: &str, progress: &Channel<DownloadProg
     Ok(loaded)
 }
 
+/// Valida los argumentos que llegan del webview antes de tocar la red o el disco:
+/// el id de la descarga, que la URL sea http(s) (el token no sale por otro
+/// esquema), que el token sea una sola línea y que `dest` esté en el ámbito del
+/// plugin `fs`. El diálogo de guardar mete ahí la ruta elegida, así que solo se
+/// puede escribir donde el usuario eligió; nunca en una ruta arbitraria.
+fn validate(app: &tauri::AppHandle, id: &str, url: &str, token: &str, dest: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("FILE:identificador de descarga no válido".into());
+    }
+    let parsed = reqwest::Url::parse(url).map_err(|_| "UNREACHABLE:URL no válida".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err("UNREACHABLE:solo se admiten URL http o https".into());
+    }
+    if token.is_empty() || token.len() > 8192 || token.chars().any(|c| c.is_control()) {
+        return Err("UNREACHABLE:token no válido".into());
+    }
+    let path = Path::new(dest);
+    if !path.is_absolute() || path.is_dir() || !app.fs_scope().is_allowed(path) {
+        return Err("FILE:ruta de destino no permitida".into());
+    }
+    Ok(())
+}
+
 /// Descarga `url` (con el token de la nube) a `dest`, la ruta elegida en el
 /// diálogo de guardar. Devuelve los bytes escritos.
 #[tauri::command]
 pub async fn cloud_download(
+    app: tauri::AppHandle,
     id: String,
     url: String,
     token: String,
     dest: String,
     on_progress: Channel<DownloadProgress>,
 ) -> Result<u64, String> {
+    validate(&app, &id, &url, &token, &dest)?;
     let cancel = Arc::new(Notify::new());
     running().lock().map_err(|e| e.to_string())?.insert(id.clone(), cancel.clone());
 

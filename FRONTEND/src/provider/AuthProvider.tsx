@@ -1,5 +1,6 @@
 // src/providers/AuthProvider.tsx
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { AuthContext } from '@contexts/AuthContext';
 import { useLoginMutation, useLogoutMutation } from '@hooks/useAuthMutation';
@@ -11,6 +12,8 @@ import { normalizeAuthResponse } from '@services/auth.adapter';
 import { TokenManager } from '@utils/tokenManager';
 import { authApi } from '@services/auth.api';
 import { saveTrustedDeviceToken } from '@lib/trustedDevice';
+import { onSessionRevoked } from '@lib/sessionRevoked';
+import { ROUTES } from '@utils/constants';
 import type {
   AuthResponse,
   LoginCredentials,
@@ -31,6 +34,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const logoutMutation = useLogoutMutation();
   /* Cuenta del login a medio hacer: el token de confianza se guarda por email. */
   const pendingEmailRef = useRef<string | null>(null);
+  /* Logout propio en curso: el `auth:revoked` que provoca no es un aviso para el usuario. */
+  const loggingOutRef = useRef(false);
+  const navigate = useNavigate();
+
+  /* El backend terminó la sesión (otro dispositivo la cerró, cambió la
+     contraseña, expiró o se cerró por inactividad) y cortó los sockets: se
+     cierra aquí sin llamar a /auth/logout, que ya respondería 401. */
+  useEffect(() => onSessionRevoked(({ reason, message }) => {
+    if (loggingOutRef.current || !TokenManager.getAccessToken()) return;
+    TokenManager.clearTokens();
+    queryClient.clear();
+    queryClient.setQueryData(['currentUser'], null);
+    const notice = reason === 'logout' ? undefined : (message ?? 'La sesión terminó');
+    navigate(ROUTES.LOGIN, { replace: true, state: notice ? { notice } : undefined });
+  }), [navigate]);
 
   // Login con TanStack Query
   const login = useCallback(
@@ -138,12 +156,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Logout con TanStack Query
   const logout = useCallback(
     async (): Promise<void> => {
+      loggingOutRef.current = true;
       try {
         await logoutMutation.mutateAsync();
-        // Invalidar y limpiar cache
-        queryClient.clear();
       } catch (error) {
         console.error('Logout error:', error);
+      } finally {
+        /* Pase lo que pase con la petición: sin tokens ni datos de la cuenta en caché. */
+        TokenManager.clearTokens();
+        queryClient.clear();
+        loggingOutRef.current = false;
       }
     },
     [logoutMutation]

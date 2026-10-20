@@ -6,6 +6,8 @@ import {
   Body,
   Patch,
   Param,
+  ParseUUIDPipe,
+  ParseEnumPipe,
   Delete,
   UseGuards,
   Request,
@@ -33,6 +35,8 @@ import { ServerResponseDto } from './dto/server-response.dto';
 import { ServerStatsDto } from './dto/server-stats.dto';
 import { DeleteServerDto } from './dto/agent-install.dto';
 import { AgentInstallService } from './services/agent-install.service';
+import { HostKeyService, type AcceptHostKeyResult } from '@servers/services/host-key.service';
+import { AcceptHostKeyDto } from '@servers/dto/accept-host-key.dto';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@auth/types/authenticated-request.type';
 import { ServerStatus, ServerOs } from './entities/server.entity';
@@ -46,6 +50,7 @@ export class ServersController {
     private readonly serversService: ServersService,
     private readonly authService: AuthService,
     private readonly agentInstall: AgentInstallService,
+    private readonly hostKeys: HostKeyService,
   ) {}
 
   @Post()
@@ -144,7 +149,7 @@ export class ServersController {
     type: [ServerResponseDto],
   })
   async filterByStatus(
-    @Param('status') status: ServerStatus,
+    @Param('status', new ParseEnumPipe(ServerStatus)) status: ServerStatus,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.filterByStatus(status, req.user);
@@ -166,7 +171,7 @@ export class ServersController {
     type: [ServerResponseDto],
   })
   async filterByOS(
-    @Param('os') os: ServerOs,
+    @Param('os', new ParseEnumPipe(ServerOs)) os: ServerOs,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto[]> {
     return await this.serversService.filterByOS(os, req.user);
@@ -177,19 +182,40 @@ export class ServersController {
   @ApiOperation({
     summary: 'Generar token de autenticación para el agente',
     description:
-      'Genera un JWT de larga duración para que el agente de monitoreo se autentique en el WebSocket Gateway',
+      'Genera el token del agente (JWT de 30 días, rotado por el panel) para instalarlo a mano. Pasa a ser el único válido: el anterior queda revocado.',
   })
   @ApiParam({ name: 'id', description: 'ID del servidor (UUID)', type: 'string' })
   @ApiResponse({ status: 200, description: 'Token generado exitosamente' })
   @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
   @ApiResponse({ status: 403, description: 'Sin permisos sobre este servidor' })
   async generateAgentToken(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Request() req: AuthenticatedRequest,
   ): Promise<{ token: string; serverId: string; expiresIn: string }> {
     const server = await this.serversService.findOne(id, req.user);
-    const token = this.authService.generateAgentToken(server.id, server.name);
-    return { token, serverId: server.id, expiresIn: '365d' };
+    /* Queda como único token válido del servidor: el que tuviera el agente se revoca. */
+    const token = await this.agentInstall.issueManualToken(server);
+    return { token, serverId: server.id, expiresIn: '30d' };
+  }
+
+  @Post(':id/host-key/accept')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aceptar la nueva clave de host SSH',
+    description:
+      'Vuelve a leer la clave que presenta el servidor (sin autenticarse) y la fija en lugar de la anterior. Queda en las notificaciones de seguridad.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del servidor (UUID)', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Clave aceptada' })
+  @ApiResponse({ status: 404, description: 'Servidor no encontrado' })
+  @ApiResponse({ status: 403, description: 'Sin permisos sobre este servidor' })
+  @ApiResponse({ status: 409, description: 'El servidor presenta ahora una clave distinta de la que vio el usuario' })
+  async acceptHostKey(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptHostKeyDto,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<AcceptHostKeyResult> {
+    return await this.hostKeys.accept(id, req.user, dto.fingerprint);
   }
 
   @Get(':id')
@@ -216,7 +242,7 @@ export class ServersController {
     description: 'No tienes permisos para acceder a este servidor',
   })
   async findOne(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.findOne(id, req.user);
@@ -251,7 +277,7 @@ export class ServersController {
     description: 'Conflicto con host existente',
   })
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateServerDto: UpdateServerDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
@@ -277,7 +303,7 @@ export class ServersController {
     description: 'Servidor no encontrado',
   })
   async updatePrivateKey(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updatePrivateKeyDto: UpdatePrivateKeyDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
@@ -297,7 +323,7 @@ export class ServersController {
   @ApiResponse({ status: 200, description: 'Favorito actualizado', type: ServerResponseDto })
   @ApiResponse({ status: 409, description: 'Ya hay 3 servidores favoritos' })
   async setFavorite(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetFavoriteDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
@@ -325,8 +351,8 @@ export class ServersController {
     type: ServerResponseDto,
   })
   async updateStatus(
-    @Param('id') id: string,
-    @Query('status') status: ServerStatus,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('status', new ParseEnumPipe(ServerStatus)) status: ServerStatus,
     @Request() req: AuthenticatedRequest,
   ): Promise<ServerResponseDto> {
     return await this.serversService.updateStatus(id, status, req.user);
@@ -361,7 +387,7 @@ export class ServersController {
       'El agente no se pudo desinstalar; el servidor NO se eliminó. Repite con force para hacerlo de todos modos.',
   })
   async remove(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DeleteServerDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string; warning?: string }> {
@@ -392,6 +418,8 @@ export class ServersController {
     }
 
     const removed = await this.serversService.remove(id, req.user);
+    /* Sin la fila, su token ya no autentica; además se corta el socket vivo. */
+    this.agentInstall.forgetAgent(id);
     return warning ? { ...removed, warning } : removed;
   }
 }

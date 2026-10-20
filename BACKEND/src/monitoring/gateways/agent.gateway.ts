@@ -62,6 +62,7 @@ const REJECTION_TEXT: Record<AgentTokenRejection, string> = {
   wrong_server: 'El token es de otro servidor',
   server_not_found: 'El servidor ya no existe en el panel',
   revoked: 'Token revocado: reinstala el agente o regenera su token desde el panel',
+  legacy_expired: 'Token de un agente anterior a 2.2.0 ya caducado: reinstala el agente desde el panel',
 };
 
 /**

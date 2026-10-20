@@ -4,7 +4,8 @@ import { onHostKeyMismatch } from '@lib/hostKeyAlert';
 import { useAcceptHostKey } from '@hooks/useServers';
 import { notify } from '@services/notification.service';
 import type { ApiError } from '@typings/api.types';
-import type { HostKeyInfo, HostKeyMismatch } from '@typings/hostKey.types';
+import { HOST_KEY_CHECK_COMMAND, type HostKeyMismatch } from '@typings/hostKey.types';
+import { HostKeyBlock as KeyBlock } from '@components/servers/HostKeyBlock';
 
 type Phase = 'warn' | 'confirm';
 
@@ -14,20 +15,11 @@ interface AlertState {
   error: string | null;
 }
 
-const KeyBlock = ({ label, info, tone }: { label: string; info: HostKeyInfo; tone: 'muted' | 'danger' }) => (
-  <div className={`glass-soft rounded-xl p-3 ${tone === 'danger' ? 'border border-rose-400/25' : ''}`}>
-    <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-1.5">{label}</div>
-    <div className="text-[11px] font-mono text-white/55">{info.algorithm ?? 'algoritmo desconocido'}</div>
-    <div className={`text-sm font-mono break-all select-text ${tone === 'danger' ? 'text-rose-300' : 'text-white/85'}`}>
-      {info.fingerprint}
-    </div>
-  </div>
-);
-
 /**
- * Aviso de clave de host SSH cambiada (posible MITM). Se monta una vez en
- * AppLayout y lo abre cualquier conexión rechazada por el backend: HTTP,
- * terminal o SFTP (`reportHostKeyMismatch`).
+ * Aviso de clave de host SSH cambiada (posible MITM) o aún sin confirmar
+ * (primera conexión a un servidor dado de alta sin escanear su huella). Se
+ * monta una vez en AppLayout y lo abre cualquier conexión rechazada por el
+ * backend: HTTP, terminal o SFTP (`reportHostKeyMismatch`).
  */
 export const HostKeyMismatchModal: React.FC = () => {
   const [alert, setAlert] = useState<AlertState | null>(null);
@@ -51,17 +43,21 @@ export const HostKeyMismatchModal: React.FC = () => {
   const setPhase = (next: Phase) => setAlert(a => (a ? { ...a, phase: next, error: null } : a));
 
   const target = `${mismatch.host}:${mismatch.port}`;
+  const first = mismatch.expected === null;
 
   const confirm = () => {
     accept.mutate(
       { id: mismatch.serverId, fingerprint: mismatch.received.fingerprint },
       {
         onSuccess: () => {
-          notify.success('Nueva huella aceptada', `${target} vuelve a estar disponible. Repite la acción.`);
+          notify.success(
+            first ? 'Huella confirmada' : 'Nueva huella aceptada',
+            `${target} ${first ? 'ya está disponible' : 'vuelve a estar disponible'}. Repite la acción.`,
+          );
           setAlert(null);
         },
         onError: (err: unknown) => {
-          const message = (err as ApiError)?.message ?? 'No se pudo aceptar la nueva huella';
+          const message = (err as ApiError)?.message ?? 'No se pudo aceptar la huella';
           setAlert(a => (a ? { ...a, phase: 'warn', error: message } : a));
         },
       },
@@ -69,8 +65,28 @@ export const HostKeyMismatchModal: React.FC = () => {
   };
 
   return (
-    <Modal isOpen onClose={close} title="La clave de host SSH cambió" size="md">
+    <Modal isOpen onClose={close} title={first ? 'Confirma la clave de host SSH' : 'La clave de host SSH cambió'} size="md">
       <div className="space-y-4">
+        {first ? (
+        <div className="glass-soft rounded-xl p-4 flex items-start gap-3 border border-amber-400/20">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+            strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-amber-300 shrink-0 mt-0.5">
+            <circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M16 7l3 3" />
+          </svg>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">Primera conexión a este servidor</div>
+            <p className="text-xs text-white/60 mt-1.5 leading-relaxed">
+              El panel aún no tiene una huella confirmada para{' '}
+              <span className="font-mono text-white/80">{target}</span>, así que no envió ninguna credencial.
+              Compara la de abajo con la del propio servidor antes de confiar en ella:
+            </p>
+            <p className="text-xs text-white/60 mt-2 leading-relaxed">
+              <span className="font-mono text-white/80 select-text">{HOST_KEY_CHECK_COMMAND}</span>{' '}
+              (o el archivo del algoritmo que aparece abajo).
+            </p>
+          </div>
+        </div>
+        ) : (
         <div className="glass-soft rounded-xl p-4 flex items-start gap-3 border border-rose-400/25">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
             strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-rose-300 shrink-0 mt-0.5">
@@ -86,20 +102,25 @@ export const HostKeyMismatchModal: React.FC = () => {
             </p>
             <p className="text-xs text-white/60 mt-2 leading-relaxed">
               Compruébala en el propio servidor con{' '}
-              <span className="font-mono text-white/80">ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</span>{' '}
+              <span className="font-mono text-white/80">{HOST_KEY_CHECK_COMMAND}</span>{' '}
               (o el archivo del algoritmo que aparece abajo) antes de aceptarla.
             </p>
           </div>
         </div>
+        )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <KeyBlock label="Guardada" info={mismatch.expected} tone="muted" />
-          <KeyBlock label="Recibida ahora" info={mismatch.received} tone="danger" />
-        </div>
+        {mismatch.expected ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <KeyBlock label="Guardada" info={mismatch.expected} tone="muted" />
+            <KeyBlock label="Recibida ahora" info={mismatch.received} tone="danger" />
+          </div>
+        ) : (
+          <KeyBlock label="Presentada por el servidor" info={mismatch.received} tone="muted" />
+        )}
 
         {phase === 'confirm' && (
           <div className="glass-soft rounded-xl p-4">
-            <div className="text-sm font-semibold text-white mb-1">¿Confías en la nueva clave?</div>
+            <div className="text-sm font-semibold text-white mb-1">{first ? '¿Coincide con la del servidor?' : '¿Confías en la nueva clave?'}</div>
             <p className="text-xs text-white/60 leading-relaxed">
               El panel conectará a {target} solo si presenta{' '}
               <span className="font-mono text-white/80 break-all">{mismatch.received.fingerprint}</span>.
@@ -125,10 +146,14 @@ export const HostKeyMismatchModal: React.FC = () => {
           <button
             onClick={phase === 'confirm' ? confirm : () => setPhase('confirm')}
             disabled={accept.isPending}
-            className="mo-tab h-11 px-5 rounded-xl text-white text-sm font-semibold disabled:opacity-40
-              bg-rose-500/80 hover:bg-rose-500"
+            className={`mo-tab h-11 px-5 rounded-xl text-white text-sm font-semibold disabled:opacity-40 ${
+              first ? 'grad-brand' : 'bg-rose-500/80 hover:bg-rose-500'}`}
           >
-            {accept.isPending ? 'Aceptando…' : phase === 'confirm' ? 'Sí, aceptar nueva huella' : 'Aceptar nueva huella'}
+            {accept.isPending
+              ? 'Aceptando…'
+              : first
+                ? phase === 'confirm' ? 'Sí, coincide' : 'Confiar en esta huella'
+                : phase === 'confirm' ? 'Sí, aceptar nueva huella' : 'Aceptar nueva huella'}
           </button>
         </div>
       </div>

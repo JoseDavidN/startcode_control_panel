@@ -4,6 +4,7 @@ import type { Repository } from 'typeorm';
 import type { AuthService } from '@auth/auth.service';
 import type { Server } from '@servers/entities/server.entity';
 import {
+  AGENT_LEGACY_TOKEN_CUTOFF_DEFAULT,
   AGENT_TOKEN_GRACE_MS,
   AGENT_TOKEN_ROTATE_AFTER_MS,
   AgentTokenService,
@@ -80,7 +81,7 @@ function fakeRepo(rows: Map<string, Row>) {
   };
 }
 
-function setup(overrides: Partial<Row> = {}) {
+function setup(overrides: Partial<Row> = {}, env: Record<string, string> = {}) {
   const rows = new Map<string, Row>();
   rows.set(SERVER_ID, {
     id: SERVER_ID,
@@ -100,7 +101,7 @@ function setup(overrides: Partial<Row> = {}) {
     generateAgentToken: (serverId: string, serverName: string, jti: string) =>
       jwt.sign({ sub: serverId, type: 'agent', serverName, jti }, { expiresIn: '30d' }),
   } as unknown as AuthService;
-  const config = { get: (key: string) => (key === 'JWT_SECRET' ? SECRET : undefined) } as unknown as ConfigService;
+  const config = { get: (key: string) => (key === 'JWT_SECRET' ? SECRET : env[key]) } as unknown as ConfigService;
   const repo = fakeRepo(rows);
 
   const service = new AgentTokenService(repo as unknown as Repository<Server>, jwt, config, auth);
@@ -306,6 +307,47 @@ describe('AgentTokenService', () => {
         slot: 'current',
         needsRotation: false,
       });
+    });
+
+    it('pasada la fecha de corte no valen, ni sin fijar ni fijados por huella', async () => {
+      const cutoff = { AGENT_LEGACY_TOKEN_CUTOFF: '2026-12-01T00:00:00Z' };
+      const pending = setup({ agentTokenLegacy: true }, cutoff);
+      const token = pending.legacyToken();
+      const pinned = setup(
+        { agentTokenId: AgentTokenService.tokenIdOf(token, {}) },
+        cutoff,
+      );
+
+      jest.useFakeTimers({ now: new Date('2026-12-01T00:00:01Z'), doNotFake: ['nextTick'] });
+      expect(await pending.service.verify(token, SERVER_ID)).toEqual({ ok: false, reason: 'legacy_expired' });
+      expect(pending.row().agentTokenLegacy).toBe(true);
+      expect(await pinned.service.verify(token, SERVER_ID)).toEqual({ ok: false, reason: 'legacy_expired' });
+
+      // Los tokens con jti no se ven afectados por el corte.
+      const fresh = await pinned.service.issueAndActivate({ id: SERVER_ID, name: 'web-1' });
+      expect(await pinned.service.verify(fresh, SERVER_ID)).toMatchObject({ ok: true, slot: 'current' });
+    });
+
+    it('antes del corte se aceptan; una fecha pasada en la variable los corta ya', async () => {
+      const before = setup({ agentTokenLegacy: true }, { AGENT_LEGACY_TOKEN_CUTOFF: '2099-01-01' });
+      expect(await before.service.verify(before.legacyToken(), SERVER_ID)).toMatchObject({ ok: true });
+
+      const now = setup({ agentTokenLegacy: true }, { AGENT_LEGACY_TOKEN_CUTOFF: '2020-01-01' });
+      expect(await now.service.verify(now.legacyToken(), SERVER_ID)).toEqual({ ok: false, reason: 'legacy_expired' });
+    });
+
+    it('una fecha inválida usa el corte por defecto, no lo amplía', () => {
+      const { service } = setup({}, { AGENT_LEGACY_TOKEN_CUTOFF: 'nunca' });
+      expect(service.legacyCutoff().toISOString()).toBe(new Date(AGENT_LEGACY_TOKEN_CUTOFF_DEFAULT).toISOString());
+    });
+
+    it('el estado indica hasta cuándo vale un token heredado', async () => {
+      const legacy = setup({ agentTokenLegacy: true });
+      expect((await legacy.service.describe(SERVER_ID)).legacyUntil).toEqual(legacy.service.legacyCutoff());
+      const pinned = setup({ agentTokenId: 'sha256:' + 'a'.repeat(64) });
+      expect((await pinned.service.describe(SERVER_ID)).legacyUntil).not.toBeNull();
+      const modern = setup({ agentTokenId: 'jti-1' });
+      expect((await modern.service.describe(SERVER_ID)).legacyUntil).toBeNull();
     });
 
     it('no se aceptan si el servidor ya no admite heredados', async () => {

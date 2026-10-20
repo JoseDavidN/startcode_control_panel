@@ -3,9 +3,25 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.9.2",
+      "type": "patch",
+      "date": "2026-10-20",
+      "title": "Huellas SSH confirmadas e instaladores en español",
+      "changes": {
+        "security": [
+          "Al agregar un servidor, la app te muestra su huella SSH antes de enviar la llave privada para que la compares con la del servidor. Solo se guarda si confirmas que coincide (requiere el backend 0.11.2)",
+          "El panel ya no se conecta a ciegas a un servidor sin huella confirmada: la primera vez te la muestra y te pide confirmarla",
+          "Los tokens de agentes anteriores a 2.2.0 dejan de valer el 1 de diciembre de 2026. La tarjeta del agente te avisa si hay que reinstalarlo"
+        ],
+        "changed": [
+          "Los instaladores de Windows y la app en macOS están en español"
+        ]
+      }
+    },
+    {
       "version": "0.9.1",
       "type": "patch",
-      "date": "2026-10-19",
+      "date": "2026-10-20",
       "title": "Parche de seguridad",
       "changes": {
         "security": [

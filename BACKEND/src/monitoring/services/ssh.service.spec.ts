@@ -1,7 +1,6 @@
 import { EventEmitter } from 'events';
-import { IsNull } from 'typeorm';
 import { SSHService } from '@monitoring/services/ssh.service';
-import { HostKeyMismatchError } from '@monitoring/services/host-key';
+import { HostKeyMismatchError, HostKeyUnverifiedError } from '@monitoring/services/host-key';
 import type { Server } from '@servers/entities/server.entity';
 
 /* ssh2 falso: llama al hostVerifier con la clave que «presenta» el host y
@@ -45,34 +44,39 @@ function server(over: Partial<Server> = {}): Server {
   } as Server;
 }
 
-describe('SSHService · verificación de la clave de host (TOFU)', () => {
-  let repo: { update: jest.Mock; findOne: jest.Mock };
+describe('SSHService · verificación de la clave de host', () => {
   let service: SSHService;
 
   beforeEach(() => {
     connectSpy.mockClear();
-    repo = { update: jest.fn().mockResolvedValue({ affected: 1 }), findOne: jest.fn() };
-    service = new SSHService(repo as never);
+    service = new SSHService();
   });
 
-  it('primer uso: conecta y guarda algoritmo, huella y fecha solo si seguía vacía', async () => {
+  it('sin huella confirmada: corta antes de autenticarse y enseña la recibida', async () => {
     presentedKey = KEY_A;
-    const target = server();
-    await expect(service.createDedicatedClient(target)).resolves.toBeDefined();
-    expect(repo.update).toHaveBeenCalledWith(
-      { id: 'srv-1', hostKeyFingerprint: IsNull() },
-      expect.objectContaining({ hostKeyAlgorithm: 'ssh-ed25519', hostKeyFingerprint: FP_A, hostKeyVerifiedAt: expect.any(Date) as Date }),
-    );
-    expect(target.hostKeyFingerprint).toBe(FP_A);
+    const err: unknown = await service.createDedicatedClient(server()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HostKeyUnverifiedError);
+    expect((err as HostKeyUnverifiedError).getStatus()).toBe(409);
+    expect((err as HostKeyUnverifiedError).details).toEqual({
+      serverId: 'srv-1',
+      host: '10.0.0.1',
+      port: 22,
+      expected: null,
+      received: { algorithm: 'ssh-ed25519', fingerprint: FP_A },
+    });
   });
 
-  it('coincide: conecta sin escribir nada', async () => {
+  it('el pool (connect) tampoco acepta un host sin huella', async () => {
+    presentedKey = KEY_A;
+    await expect(service.connect(server())).rejects.toBeInstanceOf(HostKeyUnverifiedError);
+  });
+
+  it('coincide: conecta', async () => {
     presentedKey = KEY_A;
     await expect(service.createDedicatedClient(server({ hostKeyFingerprint: FP_A }))).resolves.toBeDefined();
-    expect(repo.update).not.toHaveBeenCalled();
   });
 
-  it('no coincide: rechaza con HostKeyMismatchError y las dos huellas, sin guardar', async () => {
+  it('no coincide: rechaza con HostKeyMismatchError y las dos huellas', async () => {
     presentedKey = KEY_B;
     const err: unknown = await service
       .createDedicatedClient(server({ hostKeyAlgorithm: 'ssh-ed25519', hostKeyFingerprint: FP_A }))
@@ -85,7 +89,6 @@ describe('SSHService · verificación de la clave de host (TOFU)', () => {
       expected: { algorithm: 'ssh-ed25519', fingerprint: FP_A },
       received: { algorithm: 'ssh-ed25519', fingerprint: FP_B },
     });
-    expect(repo.update).not.toHaveBeenCalled();
   });
 
   it('el pool (connect) también verifica', async () => {
@@ -93,23 +96,9 @@ describe('SSHService · verificación de la clave de host (TOFU)', () => {
     await expect(service.connect(server({ hostKeyFingerprint: FP_A }))).rejects.toBeInstanceOf(HostKeyMismatchError);
   });
 
-  it('dos primeras conexiones a la vez: si otra fijó una clave distinta, se rechaza', async () => {
-    presentedKey = KEY_B;
-    repo.update.mockResolvedValue({ affected: 0 });
-    repo.findOne.mockResolvedValue({ id: 'srv-1', hostKeyAlgorithm: 'ssh-ed25519', hostKeyFingerprint: FP_A });
-    await expect(service.createDedicatedClient(server())).rejects.toBeInstanceOf(HostKeyMismatchError);
-  });
-
-  it('servidor aún sin guardar (probar conexión): acepta y devuelve la huella sin escribir', async () => {
+  it('probar conexión deja pasar el rechazo de clave, no lo convierte en «falló»', async () => {
     presentedKey = KEY_A;
-    jest.spyOn(service, 'execOnClient').mockResolvedValue({ stdout: 'test\n', stderr: '', code: 0 });
-    const unsaved: Partial<Server> = server();
-    delete unsaved.id;
-    await expect(service.testConnection(unsaved as Server)).resolves.toEqual({
-      ok: true,
-      hostKey: { algorithm: 'ssh-ed25519', fingerprint: FP_A },
-    });
-    expect(repo.update).not.toHaveBeenCalled();
+    await expect(service.testConnection(server())).rejects.toBeInstanceOf(HostKeyUnverifiedError);
   });
 
   it('todas las conexiones pasan un hostVerifier', async () => {

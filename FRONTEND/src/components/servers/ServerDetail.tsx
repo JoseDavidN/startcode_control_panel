@@ -141,7 +141,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const { data: rawServer } = useServer(server.id);
   const hostKey = rawServer?.hostKeyFingerprint
     ? `${rawServer.hostKeyAlgorithm ?? ''} ${rawServer.hostKeyFingerprint}`.trim()
-    : 'Se fija en la primera conexión SSH';
+    : 'Sin confirmar: se pedirá en la próxima conexión SSH';
   const [sftpOpen, setSftpOpen] = useState(false);
   const commandBarRef = useRef<CommandBarHandle>(null);
 

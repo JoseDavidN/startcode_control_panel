@@ -225,6 +225,16 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
           )}
         </div>
 
+        {agent?.tokenLegacyUntil && state === 'installed' && (
+          <div className="w-full glass rounded-xl p-3 border border-amber-400/20">
+            <p className="text-xs text-amber-200/80">
+              Este agente es anterior a 2.2.0 y usa un token sin rotación, que deja de valer el{' '}
+              {new Date(agent.tokenLegacyUntil).toLocaleDateString('es', { dateStyle: 'long' })}. Reinstálalo para
+              pasar al token nuevo.
+            </p>
+          </div>
+        )}
+
         {agent?.lastError && state === 'failed' && (
           <div className="w-full glass rounded-xl p-3 border border-rose-400/20">
             <p className="text-xs text-rose-200/80">{agent.lastError.message}</p>

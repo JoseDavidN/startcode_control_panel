@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Client as SSHClient } from 'ssh2';
 import { SSHService } from '@monitoring/services/ssh.service';
-import { HostKeyMismatchError } from '@monitoring/services/host-key';
+import { HostKeyError } from '@monitoring/services/host-key';
 import { AgentGateway } from '@monitoring/gateways/agent.gateway';
 import { shellQuote } from '@/common/security/shell';
 import { AuthService } from '@auth/auth.service';
@@ -141,7 +141,7 @@ export class AgentInstallService {
       };
     } catch (error) {
       /* Clave de host cambiada: no se tocó la máquina y el panel enseña el aviso (409). */
-      if (error instanceof HostKeyMismatchError) throw error;
+      if (error instanceof HostKeyError) throw error;
       const failure = this.translate(error, server);
       steps.failCurrent(failure.message);
 
@@ -241,7 +241,7 @@ export class AgentInstallService {
       return { ok: true, removed, steps: steps.all() };
     } catch (error) {
       /* Clave de host cambiada: no se tocó la máquina y el panel enseña el aviso (409). */
-      if (error instanceof HostKeyMismatchError) throw error;
+      if (error instanceof HostKeyError) throw error;
       const failure = this.translate(error, server);
       steps.failCurrent(failure.message);
 

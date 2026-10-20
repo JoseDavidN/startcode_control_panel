@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { isExternalHttpUrl, openExternalUrl } from '@lib/openExternal';
 import { copyText } from '@lib/clipboard';
 import { notify } from '@services/notification.service';
 import { Modal } from '@components/common/Modal';
@@ -425,8 +425,8 @@ export const InstallServiceModal = ({ serverId, serverName, isOpen, onClose }: {
                     {result.mode === 'install' && <p className="text-xs text-white/50 mt-0.5">{[result.version, result.os?.name].filter(Boolean).join(' · ')}</p>}
                     {result.mode === 'install' && result.access && (
                       <div className="mt-3 pt-3 border-t border-line space-y-2">
-                        {result.access.url && (
-                          <button type="button" onClick={() => void openUrl(result.access!.url!).catch(() => notify.error('No se pudo abrir el navegador', result.access!.url!))}
+                        {isExternalHttpUrl(result.access.url) && (
+                          <button type="button" onClick={() => void openExternalUrl(result.access!.url!).catch(() => notify.error('No se pudo abrir el navegador', result.access!.url!))}
                             className="grad-brand text-sm font-semibold px-4 h-9 rounded-xl elev-brand-sm hover:elev-brand transition inline-flex items-center gap-2">
                             Vincular a tu red
                             <svg {...sp} className="w-3.5 h-3.5"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></svg>

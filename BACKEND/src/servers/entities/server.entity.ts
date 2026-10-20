@@ -118,6 +118,19 @@ export class Server {
   @Column({ type: 'text', nullable: true, name: 'str_kernel_version' })
   kernelVersion: string | null;
 
+  /* Clave de host SSH fijada con TOFU (ver monitoring/services/host-key.ts).
+     No es secreta: es lo que el usuario compara con `ssh-keygen -lf`. */
+  @Column({ type: 'text', nullable: true, name: 'str_host_key_algorithm' })
+  hostKeyAlgorithm: string | null;
+
+  /** `SHA256:<base64>`, como OpenSSH. null hasta la primera conexión. */
+  @Column({ type: 'text', nullable: true, name: 'str_host_key_fingerprint' })
+  hostKeyFingerprint: string | null;
+
+  /** Cuándo se fijó o se aceptó la clave actual. */
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_host_key_verified' })
+  hostKeyVerifiedAt: Date | null;
+
   @ManyToOne(() => User, (user) => user.servers, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'str_owner_id' })
   owner: User;
@@ -133,4 +146,35 @@ export class Server {
 
   @Column({ type: 'timestamptz', nullable: true })
   lastCheckAt: Date | null;
+
+  /* ── Token del agente (ver servers/services/agent-token.service.ts) ──
+     Solo identificadores (`jti`, o `sha256:` del token heredado), nunca el
+     token. `select: false`: los lee y escribe únicamente AgentTokenService, con
+     UPDATE atómicos; así un `save()` de una entidad vieja no pisa una rotación. */
+
+  /** Token vigente. null = ninguno válido (revocado o nunca emitido). */
+  @Column({ type: 'varchar', length: 80, nullable: true, select: false, name: 'str_agent_token_id' })
+  agentTokenId: string | null;
+
+  /** Emitido y enviado al agente, a la espera de su ACK. */
+  @Column({ type: 'varchar', length: 80, nullable: true, select: false, name: 'str_agent_token_pending_id' })
+  agentTokenPendingId: string | null;
+
+  /** El anterior a la última rotación, aceptado hasta `agentTokenPreviousUntil`. */
+  @Column({ type: 'varchar', length: 80, nullable: true, select: false, name: 'str_agent_token_previous_id' })
+  agentTokenPreviousId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false, name: 'dat_agent_token_previous_until' })
+  agentTokenPreviousUntil: Date | null;
+
+  /** Cuándo se emitió el vigente: decide la rotación periódica. */
+  @Column({ type: 'timestamptz', nullable: true, select: false, name: 'dat_agent_token_issued' })
+  agentTokenIssuedAt: Date | null;
+
+  /** Admite tokens sin `jti` (anteriores a 0.11.1) hasta su primera conexión.
+      `true` por defecto también en filas nuevas, para que `synchronize` no deje
+      fuera a los agentes ya instalados: es seguro porque el panel ya no emite
+      tokens sin `jti`, así que para un servidor nuevo no existe ninguno. */
+  @Column({ type: 'boolean', default: true, select: false, name: 'bol_agent_token_legacy' })
+  agentTokenLegacy: boolean;
 }

@@ -4,6 +4,11 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Optional,
+  Logger,
 } from '@nestjs/common';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -28,6 +33,14 @@ import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { mergePreferences } from './types/user-preferences.type';
 import type { UserPreferences } from './types/user-preferences.type';
 import { ConfigService } from '@nestjs/config';
+import {
+  ACCOUNT_POLICY,
+  IP_POLICY,
+  LoginAttempts,
+  REFRESH_USER_POLICY,
+  sleep,
+} from '@auth/login-attempts';
+import { SESSION_END_MESSAGES, SessionSocketsService, type SessionEndReason } from '@auth/session-sockets.service';
 
 /** Contexto del dispositivo que inicia sesión, para la lista de sesiones. */
 export interface ClientContext {
@@ -35,6 +48,26 @@ export interface ClientContext {
   ip?: string | null;
   /** Nombre del equipo que manda la app de escritorio (`X-StartCode-Device`). */
   device?: string | null;
+  /**
+   * IP para limitar intentos: la del socket (o la que resuelva `trust proxy`).
+   * No sale de `X-Forwarded-For` en crudo, que cualquiera puede inventarse.
+   */
+  remoteIp?: string | null;
+}
+
+/** Mismo mensaje para email inexistente y contraseña errónea: no revela qué cuentas existen. */
+const INVALID_CREDENTIALS = 'Credenciales inválidas';
+const TOO_MANY_ATTEMPTS = 'Demasiados intentos fallidos desde esta red. Inténtalo más tarde.';
+
+/**
+ * Hash bcrypt (coste 12, como los reales) de un valor aleatorio descartado. Con
+ * un email que no existe se compara contra él: la respuesta tarda lo mismo que
+ * con una cuenta real y el tiempo no delata qué emails están registrados.
+ */
+const DUMMY_PASSWORD_HASH = '$2b$12$clQK8aVfb/KyMOC6yngn2OCJThLcAo7/gpcfOFTq4Lv4nq5o59K7G';
+
+function lockedMessage(ms: number): string {
+  return `Cuenta bloqueada temporalmente. Inténtalo de nuevo en ${Math.max(1, Math.ceil(ms / 60_000))} min.`;
 }
 
 /** Inicio de sesión nuevo, para el aviso de seguridad. */
@@ -44,6 +77,19 @@ export interface LoginEvent {
   /** «MacBook de Ana · StartCode Panel 0.7.0 en macOS». */
   device: string;
 }
+
+/** Sesión cerrada por reutilizar un refresh ya rotado. `ip`/`device` son de quien lo reutilizó. */
+export type RefreshReuseEvent = LoginEvent;
+
+/**
+ * Cuánto sigue valiendo el refresh anterior tras rotarlo: una respuesta de
+ * /auth/refresh perdida por la red, o dos renovaciones cruzadas, no deben
+ * cerrar la sesión. Pasado esto, usarlo se trata como robo.
+ */
+const REFRESH_REUSE_GRACE_MS = 30_000;
+
+/** Código del 401 con el que el panel distingue el cierre por reutilización. */
+export const REFRESH_REUSED = 'REFRESH_REUSED';
 
 /** Sistema operativo según el user-agent. */
 function osOf(ua: string): string | null {
@@ -78,6 +124,7 @@ const MAX_ACTIVE_SESSIONS = 3;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   // Factor de costo para bcrypt (12 es el recomendado por OWASP)
   // Cada incremento duplica el tiempo de cómputo: 10=~100ms, 12=~400ms, 14=~1.6s
   private readonly BCRYPT_SALT_ROUNDS = 12;
@@ -94,6 +141,9 @@ export class AuthService {
 
   private readonly BACKUP_CODE_COUNT = 10;
 
+  /** Fallos por cuenta (exista o no) e IP, con retardo progresivo y bloqueo temporal. */
+  private readonly attempts = new LoginAttempts();
+
   /** jti de tokens temporales ya consumidos: un tempToken vale una sola vez. */
   private readonly usedTempTokens = new Map<string, number>();
 
@@ -104,6 +154,8 @@ export class AuthService {
     private sessionsRepository: Repository<Session>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    /* Opcional: las pruebas que construyen el servicio a mano no tienen sockets. */
+    @Optional() private sessionSockets?: SessionSocketsService,
   ) {}
 
   /* Quien quiera enterarse de cada inicio de sesión (el aviso de seguridad de
@@ -114,7 +166,20 @@ export class AuthService {
     this.loginListeners.push(fn);
   }
 
+  private readonly refreshReuseListeners: ((userId: string, event: RefreshReuseEvent) => void)[] = [];
+
+  /** Aviso cuando se cierra una sesión porque se reutilizó un refresh ya rotado. */
+  onRefreshReuse(fn: (userId: string, event: RefreshReuseEvent) => void): void {
+    this.refreshReuseListeners.push(fn);
+  }
+
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
+    /* El panel no tiene alta pública: el administrador inicial lo crea el seeder.
+       Abierto, cualquiera que alcance la API se crearía una cuenta. */
+    if (this.configService.get<string>('AUTH_ALLOW_REGISTRATION', 'false') !== 'true') {
+      throw new ForbiddenException('El registro público está deshabilitado');
+    }
+
     const { firstname, lastname, email, password } = registerDto;
 
     // Verificar si el email ya existe
@@ -151,29 +216,44 @@ export class AuthService {
   ): Promise<AuthResponseDto | TwoFactorPendingDto | PasswordChangeRequiredDto> {
     const { email, password } = loginDto;
     const rememberMe = loginDto.rememberMe ?? false;
+    const accountKey = `acct:${email.trim().toLowerCase()}`;
+    const ipKey = `ip:${client.remoteIp ?? 'unknown'}`;
+
+    if (this.attempts.lockedFor(ipKey) > 0) {
+      throw new HttpException(TOO_MANY_ATTEMPTS, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    /* Bloqueo en memoria: cubre también los emails que no existen, así que el
+       mensaje de bloqueo no sirve para saber si una cuenta está registrada. */
+    const accountLock = this.attempts.lockedFor(accountKey);
+    if (accountLock > 0) {
+      throw new UnauthorizedException(lockedMessage(accountLock));
+    }
 
     const user = await this.usersRepository.findOne({
       where: { email },
       select: [...LOGIN_FIELDS],
     });
 
-    if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
+    if (user) this.assertNotLocked(user);
+
+    /* Siempre un bcrypt, exista o no la cuenta: tiempo de respuesta constante. */
+    const isPasswordValid = await bcrypt.compare(password, user?.password ?? DUMMY_PASSWORD_HASH);
+
+    if (!user || !isPasswordValid) {
+      if (user) await this.registerFailedAttempt(user);
+      const { delayMs } = this.attempts.fail(accountKey, ACCOUNT_POLICY);
+      this.attempts.fail(ipKey, IP_POLICY);
+      await sleep(delayMs);
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
+    /* Solo se dice que está desactivada a quien ya demostró la contraseña. */
     if (!user.isActive) {
       throw new UnauthorizedException('Usuario inactivo');
     }
 
-    this.assertNotLocked(user);
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-      await this.registerFailedAttempt(user);
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-
+    this.attempts.clear(accountKey);
     await this.clearFailedAttempts(user);
 
     /* El segundo factor va antes que cualquier otra cosa: ni lastLogin ni la
@@ -468,10 +548,7 @@ export class AuthService {
 
   private assertNotLocked(user: User): void {
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-      const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
-      throw new UnauthorizedException(
-        `Cuenta bloqueada temporalmente. Inténtalo de nuevo en ${minutes} min.`,
-      );
+      throw new UnauthorizedException(lockedMessage(user.lockedUntil.getTime() - Date.now()));
     }
   }
 
@@ -768,7 +845,7 @@ export class AuthService {
     await this.usersRepository.update(userId, { password: hashed, passwordChangedAt: new Date() });
 
     /* Cambiar la contraseña expulsa al resto de dispositivos. */
-    await this.revokeOtherSessions(userId, currentSid);
+    await this.revokeOtherSessions(userId, currentSid, 'password');
 
     return { message: 'Contraseña actualizada correctamente' };
   }
@@ -809,7 +886,7 @@ export class AuthService {
     const hashed = await bcrypt.hash(dto.newPassword, this.BCRYPT_SALT_ROUNDS);
     const now = new Date();
     await this.usersRepository.update(user.id, { password: hashed, passwordChangedAt: now });
-    await this.revokeOtherSessions(user.id);
+    await this.revokeOtherSessions(user.id, undefined, 'password');
     await this.clearFailedAttempts(user);
 
     this.markTempTokenUsed(payload.jti, payload.exp);
@@ -852,6 +929,17 @@ export class AuthService {
    * que la sesión siga viva, y **rota** el refresh token.
    */
   async refreshToken(refreshToken: string, client: ClientContext = {}): Promise<AuthResponseDto> {
+    const ipKey = `refresh-ip:${client.remoteIp ?? 'unknown'}`;
+    if (this.attempts.lockedFor(ipKey) > 0) {
+      throw new HttpException(TOO_MANY_ATTEMPTS, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    /* Cada rechazo cuenta para la IP: probar tokens a ciegas acaba bloqueado. */
+    const reject = (message: string): never => {
+      this.attempts.fail(ipKey, IP_POLICY);
+      throw new UnauthorizedException(message);
+    };
+
     let payload: { sub: string; type?: string; sid?: string };
 
     try {
@@ -859,20 +947,22 @@ export class AuthService {
         secret: this.configService.get('JWT_SECRET'),
       });
     } catch {
-      throw new UnauthorizedException('Token de actualización inválido o expirado');
+      return reject('Token de actualización inválido o expirado');
     }
 
-    if (payload.type !== 'refresh') {
-      throw new UnauthorizedException('Token de actualización inválido');
+    if (payload.type !== 'refresh' || typeof payload.sub !== 'string' || !payload.sid) {
+      return reject('Token de actualización inválido');
     }
 
+    /* Por cuenta: un refresh robado no puede usarse en bucle. */
+    if (!this.attempts.hit(`refresh-user:${payload.sub}`, REFRESH_USER_POLICY)) {
+      throw new HttpException('Demasiadas renovaciones seguidas. Espera un minuto.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    /* Usuario borrado o desactivado: su refresh deja de valer al instante. */
     const user = await this.usersRepository.findOne({ where: { id: payload.sub } });
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Usuario no autorizado');
-    }
-
-    if (!payload.sid) {
-      throw new UnauthorizedException('Token de actualización inválido');
+      return reject('Usuario no autorizado');
     }
 
     const session = await this.sessionsRepository.findOne({ where: { id: payload.sid } });
@@ -880,20 +970,52 @@ export class AuthService {
       !session ||
       session.revoked ||
       session.userId !== user.id ||
-      session.expiresAt.getTime() < Date.now() ||
-      session.refreshHash !== this.hashToken(refreshToken)
+      session.expiresAt.getTime() < Date.now()
     ) {
-      throw new UnauthorizedException('Sesión no válida o revocada');
+      return reject('Sesión no válida o revocada');
+    }
+
+    const presented = this.hashToken(refreshToken);
+    const isCurrent = this.sameHash(session.refreshHash, presented);
+    /* El anterior a la última rotación vale unos segundos más: cubre la
+       respuesta perdida por la red y dos renovaciones que se cruzan. */
+    const inGrace =
+      !isCurrent &&
+      !!session.previousRefreshHash &&
+      this.sameHash(session.previousRefreshHash, presented) &&
+      !!session.refreshRotatedAt &&
+      Date.now() - session.refreshRotatedAt.getTime() <= REFRESH_REUSE_GRACE_MS;
+
+    if (!isCurrent && !inGrace) {
+      /* Firma válida, de esta sesión, pero ya rotado: alguien guardó un refresh
+         antiguo. Como no se sabe quién es el legítimo, se cierra la sesión entera. */
+      await this.endReusedSession(session, client);
+      this.attempts.fail(ipKey, IP_POLICY);
+      throw new UnauthorizedException({
+        statusCode: 401,
+        error: 'Unauthorized',
+        code: REFRESH_REUSED,
+        message: SESSION_END_MESSAGES.reuse,
+      });
     }
 
     const rotated = this.generateRefreshToken(user, session.id, session.persistent);
-    await this.sessionsRepository.update(session.id, {
-      refreshHash: this.hashToken(rotated),
-      lastUsed: new Date(),
-      expiresAt: new Date(Date.now() + this.refreshTtlMs(session.persistent)),
-      userAgent: client.userAgent ?? session.userAgent,
-      ip: client.ip ?? session.ip,
-    });
+    /* Condicionado al hash leído: dos renovaciones a la vez no se pisan. En la
+       gracia no se mueve el anterior ni su marca, así la ventana no se alarga. */
+    const res = await this.sessionsRepository.update(
+      { id: session.id, refreshHash: session.refreshHash },
+      {
+        refreshHash: this.hashToken(rotated),
+        ...(isCurrent ? { previousRefreshHash: session.refreshHash, refreshRotatedAt: new Date() } : {}),
+        lastUsed: new Date(),
+        expiresAt: new Date(Date.now() + this.refreshTtlMs(session.persistent)),
+        userAgent: client.userAgent ?? session.userAgent,
+        ip: client.ip ?? session.ip,
+      },
+    );
+    if (res?.affected === 0) {
+      throw new UnauthorizedException('La sesión se renovó a la vez en otra petición: inténtalo de nuevo');
+    }
 
     return {
       user: {
@@ -915,10 +1037,28 @@ export class AuthService {
     };
   }
 
+  /** Reutilización de un refresh ya rotado: revoca la sesión, corta sus sockets y avisa. */
+  private async endReusedSession(session: Session, client: ClientContext): Promise<void> {
+    await this.sessionsRepository.update(session.id, { revoked: true });
+    this.sessionSockets?.endSessions([session.id], 'reuse');
+    this.logger.warn(`Refresh reutilizado en la sesión ${session.id} (usuario ${session.userId}): sesión revocada`);
+    const event: RefreshReuseEvent = { sessionId: session.id, ip: client.ip ?? null, device: describeDevice(client) };
+    for (const fn of this.refreshReuseListeners) {
+      try { fn(session.userId, event); } catch { /* el aviso no bloquea la respuesta */ }
+    }
+  }
+
   /* ── Sesiones ──────────────────────────────────────────────────────── */
 
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /** Comparación en tiempo constante de dos hashes hex. */
+  private sameHash(a: string, b: string): boolean {
+    const left = Buffer.from(a ?? '', 'utf8');
+    const right = Buffer.from(b, 'utf8');
+    return left.length === right.length && crypto.timingSafeEqual(left, right);
   }
 
   /** Duración del refresh: la sesión persistente usa JWT_REFRESH_REMEMBER_EXPIRES_IN. */
@@ -955,10 +1095,16 @@ export class AuthService {
       }));
   }
 
-  async revokeSession(userId: string, sessionId: string): Promise<void> {
+  /** Revoca una sesión y corta al instante sus sockets (terminal, SFTP, tiempo real). */
+  async revokeSession(
+    userId: string,
+    sessionId: string,
+    reason: SessionEndReason = 'revoked',
+  ): Promise<void> {
     const session = await this.sessionsRepository.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Sesión no encontrada');
     await this.sessionsRepository.update(session.id, { revoked: true });
+    this.sessionSockets?.endSessions([session.id], reason);
   }
 
   /** Deja sitio para una sesión nueva: revoca las menos usadas por encima del límite (y las caducadas). */
@@ -975,15 +1121,23 @@ export class AuthService {
     ];
     if (stale.length) {
       await this.sessionsRepository.update({ id: In(stale.map((s) => s.id)) }, { revoked: true });
+      this.sessionSockets?.endSessions(stale.map((s) => s.id), 'limit');
     }
   }
 
   /** Cierra las demás sesiones del usuario (o todas si no se pasa `keepSid`). */
-  async revokeOtherSessions(userId: string, keepSid?: string): Promise<number> {
-    const res = await this.sessionsRepository.update(
-      keepSid ? { userId, revoked: false, id: Not(keepSid) } : { userId, revoked: false },
-      { revoked: true },
-    );
+  async revokeOtherSessions(
+    userId: string,
+    keepSid?: string,
+    reason: SessionEndReason = 'revoked',
+  ): Promise<number> {
+    const where = keepSid ? { userId, revoked: false, id: Not(keepSid) } : { userId, revoked: false };
+    /* Los ids antes de revocar: son las sesiones cuyos sockets hay que cortar. */
+    const ids = this.sessionSockets
+      ? (await this.sessionsRepository.find({ where, select: ['id'] })).map((s) => s.id)
+      : [];
+    const res = await this.sessionsRepository.update(where, { revoked: true });
+    this.sessionSockets?.endSessions(ids, reason);
     return res.affected ?? 0;
   }
 
@@ -1006,13 +1160,19 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  generateAgentToken(serverId: string, serverName: string): string {
+  /**
+   * Token del agente. Lo emite `AgentTokenService`, que guarda su `jti` en el
+   * servidor: sin esa fila el gateway no lo acepta, y así se puede revocar y
+   * rotar. 30 días por defecto; el panel lo rota antes, con el agente conectado.
+   */
+  generateAgentToken(serverId: string, serverName: string, jti: string = crypto.randomUUID()): string {
     const payload = {
       sub: serverId,
       type: 'agent',
       serverName,
+      jti,
     };
-    const expiresIn = this.configService.get<JwtSignOptions['expiresIn']>('AGENT_TOKEN_EXPIRES_IN', '365d');
+    const expiresIn = this.configService.get<JwtSignOptions['expiresIn']>('AGENT_TOKEN_EXPIRES_IN', '30d');
     return this.jwtService.sign(payload, { expiresIn });
   }
 

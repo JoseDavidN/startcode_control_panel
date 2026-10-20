@@ -1,10 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length, Matches, ValidateIf } from 'class-validator';
+import { IsJWT, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { RawValue } from '@auth/dto/raw-value.decorator';
 
 const SIX_DIGITS = /^\d{6}$/;
 
 export class TwoFactorCodeDto {
   @ApiProperty({ example: '123456', description: 'Código TOTP de 6 dígitos' })
+  @RawValue()
   @IsString()
   @Matches(SIX_DIGITS, { message: 'El código debe ser de 6 dígitos' })
   code: string;
@@ -13,6 +15,7 @@ export class TwoFactorCodeDto {
 /** Desactivar el 2FA o regenerar códigos exige también la contraseña. */
 export class TwoFactorCodeWithPasswordDto extends TwoFactorCodeDto {
   @ApiProperty({ description: 'Contraseña actual del usuario' })
+  @RawValue()
   @IsString()
   @Length(1, 128)
   password: string;
@@ -20,18 +23,23 @@ export class TwoFactorCodeWithPasswordDto extends TwoFactorCodeDto {
 
 export class TwoFactorVerifyLoginDto {
   @ApiProperty({ description: 'Token temporal devuelto cuando 2FA está activo' })
+  @RawValue()
   @IsString()
+  @MaxLength(2048)
+  @IsJWT()
   tempToken: string;
 
   @ApiPropertyOptional({ example: '123456', description: 'Código TOTP de 6 dígitos' })
   @IsOptional()
   @ValidateIf((o: TwoFactorVerifyLoginDto) => !o.backupCode)
+  @RawValue()
   @IsString()
   @Matches(SIX_DIGITS, { message: 'El código debe ser de 6 dígitos' })
   code?: string;
 
   @ApiPropertyOptional({ example: 'A3F9-K2LM', description: 'Código de respaldo de un solo uso' })
   @IsOptional()
+  @RawValue()
   @IsString()
   @Length(8, 12)
   backupCode?: string;

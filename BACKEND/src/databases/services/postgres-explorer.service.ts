@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { Client, FieldDef, QueryArrayResult } from 'pg';
+import { Query, type Client, type FieldDef, type QueryConfig } from 'pg';
 import { openPg } from './connection-factory';
 import type { ProbeTarget } from './database-probe.service';
 import {
@@ -22,6 +22,7 @@ import {
   type InsertRowResult,
   MAX_DELETE_ROWS,
   assertPrimaryKeys,
+  assertIdentifier,
   unquoteDefault,
 } from './explorer.common';
 
@@ -180,24 +181,21 @@ export class PostgresExplorerService {
 
     return this.withPg(t, db, async (client) => {
       const started = Date.now();
-      /* Protocolo extendido: una sola sentencia (ver la clase). */
-      const config = { text: sql, rowMode: 'array' as const, queryMode: 'extended' };
-      let res: QueryArrayResult<unknown[]>;
+      let res: StreamedPgResult;
       try {
-        res = await client.query<unknown[]>(config);
+        res = await streamPgQuery(client, sql, maxRows);
       } catch (err) {
         throw new BadRequestException(describePgError(err));
       }
       const durationMs = Date.now() - started;
 
       if (res.fields?.length) {
-        const rows = res.rows;
         return {
           columns: res.fields.map(f => f.name),
           ...(await this.describeEditable(client, res.fields, db)),
-          rows: rows.slice(0, maxRows).map(row => row.map(serializeValue)),
-          rowCount: rows.length,
-          truncated: rows.length > maxRows,
+          rows: res.rows.map(row => row.map(serializeValue)),
+          rowCount: res.received,
+          truncated: res.received > maxRows,
           affectedRows: null,
           insertId: null,
           durationMs,
@@ -476,6 +474,7 @@ export class PostgresExplorerService {
 
   /* Una conexión apuntada a una base no da acceso a las demás desde el panel. */
   private assertDatabaseAllowed(t: ProbeTarget, database: string) {
+    assertIdentifier(database, 'la base');
     if (t.database && t.database !== database) {
       throw new BadRequestException('Esta conexión solo da acceso a la base ' + t.database);
     }
@@ -508,6 +507,50 @@ export class PostgresExplorerService {
     }
   }
 
+}
+
+interface StreamedPgResult {
+  fields: FieldDef[];
+  /** Como mucho `maxRows` filas. */
+  rows: unknown[][];
+  /** Filas que devolvió el motor, guardadas o no. */
+  received: number;
+  /** Filas afectadas (INSERT/UPDATE/DELETE) según la etiqueta del motor. */
+  rowCount: number | null;
+}
+
+/**
+ * Ejecuta la sentencia recibiendo las filas una a una: con un listener de
+ * `row`, pg no acumula el resultado, así que un SELECT enorme no llena la
+ * memoria del backend. Se guardan las primeras `maxRows` y el resto se cuenta.
+ * Protocolo extendido: una sola sentencia (ver la clase).
+ */
+export function streamPgQuery(client: Client, sql: string, maxRows: number): Promise<StreamedPgResult> {
+  return new Promise<StreamedPgResult>((resolve, reject) => {
+    const rows: unknown[][] = [];
+    let received = 0;
+    /* Con callback, que el cliente necesita para aplicar `query_timeout`. */
+    const query = new Query(
+      { text: sql, rowMode: 'array', queryMode: 'extended' } as QueryConfig,
+      (err: Error | undefined, result: { fields?: FieldDef[]; rowCount?: number | null } | undefined) => {
+        if (err) return reject(err);
+        resolve({ fields: result?.fields ?? [], rows, received, rowCount: result?.rowCount ?? null });
+      },
+    );
+    /* Con callback pg acumularía todas las filas en el resultado: se desactiva
+       tras cada descripción de filas y se guardan aquí solo las primeras. */
+    const internals = query as unknown as { handleRowDescription(msg: unknown): void; _accumulateRows: boolean };
+    const describe = internals.handleRowDescription.bind(query) as (msg: unknown) => void;
+    internals.handleRowDescription = (msg: unknown) => {
+      describe(msg);
+      internals._accumulateRows = false;
+    };
+    query.on('row', (row: unknown) => {
+      received++;
+      if (rows.length < maxRows) rows.push(row as unknown[]);
+    });
+    void client.query(query);
+  });
 }
 
 /** Errores del driver y del servidor, en el idioma del panel. */

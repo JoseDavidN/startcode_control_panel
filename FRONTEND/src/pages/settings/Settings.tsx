@@ -258,10 +258,11 @@ const ProfilePane = () => {
 
   /* Requisitos de la nueva contraseña — validados en vivo */
   const reqs = {
-    length:  newPw.length >= 8,
-    upper:   /[A-Z]/.test(newPw),
-    digit:   /[0-9]/.test(newPw),
-    special: /[^A-Za-z0-9]/.test(newPw),
+    length:  newPw.length >= 8 && newPw.length <= 72,
+    lower:   /\p{Ll}/u.test(newPw),
+    upper:   /\p{Lu}/u.test(newPw),
+    digit:   /\p{Nd}/u.test(newPw),
+    special: /[^\p{L}\p{Nd}]/u.test(newPw),
     match:   newPw !== '' && newPw === confirmPw,
   };
   const reqsOk = Object.values(reqs).every(Boolean);
@@ -290,7 +291,7 @@ const ProfilePane = () => {
   const handleChangePassword = async () => {
     setPwMsg(null);
     if (newPw !== confirmPw) { setPwMsg({ ok: false, text: 'Las contraseñas no coinciden' }); return; }
-    if (newPw.length < 8) { setPwMsg({ ok: false, text: 'La nueva contraseña debe tener al menos 8 caracteres' }); return; }
+    if (!reqsOk) { setPwMsg({ ok: false, text: 'La nueva contraseña no cumple los requisitos' }); return; }
     try {
       await changePassword.mutateAsync({ currentPassword: currentPw, newPassword: newPw });
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
@@ -427,7 +428,8 @@ const ProfilePane = () => {
             <div className="text-xs text-white/55 font-medium">Requisitos de la nueva contraseña</div>
 
             <div className="space-y-2.5">
-              <ReqItem ok={reqs.length}>Mínimo 8 caracteres</ReqItem>
+              <ReqItem ok={reqs.length}>Entre 8 y 72 caracteres</ReqItem>
+              <ReqItem ok={reqs.lower}>Al menos una letra minúscula</ReqItem>
               <ReqItem ok={reqs.upper}>Al menos una letra mayúscula</ReqItem>
               <ReqItem ok={reqs.digit}>Al menos un número</ReqItem>
               <ReqItem ok={reqs.special}>Al menos un carácter especial</ReqItem>

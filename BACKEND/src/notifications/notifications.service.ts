@@ -106,6 +106,15 @@ export class NotificationsService implements OnModuleInit {
         metadata: { ip: event.ip, device: event.device, sessionId: event.sessionId },
       }).catch(err => this.logger.warn(`Aviso de inicio de sesión no guardado: ${err instanceof Error ? err.message : String(err)}`));
     });
+    this.authService.onRefreshReuse((userId, event) => {
+      void this.create(userId, {
+        type: NotificationType.SECURITY,
+        severity: NotificationSeverity.WARNING,
+        title: 'Sesión cerrada por seguridad',
+        body: `Se usó un token de sesión ya renovado desde ${event.device} · IP ${event.ip ?? 'desconocida'}, señal de que pudo copiarse. Se cerró esa sesión. Si no fuiste tú, cambia tu contraseña y revisa tus sesiones en Configuración → Seguridad.`,
+        metadata: { ip: event.ip, device: event.device, sessionId: event.sessionId },
+      }).catch(err => this.logger.warn(`Aviso de refresh reutilizado no guardado: ${err instanceof Error ? err.message : String(err)}`));
+    });
   }
 
   setBroadcaster(fn: (userId: string) => void): void {

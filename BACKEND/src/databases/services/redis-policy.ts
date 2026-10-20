@@ -83,6 +83,12 @@ const DANGEROUS: Record<string, string> = {
   SLAVEOF: 'convierte el servidor en réplica de otro (o la deja de ser)',
   FAILOVER: 'cambia el servidor principal de la réplica',
   MIGRATE: 'mueve claves a otro servidor',
+  /* Un script puede llamar a cualquier comando (FLUSHALL, CONFIG SET…) sin pasar por esta lista. */
+  EVAL: 'ejecuta un script Lua que puede llamar a cualquier comando',
+  EVALSHA: 'ejecuta un script Lua que puede llamar a cualquier comando',
+  FCALL: 'ejecuta una función que puede llamar a cualquier comando',
+  'FUNCTION LOAD': 'carga código en el servidor',
+  'SCRIPT LOAD': 'carga un script en el servidor',
   'CONFIG SET': 'cambia la configuración del servidor',
   'CONFIG REWRITE': 'reescribe el archivo de configuración del servidor',
   'CONFIG RESETSTAT': 'pone a cero las estadísticas del servidor',

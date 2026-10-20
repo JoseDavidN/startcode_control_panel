@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +7,8 @@ import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { Session } from '../entities/session.entity';
 import { mergePreferences } from '../types/user-preferences.type';
+import { JWT_ALGORITHM, jwtSecretOf } from '@auth/jwt-config';
+import { SessionSocketsService } from '@auth/session-sockets.service';
 
 export interface JwtPayload {
   sub: string;
@@ -32,11 +34,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private usersRepository: Repository<User>,
     @InjectRepository(Session)
     private sessionsRepository: Repository<Session>,
+    @Optional() private sessionSockets?: SessionSocketsService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get('JWT_SECRET') as string,
+      secretOrKey: jwtSecretOf(configService),
+      algorithms: [JWT_ALGORITHM],
     });
   }
 
@@ -78,6 +82,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!session.persistent && timeoutMinutes > 0 && idleMs > timeoutMinutes * 60_000) {
       await this.sessionsRepository.update(session.id, { revoked: true });
+      this.sessionSockets?.endSessions([session.id], 'inactivity');
       throw new UnauthorizedException('Sesión cerrada por inactividad');
     }
 

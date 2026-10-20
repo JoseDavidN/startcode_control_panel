@@ -21,6 +21,12 @@ describe('tokenizeCommand', () => {
 });
 
 describe('checkCommand', () => {
+  it('pide confirmación para scripts, que pueden llamar a cualquier comando', () => {
+    for (const cmd of [['EVAL', "return redis.call('FLUSHALL')", '0'], ['evalsha', 'abc', '0'], ['FCALL', 'f', '0'], ['SCRIPT', 'LOAD', 'x'], ['FUNCTION', 'LOAD', 'x']]) {
+      expect(checkCommand(cmd).kind).toBe('dangerous');
+    }
+  });
+
   it('deja pasar los comandos normales en cualquier caja', () => {
     expect(checkCommand(['get', 'k']).kind).toBe('ok');
     expect(checkCommand(['HGETALL', 'k']).kind).toBe('ok');

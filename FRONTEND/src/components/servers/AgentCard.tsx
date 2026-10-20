@@ -6,11 +6,13 @@ import { INSTALL_ACTIVITIES, UNINSTALL_ACTIVITIES, resolveActivities } from '@li
 import {
   useAgentInstallProgress,
   useAgentState,
+  useAgentTokenRotated,
   useInstallAgent,
+  useRegenerateAgentToken,
   useUninstallAgent,
 } from '@hooks/useAgentInstall';
 import { timeAgo } from '@utils/time';
-import type { AgentInstallError } from '@typings/agent.types';
+import type { AgentInstallError, AgentTokenRegenerateResult } from '@typings/agent.types';
 
 interface AgentCardProps {
   serverId: string;
@@ -36,6 +38,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
   const installMutation = useInstallAgent();
   const uninstallMutation = useUninstallAgent();
   const progress = useAgentInstallProgress(serverId);
+  const regenerateMutation = useRegenerateAgentToken();
+  useAgentTokenRotated(serverId);
+
+  /* «Regenerar token»: confirmación y resultado en su propio modal. */
+  const [tokenOpen, setTokenOpen] = useState(false);
+  const [tokenResult, setTokenResult] = useState<AgentTokenRegenerateResult | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   const [action, setAction] = useState<'install' | 'uninstall' | null>(null);
   /* 'form' = pidiendo lo que haga falta antes de empezar; 'process' = trabajando. */
@@ -46,7 +55,41 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
 
   const state = agent?.state ?? 'not_installed';
   const badge = STATE_BADGE[state] ?? STATE_BADGE.not_installed;
-  const busy = installMutation.isPending || uninstallMutation.isPending;
+  const busy = installMutation.isPending || uninstallMutation.isPending || regenerateMutation.isPending;
+
+  const openToken = () => {
+    setTokenResult(null);
+    setTokenError(null);
+    setTokenOpen(true);
+  };
+
+  const regenerate = async () => {
+    setTokenError(null);
+    try {
+      setTokenResult(await regenerateMutation.mutateAsync({ id: serverId }));
+    } catch (err: unknown) {
+      const fromResponse = (err as { response?: { data?: { message?: unknown } } }).response
+        ?.data?.message;
+      setTokenError(
+        typeof fromResponse === 'string'
+          ? fromResponse
+          : err instanceof Error
+            ? err.message
+            : 'No se pudo regenerar el token',
+      );
+    }
+  };
+
+  const closeToken = () => {
+    if (regenerateMutation.isPending) return;
+    setTokenOpen(false);
+  };
+
+  /* Sin agente conectado el token quedó revocado: el siguiente paso es reinstalar. */
+  const reinstallAfterRevoke = () => {
+    setTokenOpen(false);
+    open('install');
+  };
 
   /* Abrir no lanza nada: primero se pregunta la contraseña de sudo, que en la
      mayoría de servidores hace falta y antes solo aparecía tras fallar. */
@@ -138,7 +181,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
             </div>
             <p className="text-xs text-white/45 font-mono truncate">
               {agent?.version
-                ? `${agent.version}${agent.arch ? ` · ${agent.arch}` : ''}${agent.installedAt ? ` · instalado ${timeAgo(agent.installedAt)}` : ''}`
+                ? `${agent.version}${agent.arch ? ` · ${agent.arch}` : ''}${agent.installedAt ? ` · instalado ${timeAgo(agent.installedAt)}` : ''}${
+                    agent.tokenRotating
+                      ? ' · rotando token'
+                      : agent.tokenIssuedAt
+                        ? ` · token ${timeAgo(agent.tokenIssuedAt)}`
+                        : ''
+                  }`
                 : 'Sin agente: este servidor no reporta métricas'}
             </p>
           </div>
@@ -153,6 +202,17 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
           >
             {state === 'installed' ? 'Reinstalar' : 'Instalar agente'}
           </button>
+          {state === 'installed' && (
+            <button
+              onClick={openToken}
+              disabled={busy}
+              title="Regenerar token del agente"
+              className="mo-tab h-9 px-3.5 rounded-xl glass-soft text-white/85 row-hit
+                text-sm font-medium disabled:opacity-50"
+            >
+              Regenerar token
+            </button>
+          )}
           {state === 'installed' && (
             <button
               onClick={() => open('uninstall')}
@@ -293,6 +353,74 @@ export const AgentCard: React.FC<AgentCardProps> = ({ serverId, serverName }) =>
             </div>
           )}
         </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={tokenOpen}
+        onClose={closeToken}
+        title={`Regenerar token del agente · ${serverName}`}
+        size="sm"
+      >
+        {tokenResult ? (
+          <div className="space-y-5">
+            {tokenResult.mode === 'rotating' ? (
+              <p className="text-sm text-white/70 leading-relaxed">
+                Se envió un token nuevo al agente. Lo guarda en su configuración y lo confirma en
+                unos segundos; el anterior deja de valer entonces, con unos minutos de margen para
+                los mensajes en camino.
+              </p>
+            ) : (
+              <div className="glass-soft rounded-xl p-4 border border-amber-400/20 space-y-1.5">
+                <p className="text-sm font-semibold text-amber-300">El agente no estaba conectado</p>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  El token quedó revocado y no hay por dónde enviarle uno nuevo. Reinstala el agente
+                  para que vuelva a reportar.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
+              <button onClick={closeToken}
+                className="h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white text-sm font-medium transition">
+                Cerrar
+              </button>
+              {tokenResult.mode === 'revoked' && (
+                <button onClick={reinstallAfterRevoke}
+                  className="h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold transition">
+                  Reinstalar agente
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <p className="text-sm text-white/70 leading-relaxed">
+              Si el agente está conectado, recibe un token nuevo por su conexión y el actual deja de
+              valer en cuanto lo confirma. Si no lo está, el token actual se revoca y tendrás que
+              reinstalar el agente.
+            </p>
+            <p className="text-xs text-white/45 leading-relaxed">
+              Úsalo si crees que el token pudo filtrarse. Quedará registrado en tus notificaciones.
+            </p>
+
+            {tokenError && (
+              <div className="glass-soft rounded-xl p-3 border border-rose-400/20">
+                <p className="text-xs text-rose-200/80">{tokenError}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-line">
+              <button onClick={closeToken} disabled={regenerateMutation.isPending}
+                className="h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white text-sm font-medium transition disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => void regenerate()} disabled={regenerateMutation.isPending}
+                className="h-10 px-4 rounded-xl grad-brand text-white text-sm font-semibold transition disabled:opacity-50">
+                {regenerateMutation.isPending ? 'Regenerando…' : 'Regenerar token'}
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </>

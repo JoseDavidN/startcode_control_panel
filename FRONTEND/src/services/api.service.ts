@@ -8,7 +8,10 @@ import axios, {
 import { invoke } from '@tauri-apps/api/core';
 import { API_CONFIG } from '@utils/constants';
 import { TokenManager } from '@utils/tokenManager';
+import { queryClient } from '@lib/queryClient';
 import type { ApiError, ApiResponse } from '@typings/api.types';
+import { reportHostKeyMismatch } from '@lib/hostKeyAlert';
+import { notifySessionRevoked } from '@lib/sessionRevoked';
 
 /* La app usa el webview del sistema, cuyo user-agent no la distingue de un
    navegador (en Windows hasta dice «Edg/»). Se identifica con esta cabecera y
@@ -155,7 +158,18 @@ class ApiService {
 						});
 						this.failedQueue = [];
 
+						/* El backend cerró la sesión por reutilizar un refresh ya rotado:
+						   AuthProvider limpia y lleva al login con el motivo, sin recargar. */
+						const failure = axios.isAxiosError<{ code?: string; message?: string }>(refreshError)
+							? refreshError.response?.data
+							: undefined;
+						if (failure?.code === 'REFRESH_REUSED') {
+							notifySessionRevoked({ reason: 'reuse', message: failure.message });
+							return Promise.reject(refreshError as Error);
+						}
+
 						TokenManager.clearTokens();
+						queryClient.clear();
 						/* Si ya estamos en el login, no recargamos: una petición
 						   sin sesión desde esa pantalla dejaría la app en bucle
 						   de recargas. */
@@ -183,12 +197,16 @@ class ApiService {
 	private handleError(error: AxiosError): ApiError {
 		if (error.response) {
 			const data = error.response.data as Partial<ApiError> | undefined;
+			/* Clave de host SSH cambiada: sea cual sea la acción, el modal global
+			   enseña el aviso con las dos huellas. */
+			reportHostKeyMismatch(data);
 			return {
 				message: data?.message || 'Error en la petición',
 				statusCode: error.response.status,
 				errors: data?.errors,
 				code: data?.code,
 				hint: data?.hint,
+				hostKey: data?.hostKey,
 			};
 		} else if (error.request) {
 			return {

@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import archiver from 'archiver';
 import { randomUUID } from 'crypto';
-import { createReadStream, createWriteStream } from 'fs';
+import { constants as fsConstants, createReadStream, createWriteStream } from 'fs';
 import { cp, lstat, mkdir, rename, rm, stat, statfs, unlink } from 'fs/promises';
+import type { IncomingHttpHeaders } from 'http';
 import { dirname, join } from 'path';
 import { Transform, type Readable, type Writable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -11,7 +12,8 @@ import { cloudError, translateFsError } from '@/common/errors';
 import type { Section } from '@/common/sections';
 import { PathsService } from '@/paths/paths.service';
 import { mimeFromName } from './file-types';
-import { assertName, assertNoSymlinks, joinInside, parseRelative } from './path-guard';
+import { assertInsideRoot, assertName, assertNoSymlinks, assertRootAllowed, joinInside, parseRelative } from './path-guard';
+import type { CloudFolderDto } from './files.types';
 import { buildTree, listFiles, scanTree } from './tree';
 import { aggregateStats, type CloudStatsDto } from './stats';
 
@@ -20,6 +22,23 @@ const LABEL: Record<Section, string> = { home: 'Home', backups: 'Backups' };
 /* El dashboard pide las estadísticas a menudo y recorrer el disco cuesta: se reutilizan un minuto. */
 const STATS_TTL_MS = 60_000;
 
+/* Lectura sin seguir un enlace simbólico en el último tramo (el resto ya lo
+   comprobó path-guard): si alguien lo cambia entre medias, falla. */
+const READ_NOFOLLOW = (fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW) as unknown as string; /* Node acepta flags numéricos; los tipos solo dicen string. */
+
+/* Un .zip recorre la carpeta entera antes de empezar: más de esto es casi
+   seguro un error (y cuesta memoria). El árbol ya se recorta en `treeMaxEntries`. */
+const ZIP_ENTRIES_PER_TREE_ENTRY = 10;
+
+const tooLarge = () =>
+  new HttpException({ code: 'TOO_LARGE', message: 'El archivo supera el tamaño máximo que admite la nube.' }, HttpStatus.PAYLOAD_TOO_LARGE);
+
+/** Tamaño de `Content-Length`, si viene y es un número. */
+const contentLength = (headers: IncomingHttpHeaders | undefined) => {
+  const raw = headers?.['content-length'];
+  return raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : undefined;
+};
+
 /** Corta la subida si pasa del máximo, sin esperar a que termine. */
 class ByteCounter extends Transform {
   bytes = 0;
@@ -27,7 +46,7 @@ class ByteCounter extends Transform {
   _transform(chunk: Buffer, _enc: BufferEncoding, done: (error?: Error | null, data?: Buffer) => void) {
     this.bytes += chunk.length;
     if (this.bytes > this.max) {
-      done(new HttpException({ code: 'TOO_LARGE', message: 'El archivo supera el tamaño máximo que admite la nube.' }, HttpStatus.PAYLOAD_TOO_LARGE));
+      done(tooLarge());
       return;
     }
     done(null, chunk);
@@ -47,6 +66,8 @@ export class FilesService {
   private readonly logger = new Logger(FilesService.name);
   /* Por usuario; la promesa, para que dos peticiones a la vez recorran el disco una sola vez. */
   private readonly statsCache = new Map<string, { at: number; value: Promise<CloudStatsDto> }>();
+  /* Un árbol en curso por usuario y sección: pedirlo muchas veces seguidas no multiplica el recorrido. */
+  private readonly treeRunning = new Map<string, Promise<CloudFolderDto>>();
 
   constructor(
     private readonly config: CloudConfig,
@@ -58,6 +79,7 @@ export class FilesService {
     const root = this.paths.get(username)[section];
     try {
       await mkdir(root, { recursive: true });
+      await assertRootAllowed(root, this.config.allowedRoots);
     } catch (error) {
       throw translateFsError(error, `la carpeta de ${LABEL[section]}`);
     }
@@ -68,7 +90,9 @@ export class FilesService {
     const root = await this.root(username, section);
     const segments = parseRelative(rel);
     await assertNoSymlinks(root, segments);
-    return { root, segments, full: joinInside(root, segments) };
+    const full = joinInside(root, segments);
+    await assertInsideRoot(root, full);
+    return { root, segments, full };
   }
 
   private async locateEntry(username: string, section: Section, rel: string) {
@@ -88,13 +112,26 @@ export class FilesService {
     }
   }
 
-  async tree(username: string, section: Section) {
-    const root = await this.root(username, section);
-    try {
-      return await buildTree(root, LABEL[section], this.config.treeMaxEntries);
-    } catch (error) {
-      throw translateFsError(error, `la carpeta de ${LABEL[section]}`);
-    }
+  /** Dos rutas que son el mismo archivo (disco que no distingue mayúsculas). */
+  private async sameEntry(a: string, b: string): Promise<boolean> {
+    const [x, y] = await Promise.all([lstat(a), lstat(b)]);
+    return x.dev === y.dev && x.ino === y.ino;
+  }
+
+  tree(username: string, section: Section): Promise<CloudFolderDto> {
+    const key = `${username}\0${section}`;
+    const running = this.treeRunning.get(key);
+    if (running) return running;
+    const value = (async () => {
+      const root = await this.root(username, section);
+      try {
+        return await buildTree(root, LABEL[section], this.config.treeMaxEntries);
+      } catch (error) {
+        throw translateFsError(error, `la carpeta de ${LABEL[section]}`);
+      }
+    })().finally(() => this.treeRunning.delete(key));
+    this.treeRunning.set(key, value);
+    return value;
   }
 
   /** Resumen para el dashboard del panel (ver `aggregateStats`). */
@@ -142,12 +179,25 @@ export class FilesService {
    * a un temporal en la misma carpeta y al final se renombra, así un corte
    * no deja un archivo a medias ni pisa el anterior hasta completar.
    */
-  async upload(username: string, section: Section, parent: string | undefined, relPath: string, size: number | undefined, source: Readable & { complete?: boolean }) {
+  async upload(
+    username: string, section: Section, parent: string | undefined, relPath: string, size: number | undefined,
+    source: Readable & { complete?: boolean; headers?: IncomingHttpHeaders },
+  ) {
+    /* Solo cuerpo crudo: con JSON o un formulario, Express ya se lo comió y
+       se guardaría un archivo vacío encima del que hubiera. */
+    const type = source.headers?.['content-type']?.split(';')[0].trim().toLowerCase();
+    if (type !== undefined && type !== 'application/octet-stream') {
+      throw new HttpException({ code: 'UNSUPPORTED_TYPE', message: 'La subida debe enviarse como application/octet-stream.' }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    }
+    /* Lo declarado ya pasa del máximo: se rechaza sin leer nada. */
+    const declared = size ?? contentLength(source.headers);
+    if (declared !== undefined && declared > this.config.maxUploadBytes) throw tooLarge();
     const root = await this.root(username, section);
     const segments = [...parseRelative(parent), ...parseRelative(relPath)];
     if (segments.length === 0) throw cloudError(BadRequestException, 'INVALID_PATH', 'Falta el nombre del archivo.');
     await assertNoSymlinks(root, segments);
     const target = joinInside(root, segments);
+    await assertInsideRoot(root, target);
     if (await this.exists(target) && (await lstat(target)).isDirectory()) {
       throw cloudError(ConflictException, 'ALREADY_EXISTS', `Ya existe una carpeta llamada «${segments[segments.length - 1]}».`);
     }
@@ -155,6 +205,10 @@ export class FilesService {
     const counter = new ByteCounter(this.config.maxUploadBytes);
     try {
       await mkdir(dirname(target), { recursive: true });
+      if (declared !== undefined) {
+        const disk = await statfs(dirname(target));
+        if (declared > disk.bavail * disk.bsize) throw Object.assign(new Error(), { code: 'ENOSPC' });
+      }
       await pipeline(source, counter, createWriteStream(tmp, { flags: 'wx', mode: 0o644 }) as Writable);
       if (source.complete === false || (size !== undefined && counter.bytes !== size)) {
         throw cloudError(BadRequestException, 'INCOMPLETE', 'La subida se cortó antes de terminar.', 'Vuelve a cargar el archivo.');
@@ -173,7 +227,7 @@ export class FilesService {
       const info = await stat(full);
       if (!info.isFile()) throw Object.assign(new Error(), { code: 'EISDIR' });
       const name = segments[segments.length - 1];
-      return { stream: createReadStream(full), size: info.size, name, type: mimeFromName(name) };
+      return { stream: createReadStream(full, { flags: READ_NOFOLLOW }), size: info.size, name, type: mimeFromName(name) };
     } catch (error) {
       throw translateFsError(error, 'el archivo');
     }
@@ -214,7 +268,7 @@ export class FilesService {
     let files: { path: string; name: string }[];
     try {
       if (!(await stat(full)).isDirectory()) throw Object.assign(new Error(), { code: 'ENOTDIR' });
-      files = await listFiles(full, name);
+      files = await listFiles(full, name, this.config.treeMaxEntries * ZIP_ENTRIES_PER_TREE_ENTRY);
     } catch (error) {
       throw translateFsError(error, 'la carpeta');
     }
@@ -241,7 +295,10 @@ export class FilesService {
       await lstat(full);
       /* Solo cambia mayúsculas/minúsculas: en discos que no las distinguen el destino "existe" y es el mismo. */
       const caseOnly = target.toLowerCase() === full.toLowerCase();
-      if (!caseOnly && await this.exists(target)) throw Object.assign(new Error(), { code: 'EEXIST' });
+      /* En un disco que sí las distingue, `A.txt` puede ser otro archivo: no se pisa. */
+      if (await this.exists(target) && (!caseOnly || !(await this.sameEntry(full, target)))) {
+        throw Object.assign(new Error(), { code: 'EEXIST' });
+      }
       await rename(full, target);
     } catch (error) {
       throw translateFsError(error, 'un elemento');
@@ -316,6 +373,6 @@ export function openFileRange(full: string, size: number, type: string, header: 
   if (range === null) return { size, type, range: null, stream: null };
   const { start, end } = range ?? { start: 0, end: size - 1 };
   /* Un archivo vacío no tiene bytes que leer (createReadStream con end -1 fallaría). */
-  const stream = size === 0 ? null : createReadStream(full, { start, end, highWaterMark: 256 * 1024 });
+  const stream = size === 0 ? null : createReadStream(full, { flags: READ_NOFOLLOW, start, end, highWaterMark: 256 * 1024 });
   return { size, type, range: range ?? undefined, start, end, stream };
 }

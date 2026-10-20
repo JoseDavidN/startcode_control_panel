@@ -8,8 +8,10 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { Socket } from 'socket.io';
 import { WsAuthService } from '@auth/ws-auth.service';
+import { hostKeyErrorPayload } from '@monitoring/services/host-key';
 import { SftpSessionService } from './services/sftp-session.service';
 import { SftpOperationsService } from './services/sftp-operations.service';
 import { SftpEntry, SftpSession } from './sftp.types';
@@ -42,10 +44,21 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     try {
-      const user = await this.wsAuth.authenticate(token);
+      const user = await this.wsAuth.authenticate(token, client);
       if (!serverId) throw new Error('Falta el servidor');
+      if (typeof serverId !== 'string' || !isUUID(serverId)) throw new Error('Servidor no válido');
 
       const session = await this.sessions.open(user.id, serverId, client.id);
+      /* Sesión revocada: se cierra ya, aunque haya subidas en vuelo (que al
+         desconectar normal sí se esperan). */
+      this.wsAuth.onSessionEnd(client, () =>
+        this.sessions.close(session.id, 'la sesión del panel terminó'),
+      );
+      if (client.disconnected) {
+        this.sessions.close(session.id, 'el cliente cerró la conexión');
+        return;
+      }
+      this.wsAuth.touch(client);
       const listing = await this.ops.list(session, session.home);
 
       client.emit('sftp:ready', {
@@ -65,7 +78,8 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const message =
         error instanceof Error ? error.message : 'Error desconocido';
       this.logger.warn(`SFTP rechazado: ${message}`);
-      client.emit('sftp:error', { message });
+      /* Clave de host cambiada: el panel enseña el aviso con las dos huellas. */
+      client.emit('sftp:error', { message, ...hostKeyErrorPayload(error) });
       client.disconnect(true);
     }
   }
@@ -128,6 +142,7 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       this.sessions.touch(session);
+      this.wsAuth.touch(client);
       const result = await action(session);
       return { ok: true, ...result };
     } catch (error) {

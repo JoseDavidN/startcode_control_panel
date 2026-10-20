@@ -31,6 +31,14 @@ export class Session {
   @Column({ type: 'varchar', length: 64, name: 'str_refresh_hash' })
   refreshHash: string;
 
+  /** sha256 del refresh anterior: aceptado unos segundos tras rotar; después, usarlo revoca la sesión. */
+  @Column({ type: 'varchar', length: 64, nullable: true, name: 'str_previous_refresh_hash' })
+  previousRefreshHash: string | null;
+
+  /** Cuándo se rotó el refresh por última vez: inicio de la gracia del anterior. */
+  @Column({ type: 'timestamptz', nullable: true, name: 'dat_refresh_rotated_at' })
+  refreshRotatedAt: Date | null;
+
   @Column({ type: 'text', nullable: true, name: 'str_user_agent' })
   userAgent: string | null;
 

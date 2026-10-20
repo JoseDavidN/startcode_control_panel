@@ -7,6 +7,7 @@ import { useUnreadCount } from '@hooks/useNotificationsFeed';
 import { AssistantLauncher, AssistantPanel } from '@components/assistant/AssistantPanel';
 import { useAssistant } from '@hooks/useAssistantBridge';
 import { TerminalDockProvider } from '@contexts/TerminalDockContext';
+import { HostKeyMismatchModal } from '@components/servers/HostKeyMismatchModal';
 
 /* ── Inline SVG icon set ─────────────────────────────────────────── */
 type IconName =
@@ -282,6 +283,8 @@ export const AppLayout = () => {
       </div>
 
       {assistantAllowed && <AssistantPanel />}
+      {/* Aviso de clave de host SSH cambiada: lo abre cualquier conexión rechazada. */}
+      <HostKeyMismatchModal />
     </TerminalDockProvider>
   );
 };

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import type { Connection as CoreConnection } from 'mysql2';
 import {
   type Connection,
   type FieldPacket,
@@ -30,6 +31,9 @@ import {
   type InsertRowResult,
   MAX_DELETE_ROWS,
   assertPrimaryKeys,
+  assertIdentifier,
+  quoteMysqlId,
+  toMysqlParam,
   unquoteDefault,
 } from './explorer.common';
 
@@ -244,32 +248,31 @@ export class DatabaseExplorerService {
 
     return this.withMysql(t, schema ?? t.database, async (conn) => {
       const started = Date.now();
-      let result: unknown;
-      let fields: FieldPacket[] | undefined;
+      let streamed: StreamedResult;
       try {
-        [result, fields] = await conn.query({ sql, rowsAsArray: true, timeout: QUERY_TIMEOUT_MS });
+        streamed = await streamMysqlQuery(conn, sql, maxRows);
       } catch (err) {
         /* Un error de SQL es una respuesta válida para el editor, no un 500. */
         throw new BadRequestException(describeSqlError(err));
       }
       const durationMs = Date.now() - started;
+      const { fields, rows, rowCount } = streamed;
 
-      if (Array.isArray(result) && fields) {
-        const rows = result as unknown[][];
+      if (fields) {
         const editing = await this.describeEditable(conn, fields);
         return {
           columns: fields.map(f => f.name),
           ...editing,
-          rows: rows.slice(0, maxRows).map(row => row.map(serializeValue)),
-          rowCount: rows.length,
-          truncated: rows.length > maxRows,
+          rows: rows.map(row => row.map(serializeValue)),
+          rowCount,
+          truncated: rowCount > maxRows,
           affectedRows: null,
           insertId: null,
           durationMs,
         };
       }
 
-      const header = result as ResultSetHeader;
+      const header = streamed.header;
       return {
         columns: null,
         rows: [],
@@ -382,11 +385,11 @@ export class DatabaseExplorerService {
       if (unknown.length) throw new BadRequestException(`Columnas desconocidas: ${unknown.join(', ')}`);
 
       const sql =
-        `UPDATE ${conn.escapeId(input.schema)}.${conn.escapeId(input.table)} SET ` +
-        changeCols.map(c => `${conn.escapeId(c)} = ?`).join(', ') +
-        ' WHERE ' + pk.map(c => `${conn.escapeId(c)} <=> ?`).join(' AND ') +
+        `UPDATE ${quoteMysqlId(input.schema)}.${quoteMysqlId(input.table)} SET ` +
+        changeCols.map(c => `${quoteMysqlId(c)} = ?`).join(', ') +
+        ' WHERE ' + pk.map(c => `${quoteMysqlId(c)} <=> ?`).join(' AND ') +
         ' LIMIT 1';
-      const params = [...changeCols.map(c => input.changes[c]), ...pk.map(c => input.key[c])];
+      const params = [...changeCols.map(c => toMysqlParam(input.changes[c])), ...pk.map(c => toMysqlParam(input.key[c]))];
 
       try {
         const [res] = await conn.query<ResultSetHeader>({ sql, values: params, timeout: QUERY_TIMEOUT_MS });
@@ -463,13 +466,13 @@ export class DatabaseExplorerService {
     if (generated.length) throw new BadRequestException(`Columnas generadas, no se pueden escribir: ${generated.join(', ')}`);
 
     return this.withMysql(t, null, async (conn) => {
-      const target = `${conn.escapeId(input.schema)}.${conn.escapeId(input.table)}`;
+      const target = `${quoteMysqlId(input.schema)}.${quoteMysqlId(input.table)}`;
       const sql = cols.length
-        ? `INSERT INTO ${target} (${cols.map(c => conn.escapeId(c)).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
+        ? `INSERT INTO ${target} (${cols.map(c => quoteMysqlId(c)).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
         : `INSERT INTO ${target} () VALUES ()`;
       let res: ResultSetHeader;
       try {
-        [res] = await conn.query<ResultSetHeader>({ sql, values: cols.map(c => input.values[c]), timeout: QUERY_TIMEOUT_MS });
+        [res] = await conn.query<ResultSetHeader>({ sql, values: cols.map(c => toMysqlParam(input.values[c])), timeout: QUERY_TIMEOUT_MS });
       } catch (err) {
         throw new BadRequestException(describeSqlError(err));
       }
@@ -482,8 +485,8 @@ export class DatabaseExplorerService {
       let row: Record<string, unknown> | null = null;
       if (key) {
         const [found] = await conn.query<RowDataPacket[]>({
-          sql: `SELECT * FROM ${target} WHERE ${Object.keys(key).map(c => `${conn.escapeId(c)} <=> ?`).join(' AND ')} LIMIT 1`,
-          values: Object.values(key),
+          sql: `SELECT * FROM ${target} WHERE ${Object.keys(key).map(c => `${quoteMysqlId(c)} <=> ?`).join(' AND ')} LIMIT 1`,
+          values: Object.values(key).map(toMysqlParam),
           timeout: QUERY_TIMEOUT_MS,
         });
         if (found[0]) row = Object.fromEntries(Object.entries(found[0]).map(([k, v]) => [k, serializeValue(v)]));
@@ -513,14 +516,14 @@ export class DatabaseExplorerService {
       const pk = pkRows.map(r => String(r.col));
       assertPrimaryKeys(pk, input.keys);
       const sql =
-        `DELETE FROM ${conn.escapeId(input.schema)}.${conn.escapeId(input.table)} WHERE ` +
-        pk.map(c => `${conn.escapeId(c)} <=> ?`).join(' AND ') + ' LIMIT 1';
+        `DELETE FROM ${quoteMysqlId(input.schema)}.${quoteMysqlId(input.table)} WHERE ` +
+        pk.map(c => `${quoteMysqlId(c)} <=> ?`).join(' AND ') + ' LIMIT 1';
 
       let affected = 0;
       try {
         await conn.beginTransaction();
         for (const key of input.keys) {
-          const [res] = await conn.query<ResultSetHeader>({ sql, values: pk.map(c => key[c]), timeout: QUERY_TIMEOUT_MS });
+          const [res] = await conn.query<ResultSetHeader>({ sql, values: pk.map(c => toMysqlParam(key[c])), timeout: QUERY_TIMEOUT_MS });
           affected += res.affectedRows;
         }
         await conn.commit();
@@ -540,6 +543,7 @@ export class DatabaseExplorerService {
 
   /* Una conexión apuntada a una base no da acceso a las demás desde el panel. */
   private assertSchemaAllowed(t: ProbeTarget, schema: string) {
+    assertIdentifier(schema, 'la base');
     if (t.database && t.database !== schema) {
       throw new BadRequestException('Esta conexión solo da acceso a la base ' + t.database);
     }
@@ -562,6 +566,48 @@ export class DatabaseExplorerService {
     }
   }
 
+}
+
+interface StreamedResult {
+  /** Columnas de la sentencia; undefined si no devuelve filas. */
+  fields?: FieldPacket[];
+  /** Como mucho `maxRows` filas: las demás se cuentan pero no se guardan. */
+  rows: unknown[][];
+  rowCount: number;
+  header?: ResultSetHeader;
+}
+
+/**
+ * Ejecuta la sentencia leyendo las filas una a una. Con `conn.query` el driver
+ * acumula el resultado entero en memoria antes de devolverlo, y un
+ * `SELECT * FROM tabla_enorme` tumbaría el backend aunque solo se envíen
+ * `maxRows`. Aquí se guardan las primeras y del resto solo se lleva la cuenta.
+ */
+export function streamMysqlQuery(conn: Connection, sql: string, maxRows: number): Promise<StreamedResult> {
+  const core = (conn as unknown as { connection: CoreConnection }).connection;
+  return new Promise<StreamedResult>((resolve, reject) => {
+    const out: StreamedResult = { rows: [], rowCount: 0 };
+    let failed = false;
+    const query = core.query({ sql, rowsAsArray: true, timeout: QUERY_TIMEOUT_MS });
+    query.on('fields', (fields: FieldPacket | FieldPacket[]) => {
+      if (Array.isArray(fields)) out.fields = fields;
+    });
+    query.on('result', (row: unknown) => {
+      if (Array.isArray(row)) {
+        out.rowCount++;
+        if (out.rows.length < maxRows) out.rows.push(row as unknown[]);
+      } else {
+        out.header = row as ResultSetHeader;
+      }
+    });
+    query.on('error', (err: unknown) => {
+      failed = true;
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+    query.on('end', () => {
+      if (!failed) resolve(out);
+    });
+  });
 }
 
 export function describeSqlError(err: unknown): string {

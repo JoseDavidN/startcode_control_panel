@@ -75,6 +75,10 @@ export class Notification {
     ip?: string | null;
     device?: string;
     sessionId?: string;
+    /** Clave de host SSH aceptada: la anterior y la nueva. */
+    previousFingerprint?: string | null;
+    fingerprint?: string;
+    algorithm?: string;
   } | null;
 
   @Column({ type: 'boolean', default: false, name: 'bol_read' })

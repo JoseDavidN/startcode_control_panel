@@ -1,7 +1,7 @@
 /**
  * Orígenes permitidos por CORS, compartidos por HTTP y Socket.IO.
  *
- * CORS_ORIGIN admite `*` o una lista separada por comas:
+ * CORS_ORIGIN admite una lista separada por comas (`*` solo fuera de producción):
  *   CORS_ORIGIN=http://localhost:5173,https://panel.example.com
  *
  * A la lista se añaden siempre los orígenes de la app de escritorio (Tauri):
@@ -15,13 +15,33 @@ export const TAURI_ORIGINS = [
   'https://tauri.localhost', // Windows con useHttpsScheme
 ];
 
-export function resolveCorsOrigins(raw = process.env.CORS_ORIGIN ?? '*'): '*' | string[] {
-  if (raw.trim() === '*') return '*';
+/** Servidor de Vite de la app en desarrollo (`tauri dev` carga desde aquí). */
+export const DEV_ORIGINS = ['http://localhost:5173'];
+
+/**
+ * En producción `*` no se admite: cualquier web podría llamar a la API desde
+ * el navegador de un usuario. Se ignora con un aviso y quedan solo los
+ * orígenes configurados más los de Tauri. En desarrollo se respeta `*` (el
+ * servidor de Vite se abre por nombre de equipo o IP de la red).
+ */
+export function resolveCorsOrigins(
+  raw = process.env.CORS_ORIGIN ?? '',
+  nodeEnv = process.env.NODE_ENV,
+): '*' | string[] {
+  const production = nodeEnv === 'production';
+  const wildcard = raw.split(',').some(origin => origin.trim() === '*');
+
+  if (wildcard && !production) return '*';
+  if (wildcard) {
+    console.warn('[CORS] CORS_ORIGIN=* no se admite en producción: se ignora.');
+  }
 
   const configured = raw
     .split(',')
     .map(origin => origin.trim().replace(/\/+$/, ''))
-    .filter(Boolean);
+    .filter(origin => origin && origin !== '*');
 
-  return [...new Set([...configured, ...TAURI_ORIGINS])];
+  return [
+    ...new Set([...configured, ...TAURI_ORIGINS, ...(nodeEnv === 'development' ? DEV_ORIGINS : [])]),
+  ];
 }

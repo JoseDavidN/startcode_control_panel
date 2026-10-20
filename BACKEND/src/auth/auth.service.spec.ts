@@ -1,11 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, UnauthorizedException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { AuthResponseDto } from '@auth/dto/auth-response.dto';
+
+/* Sin esperas reales en el retardo progresivo. */
+jest.mock('@auth/login-attempts', () => ({
+  ...jest.requireActual<typeof import('@auth/login-attempts')>('@auth/login-attempts'),
+  sleep: jest.fn().mockResolvedValue(undefined),
+}));
 
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
@@ -50,6 +56,7 @@ describe('AuthService', () => {
   let usersRepo: Record<string, jest.Mock>;
   let sessionsRepo: Record<string, jest.Mock>;
   let jwtService: { sign: jest.Mock; verify: jest.Mock };
+  let configValues: Record<string, string>;
 
   beforeEach(async () => {
     usersRepo = {
@@ -72,6 +79,13 @@ describe('AuthService', () => {
       verify: jest.fn(),
     };
 
+    configValues = {
+      JWT_EXPIRES_IN: '30m',
+      JWT_REFRESH_EXPIRES_IN: '7d',
+      AGENT_TOKEN_EXPIRES_IN: '30d',
+      AUTH_ALLOW_REGISTRATION: 'true',
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -81,14 +95,7 @@ describe('AuthService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string, defaultValue?: string) => {
-              const values: Record<string, string> = {
-                JWT_EXPIRES_IN: '30m',
-                JWT_REFRESH_EXPIRES_IN: '7d',
-                AGENT_TOKEN_EXPIRES_IN: '365d',
-              };
-              return values[key] ?? defaultValue;
-            }),
+            get: jest.fn((key: string, defaultValue?: string) => configValues[key] ?? defaultValue),
           },
         },
       ],
@@ -138,9 +145,87 @@ describe('AuthService', () => {
         service.login({ email: mockUser.email, password: 'password' }),
       ).rejects.toThrow(UnauthorizedException);
     });
+
+    it('con un email inexistente compara contra un hash señuelo (tiempo constante)', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.login({ email: 'no@existe.com', password: 'x' })).rejects.toThrow('Credenciales inválidas');
+      expect(bcrypt.compare).toHaveBeenCalledWith('x', expect.stringMatching(/^\$2[aby]\$12\$/));
+    });
+
+    it('mismo mensaje si el usuario no existe o la contraseña es incorrecta', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      usersRepo.findOne.mockResolvedValue(null);
+      const missing = await service.login({ email: 'no@existe.com', password: 'x' }).catch((e: Error) => e.message);
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      const wrong = await service.login({ email: mockUser.email, password: 'x' }).catch((e: Error) => e.message);
+
+      expect(missing).toBe(wrong);
+    });
+
+    it('a un usuario inactivo con contraseña incorrecta no le revela que está inactivo', async () => {
+      usersRepo.findOne.mockResolvedValue({ ...mockUser, isActive: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.login({ email: mockUser.email, password: 'x' })).rejects.toThrow('Credenciales inválidas');
+    });
+
+    it('bloquea también los emails que no existen, con el mismo mensaje que una cuenta real', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      for (let i = 0; i < 5; i++) {
+        await expect(service.login({ email: 'no@existe.com', password: 'x' })).rejects.toThrow('Credenciales inválidas');
+      }
+      (bcrypt.compare as jest.Mock).mockClear();
+
+      await expect(service.login({ email: 'No@Existe.com', password: 'x' })).rejects.toThrow(/bloqueada temporalmente/);
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it('bloquea la cuenta real tras 5 fallos aunque luego acierte', async () => {
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+      for (let i = 0; i < 5; i++) {
+        await service.login({ email: mockUser.email, password: 'x' }).catch(() => undefined);
+      }
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      await expect(service.login({ email: mockUser.email, password: 'ok' })).rejects.toThrow(/bloqueada temporalmente/);
+    });
+
+    it('bloquea la IP con 429 tras muchos fallos contra cuentas distintas', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+      const client = { remoteIp: '203.0.113.9' };
+
+      for (let i = 0; i < 30; i++) {
+        await service.login({ email: `u${i}@x.co`, password: 'x' }, client).catch(() => undefined);
+      }
+
+      const error = await service.login({ email: 'otro@x.co', password: 'x' }, client).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(HttpException);
+      expect((error as HttpException).getStatus()).toBe(429);
+
+      /* Otra IP sigue pudiendo entrar. */
+      await expect(service.login({ email: 'otro@x.co', password: 'x' }, { remoteIp: '198.51.100.1' })).rejects.toThrow(
+        'Credenciales inválidas',
+      );
+    });
   });
 
   describe('register', () => {
+    it('está deshabilitado salvo AUTH_ALLOW_REGISTRATION=true', async () => {
+      delete configValues.AUTH_ALLOW_REGISTRATION;
+
+      await expect(
+        service.register({ firstname: 'Jane', lastname: 'Doe', email: 'jane@example.com', password: 'Clave123!' }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
     it('lanza ConflictException si el email ya existe', async () => {
       usersRepo.findOne.mockResolvedValue(mockUser);
 
@@ -173,13 +258,23 @@ describe('AuthService', () => {
   });
 
   describe('generateAgentToken', () => {
-    it('firma el token con type=agent y sub=serverId', () => {
-      service.generateAgentToken('server-uuid-1', 'Mi Servidor');
+    it('firma el token con type=agent, sub=serverId y un jti revocable', () => {
+      service.generateAgentToken('server-uuid-1', 'Mi Servidor', 'jti-1');
 
       expect(jwtService.sign).toHaveBeenCalledWith(
-        { sub: 'server-uuid-1', type: 'agent', serverName: 'Mi Servidor' },
-        expect.objectContaining({ expiresIn: '365d' }),
+        { sub: 'server-uuid-1', type: 'agent', serverName: 'Mi Servidor', jti: 'jti-1' },
+        expect.objectContaining({ expiresIn: '30d' }),
       );
+    });
+
+    it('sin jti explícito genera uno distinto en cada token', () => {
+      service.generateAgentToken('server-uuid-1', 'Mi Servidor');
+      service.generateAgentToken('server-uuid-1', 'Mi Servidor');
+
+      const calls = jwtService.sign.mock.calls as [{ jti?: string }][];
+      const [first, second] = calls.slice(-2).map(([payload]) => payload.jti);
+      expect(first).toEqual(expect.any(String));
+      expect(first).not.toBe(second);
     });
 
     it('retorna el token firmado', () => {
@@ -215,6 +310,75 @@ describe('AuthService', () => {
 
       expect(result.token).toBe('signed.jwt.token');
       expect(result.user.id).toBe(mockUser.id);
+    });
+
+    const liveSession = (token: string, extra: Partial<Session> = {}) => ({
+      id: 'session-uuid-1',
+      userId: mockUser.id,
+      revoked: false,
+      persistent: false,
+      expiresAt: new Date(Date.now() + 60_000),
+      refreshHash: createHash('sha256').update(token).digest('hex'),
+      ...extra,
+    });
+
+    it('rota el refresh: el token anterior deja de valer', async () => {
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'refresh', sid: 'session-uuid-1' });
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      sessionsRepo.findOne.mockResolvedValue(liveSession('otro.refresh.token'));
+
+      await expect(service.refreshToken('viejo.refresh.token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rechaza el refresh de una sesión revocada (logout)', async () => {
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'refresh', sid: 'session-uuid-1' });
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      sessionsRepo.findOne.mockResolvedValue(liveSession('t', { revoked: true }));
+
+      await expect(service.refreshToken('t')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it.each([
+      ['borrado', null],
+      ['desactivado', { ...mockUser, isActive: false }],
+    ])('rechaza el refresh de un usuario %s', async (_label, user) => {
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'refresh', sid: 'session-uuid-1' });
+      usersRepo.findOne.mockResolvedValue(user);
+      sessionsRepo.findOne.mockResolvedValue(liveSession('t'));
+
+      await expect(service.refreshToken('t')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rechaza un token de acceso usado como refresh', async () => {
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'access', sid: 'session-uuid-1' });
+
+      await expect(service.refreshToken('t')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('bloquea con 429 la IP que prueba refresh inválidos', async () => {
+      jwtService.verify.mockImplementation(() => {
+        throw new Error('invalid signature');
+      });
+      const client = { remoteIp: '203.0.113.7' };
+      for (let i = 0; i < 30; i++) {
+        await service.refreshToken('bad', client).catch(() => undefined);
+      }
+
+      const error = await service.refreshToken('bad', client).catch((e: unknown) => e);
+      expect((error as HttpException).getStatus()).toBe(429);
+    });
+
+    it('limita las renovaciones por cuenta', async () => {
+      jwtService.verify.mockReturnValue({ sub: mockUser.id, type: 'refresh', sid: 'session-uuid-1' });
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      sessionsRepo.findOne.mockResolvedValue(liveSession('t'));
+
+      const results: number[] = [];
+      for (let i = 0; i < 31; i++) {
+        results.push(await service.refreshToken('t').then(() => 200, (e: HttpException) => e.getStatus()));
+      }
+      expect(results.slice(0, 29).every(status => status === 200)).toBe(true);
+      expect(results.at(-1)).toBe(429);
     });
   });
 });

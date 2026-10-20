@@ -12,6 +12,7 @@ import { SSHService } from './ssh.service';
 import { AgentDataService } from './agent-data.service';
 import { AgentGateway } from '../gateways/agent.gateway';
 import { ServiceAction } from '../dto/service-action.dto';
+import { assertUnitName, shellQuote } from '@/common/security/shell';
 
 export interface ServiceLogsResult {
   service: string;
@@ -80,9 +81,6 @@ const unitName = (unit: string) => unit.replace(/\.service$/, '');
 export class ServiceControlService {
   private readonly logger = new Logger(ServiceControlService.name);
 
-  // Regex de nombres de servicio systemd válidos: letras, dígitos, punto, guion, arroba, subrayado
-  private static readonly VALID_SERVICE_NAME = /^[a-zA-Z0-9._@-]+$/;
-
   constructor(
     private readonly sshService: SSHService,
     private readonly serversService: ServersService,
@@ -110,6 +108,9 @@ export class ServiceControlService {
     sudoPassword?: string,
   ): Promise<ServiceActionResult> {
     this.assertValidName(serviceName);
+    if (!Object.values(ServiceAction).includes(action)) {
+      throw new BadRequestException('Acción no válida');
+    }
 
     if (
       PROTECTED_ACTIONS.includes(action) &&
@@ -136,7 +137,7 @@ export class ServiceControlService {
       const result = await this.run(
         conn,
         sudo,
-        `systemctl ${action} ${serviceName}`,
+        `systemctl ${action} -- ${shellQuote(serviceName)}`,
         EXEC_TIMEOUT_MS,
       );
       const success = result.code === 0;
@@ -183,9 +184,10 @@ export class ServiceControlService {
   ): Promise<ServiceLogsResult> {
     this.assertValidName(serviceName);
 
-    const lines = Math.min(Math.max(opts.lines ?? 100, 10), 500);
+    const requested = Number.isInteger(opts.lines) ? (opts.lines as number) : 100;
+    const lines = Math.min(Math.max(requested, 10), 500);
     const server = await this.serversService.findOneWithPrivateKey(serverId, userId);
-    const command = `journalctl -u ${serviceName} -n ${lines} --no-pager --output=short-iso`;
+    const command = `journalctl -u ${shellQuote(serviceName)} -n ${lines} --no-pager --output=short-iso`;
 
     let conn: SSHClient | null = null;
     try {
@@ -227,7 +229,8 @@ export class ServiceControlService {
     pid: number,
     sudoPassword?: string,
   ): Promise<KillProcessResult> {
-    if (!Number.isInteger(pid) || pid <= 1) {
+    /* 4194304 es el máximo de pid_max en Linux. */
+    if (!Number.isInteger(pid) || pid <= 1 || pid > 4_194_304) {
       throw new BadRequestException('PID inválido');
     }
 
@@ -288,9 +291,7 @@ export class ServiceControlService {
   }
 
   private assertValidName(serviceName: string): void {
-    if (!ServiceControlService.VALID_SERVICE_NAME.test(serviceName)) {
-      throw new BadRequestException('Nombre de servicio inválido');
-    }
+    assertUnitName(serviceName);
   }
 
   /* ── Privilegios ────────────────────────────────────────────────── */
@@ -376,7 +377,7 @@ export class ServiceControlService {
   ): Promise<{ state: string; subState: string; pid: number | null; enabled: boolean }> {
     const shown = await this.sshService.execOnClient(
       conn,
-      `systemctl show ${serviceName} --no-pager -p ActiveState -p SubState -p MainPID -p UnitFileState`,
+      `systemctl show --no-pager -p ActiveState -p SubState -p MainPID -p UnitFileState -- ${shellQuote(serviceName)}`,
       { timeoutMs: PROBE_TIMEOUT_MS },
     );
 
@@ -409,7 +410,7 @@ export class ServiceControlService {
 
     const status = await this.sshService.execOnClient(
       conn,
-      `systemctl status ${serviceName} --no-pager -n 5`,
+      `systemctl status --no-pager -n 5 -- ${shellQuote(serviceName)}`,
       { timeoutMs: PROBE_TIMEOUT_MS },
     );
 

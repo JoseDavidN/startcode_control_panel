@@ -196,6 +196,9 @@ pub async fn macos_notification_permission(request: bool) -> Result<String, Stri
 
 #[tauri::command]
 pub async fn macos_notify(title: String, body: String) -> Result<(), String> {
+    /* Lo que llega del webview se acota: una notificación no necesita más. */
+    let title: String = title.chars().take(256).collect();
+    let body: String = body.chars().take(4096).collect();
     tauri::async_runtime::spawn_blocking(move || notify(&title, &body))
         .await
         .map_err(|e| e.to_string())?

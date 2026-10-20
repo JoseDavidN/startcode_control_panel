@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hashSync } from 'bcryptjs';
 import { randomUUID } from 'crypto';
@@ -13,12 +13,17 @@ import type { CloudPrincipal, TokenPayload } from './auth.types';
 const STREAM_TICKET_TTL = '6h';
 
 /* Hash de relleno: con un usuario que no existe se compara igual, así el
-   tiempo de respuesta no delata qué usuarios hay. */
+   tiempo de respuesta no delata qué usuarios hay. Se calcula al arrancar,
+   no en el primer intento con un usuario inexistente (que tardaría más). */
 let dummyHash: string | null = null;
 const getDummyHash = () => (dummyHash ??= hashSync('startcode-cloud', BCRYPT_ROUNDS));
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+  onModuleInit(): void {
+    getDummyHash();
+  }
+
   constructor(
     private readonly jwt: JwtService,
     private readonly state: StateStore,

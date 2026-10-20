@@ -27,6 +27,10 @@ const RULES: { pattern: RegExp; reason: string }[] = [
   /* PostgreSQL: COPY a/desde un archivo del servidor o un programa (STDIN/STDOUT no). */
   { pattern: /^copy\b[\s\S]*\b(to|from)\s+(program\b|'')/, reason: 'lee o escribe archivos o ejecuta programas en el servidor de base de datos' },
   { pattern: /\bpg_(terminate|cancel)_backend\s*\(/, reason: 'corta conexiones de otros usuarios' },
+  /* SQL que no se puede revisar antes de ejecutarlo: un bloque anónimo de PostgreSQL
+     o una sentencia preparada (en MySQL su texto va en una cadena; luego basta un EXECUTE). */
+  { pattern: /^do\b/, reason: 'ejecuta un bloque de código que no se puede revisar antes' },
+  { pattern: /^prepare\b/, reason: 'prepara una sentencia dinámica que no se puede revisar antes' },
 ];
 
 /**
@@ -39,6 +43,9 @@ const RULES: { pattern: RegExp; reason: string }[] = [
 export function stripSql(sql: string, dialect: SqlDialect = 'mysql'): string {
   const lineComment = dialect === 'postgresql' ? /--[^\n]*/g : /(--|#)[^\n]*/g;
   return sql
+    /* MySQL y MariaDB EJECUTAN lo que va en `/*! … *\/` y `/*M! … *\/` (así escribe
+       mysqldump): no es un comentario y su contenido cuenta como SQL. */
+    .replace(dialect === 'mysql' ? /\/\*M?!\d*([\s\S]*?)(\*\/|$)/g : /(?!)/g, ' $1 ')
     .replace(/\/\*[\s\S]*?(\*\/|$)/g, ' ')
     .replace(dialect === 'postgresql' ? /\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?(\$\1\$|$)/g : /(?!)/g, "''")
     .replace(lineComment, ' ')

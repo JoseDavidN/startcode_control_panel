@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { TokenManager } from '@utils/tokenManager';
 import { apiService } from '@services/api.service';
 import { useAuth } from '@hooks/useAuth';
+import { watchSessionRevoked } from '@lib/sessionRevoked';
 import {
   RealtimeMetricsContext,
   RealtimeStore,
@@ -69,7 +70,10 @@ export const RealtimeMetricsProvider: React.FC<RealtimeMetricsProviderProps> = (
        renueva el token (el interceptor de apiService lo refresca al recibir 401)
        y se vuelve a conectar con el nuevo. */
     let renewTimer: ReturnType<typeof setTimeout> | undefined;
+    /* Sesión terminada en el backend (`auth:revoked`): no se reintenta; la app cierra sesión. */
+    const session = watchSessionRevoked(newSocket);
     const reconnectWithFreshToken = () => {
+      if (session.revoked) return;
       clearTimeout(renewTimer);
       renewTimer = setTimeout(() => {
         void apiService.get('/auth/me')

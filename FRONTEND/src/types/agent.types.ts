@@ -52,4 +52,13 @@ export interface AgentState {
 	lastAttemptAt: string | null;
 	lastError: (AgentInstallError & { at: string }) | null;
 	steps: AgentInstallStep[];
+	/** Emisión del token vigente del agente; null si no hay ninguno válido o es heredado. */
+	tokenIssuedAt?: string | null;
+	/** Hay un token nuevo enviado al agente, a la espera de su confirmación. */
+	tokenRotating?: boolean;
+}
+
+/** `rotating`: enviado al agente conectado. `revoked`: no estaba conectado; hay que reinstalar. */
+export interface AgentTokenRegenerateResult {
+	mode: 'rotating' | 'revoked';
 }

@@ -87,3 +87,27 @@ describe('isReadOnlyQuery', () => {
     expect(isReadOnlyQuery(sql, 'postgresql')).toBe(false);
   });
 });
+
+describe('SQL que se ejecuta aunque parezca comentario o dinámico', () => {
+  it.each([
+    '/*! DROP TABLE users */',
+    '/*!50000 TRUNCATE TABLE logs */',
+    '/*M!100100 DELETE FROM users */',
+    'SELECT 1 /*!, (SELECT 1) */ /*! INTO OUTFILE "/tmp/x" */',
+    "PREPARE s FROM 'DROP TABLE users'",
+  ])('MySQL pide confirmación: %s', sql => {
+    expect(findDangerousQuery(sql, 'mysql')).not.toBeNull();
+  });
+
+  it('un comentario normal de MySQL sigue sin contar', () => {
+    expect(findDangerousQuery('/* DROP TABLE users */ SELECT 1', 'mysql')).toBeNull();
+  });
+
+  it('exportar no admite una escritura escondida en un comentario ejecutable', () => {
+    expect(isReadOnlyQuery("SELECT * FROM t /*! INTO OUTFILE '/tmp/x' */", 'mysql')).toBe(false);
+  });
+
+  it.each(['DO $$ BEGIN DROP TABLE users; END $$', 'PREPARE p AS DELETE FROM users'])('PostgreSQL pide confirmación: %s', sql => {
+    expect(findDangerousQuery(sql, 'postgresql')).not.toBeNull();
+  });
+});

@@ -1,13 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { randomUUID } from 'crypto';
 import { CloudAuthGuard } from '@/auth/cloud-auth.guard';
 import { AuthService } from '@/auth/auth.service';
 import type { AuthedRequest } from '@/auth/auth.types';
+import { cloudError } from '@/common/errors';
 import { SECTIONS, type Section } from '@/common/sections';
 import { CreateFolderDto, MoveDto, RenameDto, SectionPathQuery, StreamTicketDto, UploadQuery } from './dto/files.dto';
-import { fileTypeFromName } from './file-types';
+import { fileTypeFromName, isStreamable } from './file-types';
 import { MediaService } from './media.service';
 import { contentDisposition, FilesService } from './files.service';
 
@@ -72,6 +73,11 @@ export class FilesController {
     const path = dto.path ?? '';
     /* Se comprueba ya que el archivo existe: el error sale aquí y no en el reproductor. */
     const file = await this.files.resolveFile(req.user.username, dto.section, path);
+    /* Solo video y audio: otro tipo (SVG, HTML…) servido sin descarga podría
+       ejecutarse si alguien abre la URL en un navegador. */
+    if (!isStreamable(file.name)) {
+      throw cloudError(BadRequestException, 'NOT_MEDIA', 'Solo se reproducen videos y audios.', 'Abre o descarga el archivo.');
+    }
     const cap = dto.client ?? {};
     const decision = fileTypeFromName(file.name) === 'video' ? await this.media.decide(file, cap) : null;
     const { ticket, expiresAt } = await this.auth.streamTicket(req.user, dto.section, path, { sid: randomUUID(), cap });

@@ -9,11 +9,13 @@ import {
 } from '@nestjs/websockets';
 import { StringDecoder } from 'node:string_decoder';
 import { Logger } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { Server as IoServer, Socket } from 'socket.io';
 import type { ClientChannel, Client as SSHClient } from 'ssh2';
 import { WsAuthService } from '@auth/ws-auth.service';
 import { SSHService } from '../services/ssh.service';
 import { ServersService } from '@servers/servers.service';
+import { hostKeyErrorPayload } from '@monitoring/services/host-key';
 
 interface TerminalSession {
   ssh: SSHClient;
@@ -55,7 +57,7 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
     };
 
     try {
-      const user = await this.wsAuth.authenticate(token);
+      const user = await this.wsAuth.authenticate(token, client);
       const server = await this.resolveServer(serverId, user.id);
 
       const ssh = await this.sshService.createDedicatedClient(server);
@@ -104,6 +106,8 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
         client.disconnect(true);
       });
 
+      /* Abrir la terminal es actividad del usuario; lo que empuja la shell no. */
+      this.wsAuth.touch(client);
       client.emit('terminal:ready', {
         serverName: server.name,
         user: server.username,
@@ -114,7 +118,8 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido';
       this.logger.warn(`Terminal rechazada: ${message}`);
-      client.emit('terminal:error', { message });
+      /* Clave de host cambiada: el panel enseña el aviso con las dos huellas. */
+      client.emit('terminal:error', { message, ...hostKeyErrorPayload(error) });
       client.disconnect(true);
     }
   }
@@ -126,7 +131,10 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('terminal:input')
   onInput(@ConnectedSocket() client: Socket, @MessageBody() data: string): void {
     const session = this.sessions.get(client.id);
-    if (session && typeof data === 'string') session.stream.write(data);
+    if (session && typeof data === 'string') {
+      session.stream.write(data);
+      this.wsAuth.touch(client);
+    }
   }
 
   @SubscribeMessage('terminal:resize')
@@ -146,6 +154,8 @@ export class TerminalGateway implements OnGatewayConnection, OnGatewayDisconnect
   /** El servidor debe existir y ser del usuario. La llave llega descifrada (solo en memoria). */
   private async resolveServer(serverId: string | undefined, userId: string) {
     if (!serverId) throw new Error('Falta el servidor');
+    /* Un id con otro formato llegaría a Postgres y su error («invalid input syntax for type uuid») al cliente. */
+    if (typeof serverId !== 'string' || !isUUID(serverId)) throw new Error('Servidor no válido');
     return this.serversService.findOneWithPrivateKey(serverId, userId);
   }
 

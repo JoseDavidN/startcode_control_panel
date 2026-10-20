@@ -4,6 +4,7 @@ import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import Redis from 'ioredis';
 import { DatabaseEngine } from '../entities/database-connection.entity';
 import type { ExplorerSession } from './explorer.common';
+import { assertEndpoint, MYSQL_FLAGS } from './connection-factory';
 
 /** Datos con los que se abre una conexión, con la contraseña ya descifrada. */
 export interface ProbeTarget {
@@ -43,6 +44,7 @@ export class DatabaseProbeService {
   }
 
   private connect(t: ProbeTarget): Promise<string | null> {
+    assertEndpoint(t);
     switch (t.engine) {
       case DatabaseEngine.POSTGRESQL: return this.postgres(t);
       case DatabaseEngine.MYSQL:
@@ -78,6 +80,7 @@ export class DatabaseProbeService {
       password: t.password ?? undefined,
       database: t.database || undefined,
       connectTimeout: TIMEOUT_MS,
+      flags: MYSQL_FLAGS,
     });
     try {
       const [rows] = await conn.query('SELECT VERSION() AS v');

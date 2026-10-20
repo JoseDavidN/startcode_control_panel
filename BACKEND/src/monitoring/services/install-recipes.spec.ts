@@ -1,4 +1,4 @@
-import { INSTALL_GROUPS, INSTALLABLE, SSH_CLIENT_IP, parseOs } from './install-recipes';
+import { INSTALL_GROUPS, INSTALLABLE, SSH_CLIENT_IP, isInstallGroup, isInstallable, parseOs, sh } from './install-recipes';
 
 describe('parseOs', () => {
   it('lee os-release, gestor de paquetes y arranque', () => {
@@ -332,5 +332,30 @@ describe('restic', () => {
     expect(u.cleanup).toContain('/usr/local/bin/restic');
     expect(u.cleanup).toContain('/home/*/.cache/restic');
     expect(u.cleanup).not.toMatch(/\/srv|\/backup|\/var\/backups/);
+  });
+});
+
+describe('entradas del cliente y del servidor', () => {
+  it('solo reconoce servicios y grupos propios del catálogo, no los del prototipo', () => {
+    expect(isInstallable('nginx')).toBe(true);
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(isInstallable(name)).toBe(false);
+      expect(isInstallGroup(name)).toBe(false);
+    }
+    expect(isInstallGroup('kubernetes')).toBe(true);
+  });
+
+  it('parseOs deja solo caracteres de identificador en lo que se interpola', () => {
+    const os = parseOs("ID=ubu$(id)\nCODE=noble';reboot;'\nVER=24.04`x`\nARCH=x86_64 ;id\nPM=curl\nNAME=Ubuntu $(id)\n");
+    expect(os.id).toBe('ubuid');
+    expect(os.codename).toBe('noblereboot');
+    expect(os.version).toBe('24.04x');
+    expect(os.arch).toBe('x86_64id');
+    expect(os.pm).toBeNull();
+    expect(os.name).not.toMatch(/[$`;']/);
+  });
+
+  it('sh() entrecomilla el script entero', () => {
+    expect(sh("echo 'a' && echo b")).toBe(`sh -c 'echo '\\''a'\\'' && echo b'`);
   });
 });

@@ -2,6 +2,8 @@ import { io, type Socket } from 'socket.io-client';
 import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
 import { TokenManager } from '@utils/tokenManager';
+import { watchSessionRevoked } from '@lib/sessionRevoked';
+import { reportHostKeyMismatch } from '@lib/hostKeyAlert';
 import type { SftpEntry, SftpListing, SftpReady } from '@typings/sftp.types';
 
 /** Respuesta de un ack del gateway: nunca lanza al socket, siempre responde. */
@@ -38,6 +40,7 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 		});
 
 		const closedHandlers = new Set<(reason: string) => void>();
+		watchSessionRevoked(socket);
 
 		const emit = <T,>(event: string, payload: unknown): Promise<T> =>
 			new Promise<T>((ok, fail) => {
@@ -54,7 +57,9 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 				});
 			});
 
-		socket.on('sftp:error', (payload: { message?: string }) => {
+		socket.on('sftp:error', (payload: { message?: string; code?: string }) => {
+			/* Clave de host cambiada: el modal global enseña las dos huellas. */
+			reportHostKeyMismatch(payload);
 			reject(new Error(payload?.message ?? 'No se pudo abrir la sesión SFTP'));
 		});
 

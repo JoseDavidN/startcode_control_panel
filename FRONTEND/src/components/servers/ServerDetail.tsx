@@ -19,6 +19,7 @@ import { MetricBar } from '@components/common/MetricBar';
 import { barGradient, formatBytes, groupDisks } from '@utils/metrics';
 import { formatUptime } from '@utils/time';
 import { useTerminalDock, useTerminalDockViewing } from '@hooks/useTerminalDock';
+import { useServer } from '@hooks/useServers';
 
 /* ── Inline SVG icons ─────────────────────────────────────────────── */
 const sp = { viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.75, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
@@ -136,6 +137,11 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
   const terminal = useTerminalDock();
   useTerminalDockViewing(server.id);
   const terminalSession = terminal.session?.serverId === server.id;
+  /* `ServerData` no trae la clave de host: sale del servidor crudo del backend. */
+  const { data: rawServer } = useServer(server.id);
+  const hostKey = rawServer?.hostKeyFingerprint
+    ? `${rawServer.hostKeyAlgorithm ?? ''} ${rawServer.hostKeyFingerprint}`.trim()
+    : 'Se fija en la primera conexión SSH';
   const [sftpOpen, setSftpOpen] = useState(false);
   const commandBarRef = useRef<CommandBarHandle>(null);
 
@@ -521,6 +527,7 @@ export const ServerDetail: React.FC<ServerDetailProps> = ({ server, onBack }) =>
                 />
               )}
               <InfoRow label="Host"        value={server.ip} />
+              <InfoRow label="Clave de host" value={hostKey} />
             </div>
 
             {otherIfaces.length > 0 && (

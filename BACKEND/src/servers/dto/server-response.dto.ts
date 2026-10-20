@@ -72,6 +72,23 @@ export class ServerResponseDto {
   @ApiPropertyOptional({ nullable: true, example: 'Ubuntu 24.04.3 LTS' })
   osVersion: string | null;
 
+  /* La clave de host no es secreta: el usuario la compara con `ssh-keygen -lf`. */
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, example: 'ssh-ed25519' })
+  hostKeyAlgorithm: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU',
+    description: 'Huella de la clave de host SSH; null hasta la primera conexión',
+  })
+  hostKeyFingerprint: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, description: 'Cuándo se fijó o se aceptó la clave de host' })
+  hostKeyVerifiedAt: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 

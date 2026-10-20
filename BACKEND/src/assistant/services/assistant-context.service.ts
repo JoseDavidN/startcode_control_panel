@@ -8,6 +8,7 @@ import { DatabaseConnection } from '@/databases/entities/database-connection.ent
 import { DatabaseQueryAudit } from '@/databases/entities/database-query-audit.entity';
 import { Notification } from '@/notifications/entities/notification.entity';
 import { redactSecrets, stripSensitiveKeys } from './secret-redactor';
+import { hidePanelInternals } from './panel-guard';
 import { systemTraits, titleTarget } from './target-system';
 import { DatabaseEngine } from '@/databases/entities/database-connection.entity';
 
@@ -141,7 +142,7 @@ export class AssistantContextService {
       const schema = connIds.get(c.id) ?? c.database;
       lines.push(`- Base «${c.name}»: ${ENGINE_LABELS[c.engine]} ${c.version ?? '(versión sin confirmar)'}${schema ? `, base ${c.engine === DatabaseEngine.REDIS ? `db${schema}` : schema}` : ''}`);
     }
-    return redactSecrets(lines.join('\n'));
+    return hidePanelInternals(redactSecrets(lines.join('\n')));
   }
 
   async snapshot(userId: string, focus = ''): Promise<string> {
@@ -313,6 +314,7 @@ export class AssistantContextService {
       json = redactSecrets(JSON.stringify(prune(stripSensitiveKeys(lean))));
       if (json.length > MAX_SNAPSHOT_CHARS) json = `${json.slice(0, MAX_SNAPSHOT_CHARS)}… [recortado]`;
     }
-    return json;
+    /* Los procesos y comandos de los servidores pueden mostrar dónde corre el propio panel. */
+    return hidePanelInternals(json);
   }
 }

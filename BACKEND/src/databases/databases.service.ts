@@ -82,8 +82,10 @@ export class DatabasesService {
     return opened;
   }
 
-  async closeSession(userId: string, sessionId: string): Promise<void> {
-    await this.sessions.close(userId, sessionId);
+  /** Como el resto de rutas: con una conexión ajena o inexistente responde 404. */
+  async closeSession(userId: string, id: string, sessionId: string): Promise<void> {
+    if (!(await this.repo.existsBy({ id, userId }))) throw new NotFoundException('Conexión no encontrada');
+    await this.sessions.close(userId, sessionId, id);
   }
 
   async listSchemas(userId: string, id: string, sessionId?: string): Promise<{ name: string; system: boolean }[]> {

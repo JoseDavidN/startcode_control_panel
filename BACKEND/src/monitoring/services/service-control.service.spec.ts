@@ -72,6 +72,24 @@ describe('ServiceControlService', () => {
     expect(ssh.createDedicatedClient).not.toHaveBeenCalled();
   });
 
+  it.each(['--root=/tmp', '-Hhost', '$(id)', 'a b', 'nginx\nreboot', ''])(
+    'rechaza nombres que se leerían como opción o shell: %j',
+    async name => {
+      await expect(
+        service.executeAction('server-uuid-1', 'user-uuid-1', name, ServiceAction.START),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.readLogs('server-uuid-1', 'user-uuid-1', name)).rejects.toBeInstanceOf(BadRequestException);
+      expect(ssh.createDedicatedClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rechaza acciones fuera del catálogo sin abrir SSH', async () => {
+    await expect(
+      service.executeAction('server-uuid-1', 'user-uuid-1', 'nginx', 'mask' as ServiceAction),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(ssh.createDedicatedClient).not.toHaveBeenCalled();
+  });
+
   it('ejecuta la acción como root y devuelve el estado leído del servidor', async () => {
     queue(ok('0'), ok(), ok(SHOW_ACTIVE));
 
@@ -82,7 +100,7 @@ describe('ServiceControlService', () => {
       ServiceAction.START,
     );
 
-    expect(ssh.execOnClient).toHaveBeenNthCalledWith(2, conn, 'systemctl start nginx', expect.anything());
+    expect(ssh.execOnClient).toHaveBeenNthCalledWith(2, conn, "systemctl start -- 'nginx'", expect.anything());
     expect(result).toMatchObject({
       success: true,
       action: 'start',
@@ -103,7 +121,7 @@ describe('ServiceControlService', () => {
     expect(ssh.execOnClient).toHaveBeenNthCalledWith(
       3,
       conn,
-      'sudo -n systemctl restart nginx',
+      "sudo -n systemctl restart -- 'nginx'",
       expect.anything(),
     );
   });
@@ -183,7 +201,7 @@ describe('ServiceControlService', () => {
     expect(ssh.execOnClient).toHaveBeenNthCalledWith(
       2,
       conn,
-      'systemctl enable nginx',
+      "systemctl enable -- 'nginx'",
       expect.anything(),
     );
     expect(result.enabled).toBe(true);
@@ -236,7 +254,7 @@ describe('ServiceControlService', () => {
 
       expect(ssh.execOnClient).toHaveBeenCalledWith(
         conn,
-        'journalctl -u nginx -n 50 --no-pager --output=short-iso',
+        "journalctl -u 'nginx' -n 50 --no-pager --output=short-iso",
         expect.anything(),
       );
       expect(result.lines).toContain('arrancado');
@@ -259,7 +277,7 @@ describe('ServiceControlService', () => {
 
       expect(ssh.execOnClient).toHaveBeenCalledWith(
         conn,
-        'journalctl -u nginx -n 500 --no-pager --output=short-iso',
+        "journalctl -u 'nginx' -n 500 --no-pager --output=short-iso",
         expect.anything(),
       );
     });

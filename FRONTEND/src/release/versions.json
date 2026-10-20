@@ -3,6 +3,28 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.9.1",
+      "type": "patch",
+      "date": "2026-10-19",
+      "title": "Parche de seguridad",
+      "changes": {
+        "security": [
+          "Descargas de la nube: la app solo guarda el archivo en la ruta que eliges al guardar y valida la dirección antes de descargar",
+          "La app usa solo los permisos del sistema que necesita, y los enlaces externos solo se abren si son http o https",
+          "Política de seguridad de contenido más estricta en la ventana de la app",
+          "Cerrar sesión borra siempre los datos guardados de la sesión, aunque falle la conexión con el backend",
+          "Contraseñas: al cambiarla se exigen de 8 a 72 caracteres, con mayúscula, minúscula, número y un carácter especial (requiere el backend 0.11.1)",
+          "Servidores: la app guarda la huella de cada servidor SSH y, si cambia, bloquea la conexión y te avisa de un posible ataque, con la huella esperada y la recibida. Puedes aceptar la nueva si el cambio es legítimo (requiere el backend 0.11.1)",
+          "Al cerrar sesión, cerrar otras sesiones o cambiar la contraseña, las terminales y el explorador de archivos abiertos de esa sesión se cortan al momento y la app vuelve al inicio de sesión. También se cierran por inactividad",
+          "Si alguien reutiliza un token de sesión ya renovado (por ejemplo, uno copiado de tu equipo), la sesión se cierra en todas partes, la app te lleva al inicio de sesión con el motivo y recibes un aviso de seguridad",
+          "Agente: su token caduca y rota solo cada pocos días sin perder la conexión, y desde la tarjeta del agente puedes regenerarlo. Si el agente se cae, vuelve a conectar con el token que tenga vigente (requiere el agente 2.2.0)",
+          "Dependencias actualizadas para corregir vulnerabilidades conocidas",
+          "Nube: las descargas ya no siguen redirecciones, así tu sesión de la nube no se envía a otro servidor. StartCode Cloud 0.2.2 aísla los archivos de cada usuario y bloquea los enlaces simbólicos que apuntan fuera de su carpeta",
+          "Backend 0.11.1: inicio de sesión protegido contra fuerza bruta y contra la detección de cuentas existentes, cabeceras de seguridad, validación estricta de lo que llega a la API, comandos y consultas protegidos contra inyección, y consultas enormes que ya no agotan la memoria"
+        ]
+      }
+    },
+    {
       "version": "0.9.0",
       "type": "minor",
       "date": "2026-10-19",

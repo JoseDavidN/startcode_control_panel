@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from '@auth/entities/user.entity';
+import { Server } from '@servers/entities/server.entity';
 
 export enum DatabaseEngine {
   MYSQL = 'mysql',
@@ -31,6 +32,20 @@ export enum DatabaseTag {
   TESTING = 'testing',
   DEVELOPMENT = 'development',
   BACKUP = 'backup',
+}
+
+/** Cómo llega el panel al motor: directo o por un túnel SSH. */
+export enum DatabaseSshMode {
+  NONE = 'none',
+  /** Por un servidor ya dado de alta en el panel (su llave y su huella confirmada). */
+  SERVER = 'server',
+  /** Con credenciales SSH propias de la conexión. */
+  CUSTOM = 'custom',
+}
+
+export enum DatabaseSshAuth {
+  PASSWORD = 'password',
+  KEY = 'key',
 }
 
 @Entity('tbl_database_connections')
@@ -75,6 +90,44 @@ export class DatabaseConnection {
   /** Base a la que apunta; null conecta al servidor completo. En Redis, el índice. */
   @Column({ type: 'varchar', nullable: true, name: 'str_database' })
   database: string | null;
+
+  /* ── Túnel SSH ──────────────────────────────────────────────────
+     Con túnel, `host` y `port` son los del motor vistos desde el servidor
+     SSH (normalmente 127.0.0.1). */
+  @Column({ type: 'enum', enum: DatabaseSshMode, default: DatabaseSshMode.NONE, name: 'enu_ssh_mode' })
+  sshMode: DatabaseSshMode;
+
+  /** Servidor del panel por el que pasa el túnel (`SERVER`). Si se borra, la conexión queda sin túnel válido. */
+  @ManyToOne(() => Server, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'str_ssh_server_id' })
+  sshServer: Server | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'str_ssh_server_id' })
+  sshServerId: string | null;
+
+  /* Credenciales propias (`CUSTOM`). */
+  @Column({ type: 'varchar', nullable: true, name: 'str_ssh_host' })
+  sshHost: string | null;
+
+  @Column({ type: 'int', nullable: true, name: 'int_ssh_port' })
+  sshPort: number | null;
+
+  @Column({ type: 'varchar', nullable: true, name: 'str_ssh_username' })
+  sshUsername: string | null;
+
+  @Column({ type: 'enum', enum: DatabaseSshAuth, nullable: true, name: 'enu_ssh_auth' })
+  sshAuth: DatabaseSshAuth | null;
+
+  /** Contraseña o llave privada SSH, cifrada como la de la base. `select: false`. */
+  @Column({ type: 'text', nullable: true, select: false, name: 'str_ssh_secret_enc' })
+  sshSecretEnc: string | null;
+
+  /** Huella que el usuario confirmó al configurar el túnel: sin ella no se autentica. */
+  @Column({ type: 'varchar', nullable: true, name: 'str_ssh_host_key_fingerprint' })
+  sshHostKeyFingerprint: string | null;
+
+  @Column({ type: 'varchar', nullable: true, name: 'str_ssh_host_key_algorithm' })
+  sshHostKeyAlgorithm: string | null;
 
   @Column({
     type: 'enum',

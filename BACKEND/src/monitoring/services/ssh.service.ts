@@ -22,8 +22,11 @@ export interface SSHExecResult {
 }
 
 /** Lo justo para abrir una conexión: un servidor guardado o uno que aún no lo está. */
-export type SSHTarget = Pick<Server, 'host' | 'port' | 'username' | 'privateKey'> &
-  Partial<Pick<Server, 'id' | 'name' | 'hostKeyAlgorithm' | 'hostKeyFingerprint'>>;
+export type SSHTarget = Pick<Server, 'host' | 'port' | 'username'> &
+  Partial<Pick<Server, 'id' | 'name' | 'privateKey' | 'hostKeyAlgorithm' | 'hostKeyFingerprint'>> & {
+    /** Solo túneles de bases de datos con credenciales propias: sin llave, se autentica con contraseña. */
+    password?: string;
+  };
 
 const CONNECT_TIMEOUT_MS = 15000;
 
@@ -72,6 +75,16 @@ export class SSHService {
   async createDedicatedClient(server: Server): Promise<Client> {
     const { conn } = await this.open(server);
     this.logger.log(`🖥️  Terminal SSH abierta en ${server.name}`);
+    return conn;
+  }
+
+  /**
+   * Cliente para el túnel SSH de una conexión a base de datos (reenvío de
+   * puertos). Misma verificación de huella que el resto: sin la confirmada no
+   * se envía ninguna credencial.
+   */
+  async openTunnelClient(target: SSHTarget): Promise<Client> {
+    const { conn } = await this.open(target);
     return conn;
   }
 
@@ -455,7 +468,9 @@ export class SSHService {
       host: server.host,
       port: server.port,
       username: server.username,
-      privateKey: Buffer.from(this.cleanPrivateKey(server.privateKey), 'utf8'),
+      ...(server.password !== undefined && !server.privateKey
+        ? { password: server.password }
+        : { privateKey: Buffer.from(this.cleanPrivateKey(server.privateKey ?? ''), 'utf8') }),
       readyTimeout: 15000,
       keepaliveInterval: 10000,
       keepaliveCountMax: 3,

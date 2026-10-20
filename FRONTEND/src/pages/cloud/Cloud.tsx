@@ -267,6 +267,7 @@ export const Cloud: React.FC = () => {
 
       <CloudExplorer
         trail={trail}
+        section={section}
         rootIcon={CLOUD_SECTIONS.find(s => s.id === section)?.icon ?? 'home'}
         filters={filters}
         view={view}

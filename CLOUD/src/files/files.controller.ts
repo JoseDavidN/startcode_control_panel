@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, NotFoundException, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { randomUUID } from 'crypto';
@@ -11,6 +11,10 @@ import { CreateFolderDto, MoveDto, RenameDto, SectionPathQuery, StreamTicketDto,
 import { fileTypeFromName, isStreamable } from './file-types';
 import { MediaService } from './media.service';
 import { contentDisposition, FilesService } from './files.service';
+import { ThumbnailService } from '@/files/thumbnail.service';
+import { hasThumbnail } from '@/files/thumbnail-plan';
+import { mimeFromName } from '@/files/file-types';
+import { createReadStream } from 'fs';
 
 const SECTION_ENUM = Object.fromEntries(SECTIONS.map(s => [s, s]));
 
@@ -21,6 +25,7 @@ export class FilesController {
     private readonly files: FilesService,
     private readonly auth: AuthService,
     private readonly media: MediaService,
+    private readonly thumbnails: ThumbnailService,
   ) {}
 
   @Get('tree/:section')
@@ -58,6 +63,26 @@ export class FilesController {
   async content(@Req() req: AuthedRequest, @Query() q: SectionPathQuery): Promise<StreamableFile> {
     const file = await this.files.content(req.user.username, q.section, q.path ?? '');
     return new StreamableFile(file.stream, { type: file.type, length: file.size, disposition: contentDisposition(file.name) });
+  }
+
+  /**
+   * Miniatura de una imagen o portada de un video para el explorador (JPEG o
+   * PNG de 320 px como mucho). 404 `NO_THUMBNAIL` si no se puede sacar: el
+   * panel pinta entonces el icono del tipo.
+   */
+  @Get('files/thumbnail')
+  @SkipThrottle()
+  async thumbnail(@Req() req: AuthedRequest, @Query() q: SectionPathQuery, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
+    const file = await this.files.resolveFile(req.user.username, q.section, q.path ?? '');
+    const thumb = hasThumbnail(file.name) ? await this.thumbnails.get(file) : null;
+    if (!thumb) throw cloudError(NotFoundException, 'NO_THUMBNAIL', 'Este archivo no tiene miniatura.');
+    /* Cambiar el archivo cambia su fecha y el panel lo pide con otra clave. */
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (thumb.kind === 'original') {
+      return new StreamableFile(createReadStream(file.full), { type: mimeFromName(file.name), length: file.size });
+    }
+    return new StreamableFile(createReadStream(thumb.path), { type: thumb.type });
   }
 
   /**

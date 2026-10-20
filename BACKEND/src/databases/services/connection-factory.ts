@@ -16,6 +16,15 @@ export function assertEndpoint(t: Pick<ProbeTarget, 'host' | 'port'>): void {
   }
 }
 
+/**
+ * Host y puerto a los que se conecta el driver: los de la conexión o, con
+ * túnel SSH, la boca local del túnel (que se abre aquí si hace falta).
+ */
+export async function endpointOf(t: ProbeTarget): Promise<{ host: string; port: number }> {
+  assertEndpoint(t);
+  return t.tunnel ? t.tunnel() : { host: t.host, port: t.port };
+}
+
 /* Sin LOCAL_FILES: un servidor MySQL malicioso no puede pedir archivos del panel con LOAD DATA LOCAL. */
 export const MYSQL_FLAGS = ['-LOCAL_FILES'];
 
@@ -25,11 +34,11 @@ export const MYSQL_FLAGS = ['-LOCAL_FILES'];
  * consultas (conexión que vive mientras el usuario está en ella).
  */
 
-export function openMysql(t: ProbeTarget, database: string | null): Promise<Connection> {
-  assertEndpoint(t);
+export async function openMysql(t: ProbeTarget, database: string | null): Promise<Connection> {
+  const { host, port } = await endpointOf(t);
   return createConnection({
-    host: t.host,
-    port: t.port,
+    host,
+    port,
     user: t.username,
     password: t.password ?? undefined,
     database: database || undefined,
@@ -49,10 +58,10 @@ export function openMysql(t: ProbeTarget, database: string | null): Promise<Conn
  * comando falla en el momento y la siguiente llamada vuelve a conectar.
  */
 export async function openRedis(t: ProbeTarget, db: number): Promise<Redis> {
-  assertEndpoint(t);
+  const { host, port } = await endpointOf(t);
   const client = new Redis({
-    host: t.host,
-    port: t.port,
+    host,
+    port,
     username: t.username || undefined,
     password: t.password || undefined,
     db,
@@ -89,10 +98,10 @@ const typeParsers = {
 
 /** Cliente conectado; si falla al conectar, lo cierra y relanza el error. */
 export async function openPg(t: ProbeTarget, database: string): Promise<Client> {
-  assertEndpoint(t);
+  const { host, port } = await endpointOf(t);
   const client = new Client({
-    host: t.host,
-    port: t.port,
+    host,
+    port,
     user: t.username,
     password: t.password ?? undefined,
     database,

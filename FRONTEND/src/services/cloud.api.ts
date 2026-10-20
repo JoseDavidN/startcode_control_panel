@@ -189,6 +189,11 @@ export const cloudApi = {
 		});
 	},
 
+	/** Miniatura de una imagen o portada de un video; falla con 404 si no tiene. */
+	async thumbnail(section: CloudSection, path: string): Promise<Blob> {
+		return (await client().get<Blob>('/files/thumbnail', { params: { section, path }, responseType: 'blob', timeout: 60_000 })).data;
+	},
+
 	async content(section: CloudSection, path: string): Promise<Blob> {
 		return (await client().get<Blob>('/files/content', { params: { section, path }, responseType: 'blob', timeout: 0 })).data;
 	},

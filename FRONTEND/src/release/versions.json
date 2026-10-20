@@ -3,6 +3,24 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.10.0",
+      "type": "minor",
+      "date": "2026-10-20",
+      "title": "Conexiones a bases de datos por túnel SSH",
+      "changes": {
+        "added": [
+          "Conexiones a bases de datos por túnel SSH, para motores que solo escuchan dentro del servidor o de su red privada. Puedes usar un servidor que ya tengas dado de alta o escribir credenciales SSH propias (contraseña o llave privada). Con credenciales propias, la app te muestra la huella del servidor SSH para que la confirmes antes de enviar nada (requiere el backend 0.12.0)",
+          "Nube: las imágenes se ven en miniatura y los videos con su portada y el símbolo de reproducir, en el mosaico y en la lista, en lugar del icono del tipo (requiere StartCode Cloud 0.3.0; con una versión anterior sigue el icono)"
+        ],
+        "changed": [
+          "El formulario de nueva conexión y de edición se organiza en pestañas: Conexión, Base de datos y Túnel SSH",
+          "La pestaña Base de datos entra por defecto a todas las bases del servidor; si eliges una base concreta, la lista de bases se carga al entrar en la pestaña con los datos de la pestaña Conexión (y del túnel, si está activo); pulsa una para seleccionarla y arriba verás cuál está seleccionada",
+          "Al activar el túnel SSH, el host de la conexión queda fijo en 127.0.0.1, visto desde el servidor SSH",
+          "Las tarjetas de las conexiones por túnel SSH llevan la marca «Túnel SSH» junto al host; al pasar el ratón indica por dónde pasa el túnel"
+        ]
+      }
+    },
+    {
       "version": "0.9.2",
       "type": "patch",
       "date": "2026-10-20",

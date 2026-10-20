@@ -9,6 +9,52 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.10.0] — 2026-10-20
+
+Versión **menor** sobre 0.9.2. Requiere el backend 0.12.0.
+
+### Añadido
+- Túnel SSH en las conexiones a bases de datos (`ConnectionModal.tsx`, pestaña «Túnel SSH»): un interruptor lo activa y se elige entre un servidor ya dado de alta en el panel o credenciales SSH propias (host, puerto, usuario y contraseña o llave privada sin frase de paso). Con credenciales propias, la huella se lee sin autenticarse (`POST servers/host-key/scan`) y hay que confirmarla con el comando del servidor antes de guardar; si cambian el host o el puerto SSH, se pide de nuevo. Un servidor sin huella confirmada aparece marcado y no se puede usar hasta confirmarla en su detalle. La contraseña o llave guardada no vuelve a la app
+
+### Cambiado
+- Formulario de conexión en tres pestañas: Conexión (motor, nombre, etiqueta, host, puerto y credenciales), Base de datos y Túnel SSH. El cuerpo tiene un alto mínimo común para que el modal no salte al cambiar de pestaña, y al guardar con datos incompletos se abre la pestaña que los tiene
+- Pestaña Base de datos: «Todas las bases de datos» por defecto (la conexión entra al servidor completo) o «Una base concreta»: sin desplegable, la lista de bases se pide al entrar en la pestaña (y al cambiar los datos de Conexión o del túnel), pulsar una la marca y arriba se indica «Base de datos seleccionada: nombre», con botón para recargar. Si al editar la base guardada no aparece en la lista, se muestra igual; guardar sin elegir base abre esta pestaña. En Redis sigue siendo el índice 0–15
+- Tarjeta de conexión (`pages/databases/Databases.tsx`): las conexiones con túnel SSH muestran la píldora «Túnel SSH» en la cabecera del bloque Host; el `title` indica `usuario@host:puerto` del túnel con credenciales propias o que pasa por un servidor del panel
+- Con el túnel activo, el campo de host queda deshabilitado en `127.0.0.1` (el motor visto desde el servidor SSH); al desactivarlo vuelve el host anterior
+- Nube: imágenes y videos se muestran con su miniatura en lugar del icono del tipo (`components/cloud/FileThumb.tsx`), en el mosaico (a todo el ancho de la tarjeta, recortada) y en la lista (24 px). Los videos llevan encima el botón de reproducir con `.glass-media`. Se piden a `GET files/thumbnail` al entrar en pantalla (`IntersectionObserver`), como mucho 4 a la vez, y se recuerdan por archivo, tamaño y fecha (hasta 400); mientras cargan, o si no hay miniatura (formato no admitido, archivo dañado, Cloud anterior a 0.3.0), queda el icono
+
+---
+
+## [Cloud 0.3.0] — 2026-10-20
+
+Versión **menor** de StartCode Cloud sobre 0.2.2. La app 0.10.0 la usa para las miniaturas del explorador.
+
+### Añadido
+- `GET files/thumbnail?section&path` (`files/thumbnail.service.ts`, `files/thumbnail-plan.ts`): miniatura de una imagen o portada de un video, con el lado mayor a 320 px y sin deformar. JPEG para fotos y videos y PNG para formatos con transparencia (PNG, GIF, SVG, WebP, ICO, AVIF). La portada sale del segundo 3 (salto por fotograma clave) o del primero si el video es más corto. 404 `NO_THUMBNAIL` si ffmpeg no puede leer el archivo
+- ffmpeg a prioridad baja, 3 miniaturas a la vez como mucho, 20 s de límite cada una, y las peticiones iguales simultáneas comparten el trabajo. Sin ffmpeg, las imágenes que pinta el webview (PNG, JPEG, GIF, WebP, BMP, AVIF) de hasta 8 MB se envían tal cual
+- Caché en disco por ruta, tamaño y fecha (`CLOUD_THUMB_CACHE_DIR`, por defecto `<CLOUD_DATA_DIR>/thumb-cache`), limitada por `CLOUD_THUMB_CACHE_BYTES` (1 GB) quitando lo menos visto; respuesta con `Cache-Control: private, max-age=86400`
+- `mimeFromName` reconoce BMP y AVIF
+
+---
+
+## [0.12.0] — 2026-10-20
+
+Versión **menor** del backend sobre 0.11.2. Requiere la app 0.10.0 para configurar el túnel desde la interfaz.
+
+### Añadido
+- Túnel SSH para las conexiones a bases de datos (`databases/services/database-tunnel.service.ts`):
+  - modos `none`, `server` (un servidor del propio usuario, con su llave y su huella confirmada) y `custom` (credenciales propias con contraseña o llave, cifradas con `CredentialsCipherService`, y huella confirmada obligatoria);
+  - cada túnel es un cliente ssh2 más un puerto local en `127.0.0.1`; los drivers (pg, mysql2, ioredis) se conectan a él y cada socket se reenvía con `forwardOut`. Se comparte entre la vista de consultas, el árbol y las pruebas mientras haya tráfico y se cierra tras un minuto sin conexiones;
+  - el túnel pasa por `SSHService` (`openTunnelClient`), con la misma verificación de huella que el resto de conexiones SSH: sin la confirmada no se envía ninguna credencial. `SSHTarget` admite contraseña para estos túneles;
+  - se abre al conectar (`ProbeTarget.tunnel`, `endpointOf` en `connection-factory.ts`), así que la sesión de consultas lo vuelve a abrir si se cerró;
+  - errores en español: credenciales SSH incorrectas, host SSH inalcanzable, llave no válida o con frase de paso, y motor que no escucha en el destino desde el servidor SSH
+- `POST databases`, `PATCH databases/:id`, `POST databases/test` y `POST databases/schemas` aceptan `sshMode`, `sshServerId`, `sshHost`, `sshPort`, `sshUsername`, `sshAuth`, `sshSecret`, `sshHostKeyFingerprint` y `sshHostKeyAlgorithm`. Las respuestas devuelven los datos del túnel y `hasSshSecret`, nunca el secreto. En una edición, `sshSecret` omitido conserva el guardado (si no cambia el tipo de autenticación); otro host o puerto SSH sin huella nueva la borra. Cambiar de modo borra los datos del anterior y cierra las sesiones abiertas de la conexión
+
+### Base de datos
+- Migración `add_ssh_tunnel_to_database_connections.sql` (idempotente): columnas `enu_ssh_mode` (por defecto `none`), `str_ssh_server_id` (FK a `tbl_servers`, `ON DELETE SET NULL`), `str_ssh_host`, `int_ssh_port`, `str_ssh_username`, `enu_ssh_auth`, `str_ssh_secret_enc`, `str_ssh_host_key_fingerprint` y `str_ssh_host_key_algorithm` en `tbl_database_connections`
+
+---
+
 ## [App de escritorio 0.9.2] — 2026-10-20
 
 Versión **parche** sobre 0.9.1. Requiere el backend 0.11.2.

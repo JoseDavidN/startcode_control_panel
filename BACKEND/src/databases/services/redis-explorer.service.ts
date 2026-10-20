@@ -115,6 +115,7 @@ export function describeRedisError(err: unknown): string {
   const e = err as { code?: string; message?: string };
   const code = e?.code ?? '';
   const msg = e?.message ?? String(err);
+  if (code === 'ESSHTUNNEL') return msg;
   if (code === 'ECONNREFUSED') return 'Conexión rechazada: Redis no escucha en ese host y puerto';
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'No se encontró el host';
   if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH') return 'El host no es alcanzable desde el panel';

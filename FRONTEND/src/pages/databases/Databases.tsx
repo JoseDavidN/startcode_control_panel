@@ -84,6 +84,16 @@ const ConnectionCard = ({ conn, onOpen, onEdit }: {
         <div className="rounded-xl bg-tint-sunken border border-hairline-soft px-3.5 py-3 min-w-0">
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/45 font-medium">
             <Icon name="host" className="w-3.5 h-3.5" /> Host
+            {conn.sshMode !== 'none' && (
+              <span
+                title={conn.sshMode === 'custom' && conn.sshHost
+                  ? `Por túnel SSH a través de ${conn.sshUsername ?? ''}@${conn.sshHost}:${conn.sshPort ?? 22}`
+                  : 'Por túnel SSH a través de un servidor del panel'}
+                className="ml-auto normal-case tracking-normal px-1.5 py-0.5 rounded-full bg-violet-500/15 border border-violet-400/25 text-violet-300"
+              >
+                Túnel SSH
+              </span>
+            )}
           </div>
           <div className="mt-1.5 text-sm font-mono tabular-nums text-white/85 truncate">
             {conn.host}<span className="text-white/40">:{conn.port}</span>

@@ -40,6 +40,9 @@ export class CloudConfig {
   /** Videos ya convertidos: la segunda vez se sirven sin ffmpeg. 0 lo desactiva. */
   readonly mediaCacheBytes: number;
   readonly mediaCacheDir: string;
+  /** Miniaturas de imágenes y portadas de videos del explorador. */
+  readonly thumbCacheBytes: number;
+  readonly thumbCacheDir: string;
 
   constructor(config: ConfigService) {
     const get = (key: string) => config.get<string>(key)?.trim() || undefined;
@@ -74,5 +77,7 @@ export class CloudConfig {
     this.transcodePreset = /^(ultrafast|superfast|veryfast|faster|fast|medium)$/.test(preset) ? preset : 'superfast';
     this.mediaCacheBytes = parseBytes(get('CLOUD_MEDIA_CACHE_BYTES'), 10 * 1024 ** 3);
     this.mediaCacheDir = resolve(get('CLOUD_MEDIA_CACHE_DIR') ?? `${this.dataDir}/media-cache`);
+    this.thumbCacheBytes = parseBytes(get('CLOUD_THUMB_CACHE_BYTES'), 1024 ** 3);
+    this.thumbCacheDir = resolve(get('CLOUD_THUMB_CACHE_DIR') ?? `${this.dataDir}/thumb-cache`);
   }
 }

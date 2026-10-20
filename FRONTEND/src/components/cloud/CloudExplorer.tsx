@@ -9,11 +9,12 @@ import { CreateFolderModal } from '@components/cloud/CreateFolderModal';
 import { describeSkipped, filesFromDrop, pickDirectory, pickFiles, type PickedFile, type PickResult } from '@lib/filePicker';
 import { CloudIcon, FileGlyph, FolderGlyph } from '@components/cloud/icons';
 import type { CloudIconName } from '@components/cloud/icons';
+import { FileThumb } from '@components/cloud/FileThumb';
 import {
   CLOUD_DATE_FILTERS, CLOUD_FILE_TYPE_LABELS, CLOUD_GROUP_LABELS, CLOUD_MODIFIED_FILTERS, CLOUD_TYPE_FILTERS, DEFAULT_CLOUD_FILTERS,
-  describeEntries, folderSummary, formatBytes, formatModified, groupEntries, isPreviewable, MAX_PINNED_FOLDERS, visibleEntries,
+  describeEntries, folderSummary, formatBytes, formatModified, groupEntries, hasThumbnail, isPreviewable, MAX_PINNED_FOLDERS, visibleEntries,
 } from '@utils/cloud';
-import type { CloudEntry, CloudFile, CloudFilters, CloudFolder, CloudGroup, CloudNotice, CloudView } from '@typings/cloud.types';
+import type { CloudEntry, CloudFile, CloudFilters, CloudFolder, CloudGroup, CloudNotice, CloudSection, CloudView } from '@typings/cloud.types';
 
 /* ── Migas de pan: la raíz de la sección y cada carpeta abierta; todas menos la última navegan. */
 const Breadcrumbs = ({ trail, rootIcon, onNavigate }: {
@@ -97,8 +98,8 @@ const SelectBox = ({ checked, label, className = '' }: { checked: boolean; label
 const entryMeta = (entry: CloudEntry) => (entry.kind === 'folder' ? folderSummary(entry) : formatBytes(entry.size));
 
 /* ── Mosaico: carpetas como carpetas y archivos con el icono de su tipo. */
-const GridView = ({ entries, selection, onOpen, onPreview, onMenu }: {
-  entries: CloudEntry[]; selection: Selection | null; onOpen: (folder: CloudFolder) => void; onPreview: (file: CloudFile) => void; onMenu: EntryMenu;
+const GridView = ({ entries, section, selection, onOpen, onPreview, onMenu }: {
+  entries: CloudEntry[]; section: CloudSection; selection: Selection | null; onOpen: (folder: CloudFolder) => void; onPreview: (file: CloudFile) => void; onMenu: EntryMenu;
 }) => (
   /* Un bloque por tipo, en el mismo orden que la lista: el separador es el
      icono y el nombre del grupo, su número y una línea que se desvanece. */
@@ -116,9 +117,13 @@ const GridView = ({ entries, selection, onOpen, onPreview, onMenu }: {
           {items.map(entry => {
             const content = (
               <>
-                <span className="h-14 flex items-center justify-center">
-                  {entry.kind === 'folder' ? <FolderGlyph /> : <FileGlyph type={entry.type} />}
-                </span>
+                {entry.kind === 'file' && hasThumbnail(entry.type) ? (
+                  <FileThumb file={entry} section={section} size="lg" />
+                ) : (
+                  <span className="h-14 flex items-center justify-center">
+                    {entry.kind === 'folder' ? <FolderGlyph /> : <FileGlyph type={entry.type} />}
+                  </span>
+                )}
                 <span className="w-full text-sm text-white/85 font-medium text-center leading-snug line-clamp-2 break-words" title={entry.name}>
                   {entry.name}
                 </span>
@@ -163,9 +168,9 @@ const GridView = ({ entries, selection, onOpen, onPreview, onMenu }: {
 const LIST_COLS = 'grid grid-cols-[minmax(0,1fr)_minmax(0,180px)_96px_150px] gap-4 items-center';
 
 const ListView = ({
-  entries, selection, collapsed, onToggle, onOpen, onPreview, onMenu,
+  entries, section, selection, collapsed, onToggle, onOpen, onPreview, onMenu,
 }: {
-  entries: CloudEntry[]; selection: Selection | null; collapsed: Set<CloudGroup>;
+  entries: CloudEntry[]; section: CloudSection; selection: Selection | null; collapsed: Set<CloudGroup>;
   onToggle: (group: CloudGroup) => void; onOpen: (folder: CloudFolder) => void;
   onPreview: (file: CloudFile) => void; onMenu: EntryMenu;
 }) => (
@@ -212,7 +217,9 @@ const ListView = ({
                     <span aria-hidden className="absolute -left-5 top-1/2 w-3.5 h-px bg-hairline" />
                     <span role="cell" className="flex items-center gap-3 min-w-0">
                       {selection && <SelectBox checked={on} label={`Seleccionar ${entry.name}`} />}
-                      {folder ? <FolderGlyph className="w-5 h-4 shrink-0" /> : <FileGlyph type={entry.type} size="sm" />}
+                      {folder ? <FolderGlyph className="w-5 h-4 shrink-0" />
+                        : hasThumbnail(entry.type) ? <FileThumb file={entry} section={section} size="sm" />
+                        : <FileGlyph type={entry.type} size="sm" />}
                       <span className="truncate text-white/85" title={entry.name}>{entry.name}</span>
                     </span>
                     <span role="cell" className="truncate text-white/50">{folder ? 'Carpeta' : CLOUD_FILE_TYPE_LABELS[entry.type]}</span>
@@ -233,10 +240,12 @@ const ListView = ({
    Migas de pan, barra de filtros con el selector de vista y el contenido
    de la carpeta abierta, que desplaza por su cuenta. */
 export const CloudExplorer = ({
-  trail, rootIcon, filters, view, notices, onNavigate, onOpen, onFiltersChange, onViewChange, onDownload, onPreview, onDropFiles, onDismissNotice, pinnedIds, onTogglePin, onCreateFolder, onMove, onRename, onDelete, onDetails, onShareSftp, batchDone, onPickError, onSkipped,
+  trail, section, rootIcon, filters, view, notices, onNavigate, onOpen, onFiltersChange, onViewChange, onDownload, onPreview, onDropFiles, onDismissNotice, pinnedIds, onTogglePin, onCreateFolder, onMove, onRename, onDelete, onDetails, onShareSftp, batchDone, onPickError, onSkipped,
 }: {
   /** Carpetas desde la raíz de la sección hasta la abierta. */
   trail: CloudFolder[];
+  /** Sección abierta: con ella se piden las miniaturas. */
+  section: CloudSection;
   /** Icono de la sección, al inicio de las migas. */
   rootIcon: CloudIconName;
   filters: CloudFilters;
@@ -532,9 +541,9 @@ export const CloudExplorer = ({
             {filtered && <p className="text-xs text-white/35">{searching ? 'La búsqueda es solo en esta carpeta. ' : ''}Prueba con otro texto, tipo o periodo, o limpia los filtros.</p>}
           </div>
         ) : view === 'grid' ? (
-          <GridView entries={entries} selection={selection} onOpen={onOpen} onPreview={onPreview} onMenu={entryMenu} />
+          <GridView entries={entries} section={section} selection={selection} onOpen={onOpen} onPreview={onPreview} onMenu={entryMenu} />
         ) : (
-          <ListView entries={entries} selection={selection} collapsed={collapsed} onToggle={toggleGroup} onOpen={onOpen} onPreview={onPreview} onMenu={entryMenu} />
+          <ListView entries={entries} section={section} selection={selection} collapsed={collapsed} onToggle={toggleGroup} onOpen={onOpen} onPreview={onPreview} onMenu={entryMenu} />
         )}
       </div>
 

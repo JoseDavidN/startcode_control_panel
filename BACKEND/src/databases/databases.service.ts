@@ -1,11 +1,16 @@
 import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { utils as sshUtils } from 'ssh2';
 import {
   DatabaseConnection,
   DatabaseConnectionStatus,
   DatabaseEngine,
+  DatabaseSshAuth,
+  DatabaseSshMode,
 } from './entities/database-connection.entity';
+import { Server } from '@servers/entities/server.entity';
+import type { SSHTarget } from '@monitoring/services/ssh.service';
 import { CreateDatabaseConnectionDto } from './dto/create-database-connection.dto';
 import { UpdateDatabaseConnectionDto } from './dto/update-database-connection.dto';
 import { TestDatabaseConnectionDto } from './dto/test-database-connection.dto';
@@ -31,6 +36,7 @@ import {
 } from './services/database-explorer.service';
 import { findDangerousQuery, isReadOnlyQuery } from './services/query-policy';
 import { DatabaseSessionService } from './services/database-session.service';
+import { DatabaseTunnelService } from './services/database-tunnel.service';
 import {
   RedisExplorerService,
   type RedisCommandResult,
@@ -46,6 +52,18 @@ import {
   DatabaseQueryAuditStatus,
 } from './entities/database-query-audit.entity';
 
+/** Datos del túnel SSH, de la conexión guardada o del formulario, con el secreto en claro. */
+interface TunnelConfig {
+  mode: DatabaseSshMode;
+  serverId: string | null;
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  auth: DatabaseSshAuth | null;
+  secret: string | null;
+  fingerprint: string | null;
+  algorithm: string | null;
+}
 
 @Injectable()
 export class DatabasesService {
@@ -61,6 +79,9 @@ export class DatabasesService {
     private readonly explorer: DatabaseExplorerService,
     private readonly sessions: DatabaseSessionService,
     private readonly redis: RedisExplorerService,
+    @InjectRepository(Server)
+    private readonly servers: Repository<Server>,
+    private readonly tunnels: DatabaseTunnelService,
   ) {}
 
   async findOne(userId: string, id: string): Promise<DatabaseConnectionResponseDto> {
@@ -376,7 +397,9 @@ export class DatabasesService {
       database: normalizeDatabase(dto.engine, dto.database),
       passwordEnc: dto.password ? this.cipher.encrypt(dto.password) : null,
       tag: dto.tag ?? null,
+      sshMode: DatabaseSshMode.NONE,
     });
+    await this.applyTunnel(userId, conn, dto);
     /* Guardar no conecta: el estado queda «sin comprobar» hasta que se pruebe
        o se entre a la vista de consultas. */
     return toResponse(await this.repo.save(conn));
@@ -406,6 +429,7 @@ export class DatabasesService {
     if (dto.password !== undefined) {
       conn.passwordEnc = dto.password ? this.cipher.encrypt(dto.password) : null;
     }
+    await this.applyTunnel(userId, conn, dto);
 
     /* Con otros datos de conexión el último estado ya no dice nada de la
        nueva: vuelve a «sin comprobar». Cambiar solo el nombre lo conserva. */
@@ -452,27 +476,166 @@ export class DatabasesService {
       const stored = await this.findOwned(userId, dto.connectionId);
       password = stored.passwordEnc ? this.cipher.decrypt(stored.passwordEnc) : null;
     }
+    const mode = dto.sshMode ?? DatabaseSshMode.NONE;
+    let secret = dto.sshSecret || null;
+    if (!secret && mode === DatabaseSshMode.CUSTOM && dto.connectionId) {
+      const stored = await this.findOwned(userId, dto.connectionId);
+      /* La guardada solo vale para el mismo tipo: una contraseña no es una llave. */
+      if (stored.sshSecretEnc && stored.sshAuth === dto.sshAuth) secret = this.cipher.decrypt(stored.sshSecretEnc);
+    }
+    const host = dto.host.trim();
     return {
       engine: dto.engine,
-      host: dto.host.trim(),
+      host,
       port: dto.port,
       username: dto.username?.trim() ?? '',
       password,
       database: normalizeDatabase(dto.engine, dto.database),
+      tunnel: this.tunnelFor(userId, {
+        mode,
+        serverId: dto.sshServerId ?? null,
+        host: dto.sshHost?.trim() || null,
+        port: dto.sshPort ?? null,
+        username: dto.sshUsername?.trim() || null,
+        auth: dto.sshAuth ?? null,
+        secret,
+        fingerprint: dto.sshHostKeyFingerprint ?? null,
+        algorithm: dto.sshHostKeyAlgorithm ?? null,
+      }, host, dto.port),
     };
   }
 
   private async toTarget(conn: DatabaseConnection): Promise<ProbeTarget> {
-    /* `passwordEnc` es `select: false`: si no vino en la consulta se pide aparte. */
-    const enc = conn.passwordEnc !== undefined ? conn.passwordEnc : (await this.findOwned(conn.userId, conn.id)).passwordEnc;
+    /* `passwordEnc` y `sshSecretEnc` son `select: false`: si no vinieron en la consulta se piden aparte. */
+    const full = conn.passwordEnc !== undefined && conn.sshSecretEnc !== undefined
+      ? conn
+      : await this.findOwned(conn.userId, conn.id);
     return {
       engine: conn.engine,
       host: conn.host,
       port: conn.port,
       username: conn.username,
-      password: enc ? this.cipher.decrypt(enc) : null,
+      password: full.passwordEnc ? this.cipher.decrypt(full.passwordEnc) : null,
       database: conn.database,
+      tunnel: this.tunnelFor(conn.userId, {
+        mode: conn.sshMode,
+        serverId: conn.sshServerId,
+        host: conn.sshHost,
+        port: conn.sshPort,
+        username: conn.sshUsername,
+        auth: conn.sshAuth,
+        secret: full.sshSecretEnc ? this.cipher.decrypt(full.sshSecretEnc) : null,
+        fingerprint: conn.sshHostKeyFingerprint,
+        algorithm: conn.sshHostKeyAlgorithm,
+      }, conn.host, conn.port),
     };
+  }
+
+  /* ── Túnel SSH ────────────────────────────────────────────────────────
+     Con túnel, el driver se conecta a la boca local que abre
+     `DatabaseTunnelService`, y el motor (`host`:`port`) se alcanza desde el
+     servidor SSH. El túnel se abre al conectar, no al armar el destino. */
+
+  private tunnelFor(userId: string, cfg: TunnelConfig, dstHost: string, dstPort: number): ProbeTarget['tunnel'] {
+    if (cfg.mode === DatabaseSshMode.NONE) return undefined;
+    return async () => this.tunnels.acquire({ ssh: await this.sshTarget(userId, cfg), dstHost, dstPort });
+  }
+
+  private async sshTarget(userId: string, cfg: TunnelConfig): Promise<SSHTarget> {
+    if (cfg.mode === DatabaseSshMode.SERVER) {
+      const server = cfg.serverId
+        ? await this.servers
+          .createQueryBuilder('s')
+          .addSelect('s.privateKey')
+          .where('s.id = :id AND s.ownerId = :userId', { id: cfg.serverId, userId })
+          .getOne()
+        : null;
+      if (!server) throw new BadRequestException('El servidor del túnel SSH ya no existe: elige otro en la conexión');
+      return {
+        id: server.id,
+        name: server.name,
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        privateKey: CredentialsCipherService.isEncrypted(server.privateKey)
+          ? this.cipher.decrypt(server.privateKey)
+          : server.privateKey,
+        hostKeyAlgorithm: server.hostKeyAlgorithm,
+        hostKeyFingerprint: server.hostKeyFingerprint,
+      };
+    }
+    const problem = tunnelProblem(cfg);
+    if (problem) throw new BadRequestException(problem);
+    return {
+      name: `túnel ${cfg.host}`,
+      host: cfg.host!,
+      port: cfg.port!,
+      username: cfg.username!,
+      ...(cfg.auth === DatabaseSshAuth.KEY ? { privateKey: cfg.secret! } : { password: cfg.secret! }),
+      hostKeyAlgorithm: cfg.algorithm,
+      hostKeyFingerprint: cfg.fingerprint,
+    };
+  }
+
+  /**
+   * Copia el túnel del formulario a la conexión. Al cambiar de modo se borra
+   * lo del anterior; con otro host o puerto SSH, la huella vieja deja de valer.
+   */
+  private async applyTunnel(
+    userId: string,
+    conn: DatabaseConnection,
+    dto: CreateDatabaseConnectionDto | UpdateDatabaseConnectionDto,
+  ): Promise<void> {
+    const mode = dto.sshMode ?? conn.sshMode ?? DatabaseSshMode.NONE;
+    conn.sshMode = mode;
+    if (mode !== DatabaseSshMode.SERVER) conn.sshServerId = null;
+    if (mode !== DatabaseSshMode.CUSTOM) {
+      Object.assign(conn, {
+        sshHost: null, sshPort: null, sshUsername: null, sshAuth: null,
+        sshSecretEnc: null, sshHostKeyFingerprint: null, sshHostKeyAlgorithm: null,
+      });
+    }
+
+    if (mode === DatabaseSshMode.SERVER) {
+      if (dto.sshServerId !== undefined) conn.sshServerId = dto.sshServerId;
+      if (!conn.sshServerId || !(await this.servers.existsBy({ id: conn.sshServerId, ownerId: userId }))) {
+        throw new BadRequestException('Elige uno de tus servidores para el túnel SSH');
+      }
+    }
+
+    if (mode === DatabaseSshMode.CUSTOM) {
+      const before = { host: conn.sshHost, port: conn.sshPort, auth: conn.sshAuth };
+      if (dto.sshHost !== undefined) conn.sshHost = dto.sshHost.trim();
+      if (dto.sshPort !== undefined) conn.sshPort = dto.sshPort;
+      if (dto.sshUsername !== undefined) conn.sshUsername = dto.sshUsername.trim();
+      if (dto.sshAuth !== undefined) conn.sshAuth = dto.sshAuth;
+      if (dto.sshHostKeyFingerprint !== undefined) {
+        conn.sshHostKeyFingerprint = dto.sshHostKeyFingerprint;
+        conn.sshHostKeyAlgorithm = dto.sshHostKeyAlgorithm ?? null;
+      } else if (conn.sshHost !== before.host || conn.sshPort !== before.port) {
+        conn.sshHostKeyFingerprint = null;
+        conn.sshHostKeyAlgorithm = null;
+      }
+      if (dto.sshSecret) {
+        conn.sshSecretEnc = this.cipher.encrypt(
+          conn.sshAuth === DatabaseSshAuth.KEY ? normalizePrivateKey(dto.sshSecret) : dto.sshSecret,
+        );
+      } else if (conn.sshAuth !== before.auth) {
+        conn.sshSecretEnc = null;
+      }
+      const problem = tunnelProblem({
+        mode,
+        serverId: null,
+        host: conn.sshHost,
+        port: conn.sshPort,
+        username: conn.sshUsername,
+        auth: conn.sshAuth,
+        secret: conn.sshSecretEnc,
+        fingerprint: conn.sshHostKeyFingerprint,
+        algorithm: conn.sshHostKeyAlgorithm,
+      });
+      if (problem) throw new BadRequestException(problem);
+    }
   }
 
   private async findOwned(userId: string, id: string): Promise<DatabaseConnection> {
@@ -484,7 +647,7 @@ export class DatabasesService {
   }
 
   private withPassword() {
-    return this.repo.createQueryBuilder('c').addSelect('c.passwordEnc');
+    return this.repo.createQueryBuilder('c').addSelect('c.passwordEnc').addSelect('c.sshSecretEnc');
   }
 }
 
@@ -502,7 +665,38 @@ function describeHttpError(err: HttpException): string {
 
 /** Lo que define a qué se conecta: host, puerto, credenciales, base y motor. */
 function connectionFingerprint(c: DatabaseConnection): string {
-  return [c.engine, c.host, c.port, c.username, c.database ?? '', c.passwordEnc ?? ''].join('\u0000');
+  return [
+    c.engine, c.host, c.port, c.username, c.database ?? '', c.passwordEnc ?? '',
+    c.sshMode, c.sshServerId ?? '', c.sshHost ?? '', c.sshPort ?? '', c.sshUsername ?? '',
+    c.sshAuth ?? '', c.sshSecretEnc ?? '', c.sshHostKeyFingerprint ?? '',
+  ].join('\u0000');
+}
+
+/** Lo que falta en un túnel con credenciales propias; null si está completo. */
+function tunnelProblem(cfg: TunnelConfig): string | null {
+  if (cfg.mode !== DatabaseSshMode.CUSTOM) return null;
+  if (!cfg.host || !cfg.port || !cfg.username || !cfg.auth) return 'Completa el host, el puerto y el usuario del servidor SSH del túnel';
+  if (!cfg.secret) {
+    return cfg.auth === DatabaseSshAuth.KEY ? 'Pega la llave privada SSH del túnel' : 'Escribe la contraseña SSH del túnel';
+  }
+  if (!cfg.fingerprint) return 'Confirma la huella del servidor SSH del túnel';
+  return null;
+}
+
+/** Llave privada con saltos de línea normales; falla si no se puede leer o lleva frase de paso. */
+function normalizePrivateKey(raw: string): string {
+  let key = raw.trim();
+  if (key.includes('\\n') && !key.includes('\n')) key = key.replace(/\\n/g, '\n');
+  key = key.replace(/\r\n?/g, '\n').split('\n').map(l => l.trimEnd()).join('\n') + '\n';
+  const parsed = sshUtils.parseKey(key);
+  if (parsed instanceof Error) {
+    throw new BadRequestException(
+      /encrypted|passphrase/i.test(parsed.message)
+        ? 'La llave privada SSH tiene frase de paso: usa una sin frase de paso'
+        : 'La llave privada SSH no es válida',
+    );
+  }
+  return key;
 }
 
 /** Vacía ⇒ servidor completo; en Redis, índice 0–15 (vacía ⇒ 0). */
@@ -527,6 +721,15 @@ function toResponse(c: DatabaseConnection): DatabaseConnectionResponseDto {
     database: c.database,
     tag: c.tag,
     hasPassword: Boolean(c.passwordEnc),
+    sshMode: c.sshMode,
+    sshServerId: c.sshServerId,
+    sshHost: c.sshHost,
+    sshPort: c.sshPort,
+    sshUsername: c.sshUsername,
+    sshAuth: c.sshAuth,
+    hasSshSecret: Boolean(c.sshSecretEnc),
+    sshHostKeyFingerprint: c.sshHostKeyFingerprint,
+    sshHostKeyAlgorithm: c.sshHostKeyAlgorithm,
     status: c.status,
     version: c.version,
     lastError: c.lastError,

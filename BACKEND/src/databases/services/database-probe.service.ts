@@ -4,7 +4,7 @@ import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import Redis from 'ioredis';
 import { DatabaseEngine } from '../entities/database-connection.entity';
 import type { ExplorerSession } from './explorer.common';
-import { assertEndpoint, MYSQL_FLAGS } from './connection-factory';
+import { endpointOf, MYSQL_FLAGS } from './connection-factory';
 
 /** Datos con los que se abre una conexión, con la contraseña ya descifrada. */
 export interface ProbeTarget {
@@ -14,6 +14,8 @@ export interface ProbeTarget {
   username: string;
   password: string | null;
   database: string | null;
+  /** Con túnel SSH: lo abre (o reutiliza) y devuelve su boca local, a la que se conecta el driver. */
+  tunnel?: () => Promise<{ host: string; port: number }>;
   /** Sesión abierta de la vista de consultas; sin ella, cada llamada conecta y cierra. */
   session?: ExplorerSession;
 }
@@ -27,6 +29,8 @@ export interface ProbeResult {
 
 const TIMEOUT_MS = 5_000;
 
+type Endpoint = { host: string; port: number };
+
 /**
  * Abre una conexión real contra el motor, pide su versión y la cierra.
  * Es el único sitio donde se usa la contraseña en claro para conectar.
@@ -36,27 +40,28 @@ export class DatabaseProbeService {
   async probe(target: ProbeTarget): Promise<ProbeResult> {
     const started = Date.now();
     try {
-      const version = await this.withTimeout(this.connect(target));
+      /* Con túnel, el intercambio SSH va antes: se le da su propio margen. */
+      const version = await this.withTimeout(this.connect(target), target.tunnel ? 15_000 : 0);
       return { ok: true, version, error: null, latencyMs: Date.now() - started };
     } catch (err) {
       return { ok: false, version: null, error: describeError(err), latencyMs: Date.now() - started };
     }
   }
 
-  private connect(t: ProbeTarget): Promise<string | null> {
-    assertEndpoint(t);
+  private async connect(t: ProbeTarget): Promise<string | null> {
+    const endpoint = await endpointOf(t);
     switch (t.engine) {
-      case DatabaseEngine.POSTGRESQL: return this.postgres(t);
+      case DatabaseEngine.POSTGRESQL: return this.postgres(t, endpoint);
       case DatabaseEngine.MYSQL:
-      case DatabaseEngine.MARIADB: return this.mysql(t);
-      case DatabaseEngine.REDIS: return this.redis(t);
+      case DatabaseEngine.MARIADB: return this.mysql(t, endpoint);
+      case DatabaseEngine.REDIS: return this.redis(t, endpoint);
     }
   }
 
-  private async postgres(t: ProbeTarget): Promise<string | null> {
+  private async postgres(t: ProbeTarget, { host, port }: Endpoint): Promise<string | null> {
     const client = new PgClient({
-      host: t.host,
-      port: t.port,
+      host,
+      port,
       user: t.username,
       password: t.password ?? undefined,
       /* Sin base concreta se entra a `postgres`, que existe en toda instalación. */
@@ -72,10 +77,10 @@ export class DatabaseProbeService {
     }
   }
 
-  private async mysql(t: ProbeTarget): Promise<string | null> {
+  private async mysql(t: ProbeTarget, { host, port }: Endpoint): Promise<string | null> {
     const conn = await createMysqlConnection({
-      host: t.host,
-      port: t.port,
+      host,
+      port,
       user: t.username,
       password: t.password ?? undefined,
       database: t.database || undefined,
@@ -92,10 +97,10 @@ export class DatabaseProbeService {
     }
   }
 
-  private async redis(t: ProbeTarget): Promise<string | null> {
+  private async redis(t: ProbeTarget, { host, port }: Endpoint): Promise<string | null> {
     const client = new Redis({
-      host: t.host,
-      port: t.port,
+      host,
+      port,
       username: t.username || undefined,
       password: t.password || undefined,
       db: Number(t.database) || 0,
@@ -116,10 +121,10 @@ export class DatabaseProbeService {
     }
   }
 
-  private withTimeout<T>(promise: Promise<T>): Promise<T> {
+  private withTimeout<T>(promise: Promise<T>, extraMs: number): Promise<T> {
     let timer: NodeJS.Timeout;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })), TIMEOUT_MS + 1_000);
+      timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })), TIMEOUT_MS + 1_000 + extraMs);
     });
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
@@ -131,6 +136,8 @@ function describeError(err: unknown): string {
   const code = e?.code ?? '';
   const msg = e?.message ?? String(err);
 
+  /* Ya viene redactado (túnel SSH, huella sin confirmar o distinta). */
+  if (code === 'ESSHTUNNEL' || code.startsWith('HOST_KEY_')) return msg;
   if (code === 'ECONNREFUSED') return 'Conexión rechazada: el motor no escucha en ese host y puerto';
   if (code === 'ETIMEDOUT' || /timeout/i.test(msg)) return 'Tiempo de espera agotado al conectar';
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'No se encontró el host';
@@ -142,5 +149,8 @@ function describeError(err: unknown): string {
   }
   if (code === '3D000' || code === 'ER_BAD_DB_ERROR') return 'La base de datos no existe';
   if (/DB index is out of range/i.test(msg)) return 'El índice de base de Redis está fuera de rango';
+  if (/Connection terminated unexpectedly|PROTOCOL_CONNECTION_LOST|Connection lost|ECONNRESET|Connection is closed/i.test(msg) || code === 'ECONNRESET') {
+    return 'Se cortó la conexión con el motor. Con túnel SSH, comprueba que el motor escucha en ese host y puerto desde el servidor SSH';
+  }
   return msg;
 }

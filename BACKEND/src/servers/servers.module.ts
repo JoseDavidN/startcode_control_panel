@@ -20,7 +20,7 @@ import { AgentTokenService } from '@servers/services/agent-token.service';
     TypeOrmModule.forFeature([Server]),
     AuthModule,
     /* Por `CredentialsCipherService`: la llave SSH se guarda cifrada. */
-    DatabasesModule,
+    forwardRef(() => DatabasesModule),
     forwardRef(() => MonitoringModule),
     /* La aceptación de una clave de host nueva queda como aviso de seguridad. */
     NotificationsModule,

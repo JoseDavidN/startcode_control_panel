@@ -201,6 +201,9 @@ export function folderSummary(folder: CloudFolder): string {
 const PREVIEWABLE = new Set<CloudFileType>(['word', 'excel', 'pdf', 'image', 'video', 'text', 'code']);
 export const isPreviewable = (type: CloudFileType) => PREVIEWABLE.has(type);
 
+/** Imágenes y videos se muestran con su miniatura en lugar del icono. */
+export const hasThumbnail = (type: CloudFileType) => type === 'image' || type === 'video';
+
 /* ── Carga de archivos ──────────────────────────────────────────────── */
 
 /** Archivo soltado: ruta relativa a lo que se arrastró ("fotos/2026/a.jpg"). */

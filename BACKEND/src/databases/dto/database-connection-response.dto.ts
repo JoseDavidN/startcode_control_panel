@@ -2,6 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   DatabaseConnectionStatus,
   DatabaseEngine,
+  DatabaseSshAuth,
+  DatabaseSshMode,
   DatabaseTag,
 } from '../entities/database-connection.entity';
 
@@ -33,6 +35,33 @@ export class DatabaseConnectionResponseDto {
 
   @ApiProperty({ description: 'Si hay una contraseña guardada' })
   hasPassword: boolean;
+
+  @ApiProperty({ enum: DatabaseSshMode })
+  sshMode: DatabaseSshMode;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshServerId: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshHost: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshPort: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshUsername: string | null;
+
+  @ApiPropertyOptional({ enum: DatabaseSshAuth, nullable: true })
+  sshAuth: DatabaseSshAuth | null;
+
+  @ApiProperty({ description: 'Si hay una contraseña o llave SSH guardada' })
+  hasSshSecret: boolean;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshHostKeyFingerprint: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  sshHostKeyAlgorithm: string | null;
 
   @ApiProperty({ enum: DatabaseConnectionStatus })
   status: DatabaseConnectionStatus;

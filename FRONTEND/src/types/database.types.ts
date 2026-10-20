@@ -5,6 +5,10 @@ import type { ResourceTag } from '@utils/tags';
 
 export type DatabaseEngine = 'mysql' | 'mariadb' | 'postgresql' | 'redis';
 
+/** Cómo llega el panel al motor: directo, por un servidor del panel o con credenciales SSH propias. */
+export type DatabaseSshMode = 'none' | 'server' | 'custom';
+export type DatabaseSshAuth = 'password' | 'key';
+
 /** `unknown`: recién creada o editada, todavía sin comprobar. */
 export type DatabaseConnectionStatus = 'unknown' | 'connected' | 'disconnected';
 
@@ -22,6 +26,17 @@ export interface DatabaseConnection {
   /** Una sola etiqueta, opcional. */
   tag: ResourceTag | null;
   hasPassword: boolean;
+  sshMode: DatabaseSshMode;
+  /** Servidor del panel por el que pasa el túnel (`server`). */
+  sshServerId: string | null;
+  sshHost: string | null;
+  sshPort: number | null;
+  sshUsername: string | null;
+  sshAuth: DatabaseSshAuth | null;
+  /** Si hay contraseña o llave SSH guardada (nunca viaja de vuelta). */
+  hasSshSecret: boolean;
+  sshHostKeyFingerprint: string | null;
+  sshHostKeyAlgorithm: string | null;
   status: DatabaseConnectionStatus;
   /** Versión que reportó el motor en la última comprobación correcta. */
   version: string | null;
@@ -68,6 +83,17 @@ export interface DatabaseConnectionForm {
   database: string;
   /** null: sin etiqueta. */
   tag: ResourceTag | null;
+  /* Túnel SSH. Con túnel, `host` es el del motor visto desde el servidor SSH. */
+  sshMode?: DatabaseSshMode;
+  sshServerId?: string;
+  sshHost?: string;
+  sshPort?: number;
+  sshUsername?: string;
+  sshAuth?: DatabaseSshAuth;
+  /** Contraseña o llave privada. En una edición, `undefined` conserva la guardada. */
+  sshSecret?: string;
+  sshHostKeyFingerprint?: string;
+  sshHostKeyAlgorithm?: string;
 }
 
 /* ── Gestión (vista de una conexión) ─────────────────────────────── */

@@ -5,7 +5,10 @@ import {
   describeHostKey,
   HOST_KEY_FINGERPRINT,
   HOST_KEY_MISMATCH,
+  HostKeyError,
   HostKeyMismatchError,
+  HostKeyUnverifiedError,
+  HOST_KEY_UNVERIFIED,
   hostKeyAlgorithm,
   hostKeyErrorPayload,
   hostKeyFingerprint,
@@ -48,8 +51,14 @@ describe('host-key', () => {
   });
 
   describe('createHostKeyGuard (hostVerifier de ssh2)', () => {
-    it('primer uso: acepta y recuerda la clave recibida', () => {
+    it('sin huella: rechaza (no se autentica a ciegas) y recuerda la recibida', () => {
       const guard = createHostKeyGuard(null);
+      expect(guard.verifier(KEY_A)).toBe(false);
+      expect(guard.result()).toBe('first-use');
+      expect(guard.received()).toEqual({ algorithm: 'ssh-ed25519', fingerprint: FP_A });
+    });
+    it('sin huella en modo lectura (escaneo): deja terminar el intercambio', () => {
+      const guard = createHostKeyGuard(null, true);
       expect(guard.verifier(KEY_A)).toBe(true);
       expect(guard.result()).toBe('first-use');
       expect(guard.received()).toEqual({ algorithm: 'ssh-ed25519', fingerprint: FP_A });
@@ -80,5 +89,20 @@ describe('host-key', () => {
     expect(err.getResponse()).toMatchObject({ code: HOST_KEY_MISMATCH, hostKey: details });
     expect(hostKeyErrorPayload(err)).toEqual({ code: HOST_KEY_MISMATCH, hostKey: details });
     expect(hostKeyErrorPayload(new Error('otro'))).toBeNull();
+  });
+
+  it('HostKeyUnverifiedError es un 409 con la recibida y sin esperada', () => {
+    const details = {
+      serverId: 's1',
+      host: '10.0.0.1',
+      port: 22,
+      expected: null,
+      received: { algorithm: 'ssh-ed25519', fingerprint: FP_A },
+    };
+    const err = new HostKeyUnverifiedError(details);
+    expect(err).toBeInstanceOf(HostKeyError);
+    expect(err.getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(err.getResponse()).toMatchObject({ code: HOST_KEY_UNVERIFIED, hostKey: details });
+    expect(hostKeyErrorPayload(err)).toEqual({ code: HOST_KEY_UNVERIFIED, hostKey: details });
   });
 });

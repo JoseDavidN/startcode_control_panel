@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ConflictException, HttpException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Server } from '@servers/entities/server.entity';
@@ -18,8 +18,9 @@ export interface AcceptHostKeyResult {
 }
 
 /**
- * «Aceptar nueva huella»: el dueño del servidor confirma que el cambio de la
- * clave de host es legítimo (reinstalación, claves regeneradas…).
+ * Confirmación de la clave de host por el usuario: al dar de alta el servidor
+ * (`scan`, antes de guardarlo), en su primera conexión o cuando cambia
+ * (reinstalación, claves regeneradas…). El panel nunca la acepta solo.
  */
 @Injectable()
 export class HostKeyService {
@@ -33,6 +34,22 @@ export class HostKeyService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  /** Clave que presenta `host:port`, sin autenticarse, para enseñarla en el alta. */
+  async scan(host: string, port: number): Promise<HostKey> {
+    return await this.probe({ host, port, username: 'startcode' });
+  }
+
+  /** Un host que no responde es un 502 con el motivo, no un 500. */
+  private async probe(target: Pick<Server, 'host' | 'port' | 'username'>): Promise<HostKey> {
+    try {
+      return await this.ssh.probeHostKey(target);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new BadGatewayException(`No se pudo leer la clave de host de ${target.host}:${target.port}: ${reason}`);
+    }
+  }
+
   /**
    * Vuelve a leer la clave que presenta ahora el host (sin autenticarse) y la
    * fija en lugar de la anterior. Si el usuario manda la huella que vio en el
@@ -41,7 +58,12 @@ export class HostKeyService {
   async accept(serverId: string, user: User, expected?: string): Promise<AcceptHostKeyResult> {
     /* Comprueba que existe y es suyo (404/403 si no). */
     const server = await this.servers.findOne(serverId, user);
-    const current: HostKey = await this.ssh.probeHostKey(server);
+    /* La primera confirmación tiene que nombrar la huella que vio: aceptar «la
+       que haya» sería otra vez confianza a ciegas. */
+    if (!server.hostKeyFingerprint && !expected) {
+      throw new BadRequestException('Indica la huella que comprobaste en el servidor');
+    }
+    const current: HostKey = await this.probe(server);
 
     if (expected && expected !== current.fingerprint) {
       throw new ConflictException({
@@ -72,7 +94,7 @@ export class HostKeyService {
       .create(user.id, {
         type: NotificationType.SECURITY,
         severity: NotificationSeverity.WARNING,
-        title: 'Nueva clave de host aceptada',
+        title: previous.fingerprint ? 'Nueva clave de host aceptada' : 'Clave de host confirmada',
         body:
           `${server.name} (${server.host}:${server.port}) usa ahora ${current.algorithm} ${current.fingerprint}` +
           (previous.fingerprint ? `; antes ${previous.fingerprint}.` : '.') +

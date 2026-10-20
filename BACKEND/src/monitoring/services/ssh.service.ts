@@ -1,14 +1,14 @@
 // src/monitoring/services/ssh.service.ts
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
 import { Client } from 'ssh2';
 import type { ConnectConfig } from 'ssh2';
-import { Server } from '@servers/entities/server.entity';
+import type { Server } from '@servers/entities/server.entity';
 import { isValidHost, isValidPort } from '@/common/security/network';
 import {
   createHostKeyGuard,
+  HostKeyError,
   HostKeyMismatchError,
+  HostKeyUnverifiedError,
   type HostKey,
   type HostKeyGuard,
 } from '@monitoring/services/host-key';
@@ -31,11 +31,6 @@ const CONNECT_TIMEOUT_MS = 15000;
 export class SSHService {
   private readonly logger = new Logger(SSHService.name);
   private connections: Map<string, Client> = new Map();
-
-  constructor(
-    @InjectRepository(Server)
-    private readonly servers: Repository<Server>,
-  ) {}
 
   /**
    * Conectar a un servidor SSH
@@ -82,12 +77,9 @@ export class SSHService {
 
   /**
    * Única puerta de entrada de las conexiones ssh2 del panel: todas pasan por
-   * el `hostVerifier` (TOFU). La primera vez se acepta la clave y se guarda al
-   * quedar autenticada la sesión; si no coincide con la guardada, ssh2 corta
-   * el intercambio antes de autenticarse y se lanza `HostKeyMismatchError`.
-   *
-   * Un objetivo sin `id` (prueba antes de guardar el servidor) acepta la clave
-   * sin guardarla y la devuelve para que el usuario la vea.
+   * el `hostVerifier`. Solo se autentica contra la huella confirmada; sin
+   * huella (`HostKeyUnverifiedError`) o con otra (`HostKeyMismatchError`), ssh2
+   * corta el intercambio antes de enviar ninguna credencial.
    */
   private open(target: SSHTarget): Promise<{ conn: Client; hostKey: HostKey }> {
     return new Promise((resolve, reject) => {
@@ -113,16 +105,17 @@ export class SSHService {
         CONNECT_TIMEOUT_MS,
       );
 
+      /* Solo llega aquí con la huella guardada: el verificador rechaza el resto. */
       conn.on('ready', () => {
-        this.confirmHostKey(target, guard).then(
-          (hostKey) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            resolve({ conn, hostKey });
-          },
-          (err: unknown) => fail(err instanceof Error ? err : new Error(String(err))),
-        );
+        const hostKey = guard.received();
+        if (!hostKey || guard.result() !== 'match') {
+          fail(new Error('El servidor SSH no presentó una clave de host verificable'));
+          return;
+        }
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ conn, hostKey });
       });
 
       /* El listener se queda: ssh2 emite 'error' también después de 'ready'
@@ -139,49 +132,19 @@ export class SSHService {
     });
   }
 
-  /** La clave ya pasó el verificador: en el primer uso, se fija. */
-  private async confirmHostKey(target: SSHTarget, guard: HostKeyGuard): Promise<HostKey> {
+  private mismatchError(target: SSHTarget, guard: HostKeyGuard): HostKeyError | null {
     const received = guard.received();
-    if (!received || !guard.result()) {
-      throw new Error('El servidor SSH no presentó una clave de host verificable');
-    }
-    if (guard.result() !== 'first-use' || !target.id) return received;
-
-    const now = new Date();
-    /* Solo si sigue sin huella: dos primeras conexiones a la vez no se pisan. */
-    const written = await this.servers.update(
-      { id: target.id, hostKeyFingerprint: IsNull() },
-      { hostKeyAlgorithm: received.algorithm, hostKeyFingerprint: received.fingerprint, hostKeyVerifiedAt: now },
-    );
-    if (!written.affected) {
-      const stored = await this.servers.findOne({
-        where: { id: target.id },
-        select: ['id', 'hostKeyAlgorithm', 'hostKeyFingerprint'],
+    if (!received) return null;
+    if (guard.result() === 'first-use') {
+      return new HostKeyUnverifiedError({
+        serverId: target.id ?? '',
+        host: target.host,
+        port: target.port ?? 22,
+        expected: null,
+        received,
       });
-      if (stored?.hostKeyFingerprint && stored.hostKeyFingerprint !== received.fingerprint) {
-        throw new HostKeyMismatchError({
-          serverId: target.id,
-          host: target.host,
-          port: target.port ?? 22,
-          expected: { algorithm: stored.hostKeyAlgorithm, fingerprint: stored.hostKeyFingerprint },
-          received,
-        });
-      }
-      return received;
     }
-
-    this.logger.log(`🔑 Clave de host fijada para ${target.name ?? target.host}: ${received.algorithm} ${received.fingerprint}`);
-    Object.assign(target, {
-      hostKeyAlgorithm: received.algorithm,
-      hostKeyFingerprint: received.fingerprint,
-      hostKeyVerifiedAt: now,
-    });
-    return received;
-  }
-
-  private mismatchError(target: SSHTarget, guard: HostKeyGuard): HostKeyMismatchError | null {
-    const received = guard.received();
-    if (guard.result() !== 'mismatch' || !received || !target.hostKeyFingerprint) return null;
+    if (guard.result() !== 'mismatch' || !target.hostKeyFingerprint) return null;
     return new HostKeyMismatchError({
       serverId: target.id ?? '',
       host: target.host,
@@ -195,7 +158,7 @@ export class SSHService {
    * Lee la clave de host que presenta ahora el servidor sin autenticarse: se
    * espera al fin del intercambio de claves (la firma del host ya se comprobó,
    * así que quien responde tiene la clave privada) y se corta antes de enviar
-   * credenciales. Lo usa «aceptar nueva huella».
+   * credenciales. Lo usan el escaneo del alta y «aceptar huella».
    */
   probeHostKey(target: Pick<Server, 'host' | 'port' | 'username'>): Promise<HostKey> {
     return new Promise((resolve, reject) => {
@@ -203,7 +166,7 @@ export class SSHService {
         reject(new BadRequestException('El host o el puerto SSH del servidor no son válidos: corrígelos en la configuración del servidor'));
         return;
       }
-      const guard = createHostKeyGuard(null);
+      const guard = createHostKeyGuard(null, true);
       const conn = new Client();
       let settled = false;
       const finish = (err: Error | null, key?: HostKey) => {
@@ -441,8 +404,6 @@ export class SSHService {
    * @returns true si la conexión es exitosa, false en caso contrario
    */
   async testConnection(server: SSHTarget): Promise<{ ok: boolean; hostKey: HostKey | null }> {
-    /* Con un servidor aún sin guardar (sin id) la clave se acepta sin fijarla:
-       se devuelve para que el usuario la vea y se guarda al crear el servidor. */
     let conn: Client | null = null;
     try {
       const opened = await this.open(server);
@@ -450,7 +411,7 @@ export class SSHService {
       const result = await this.execOnClient(conn, 'echo "test"', { timeoutMs: 10000 });
       return { ok: result.code === 0 && result.stdout.trim() === 'test', hostKey: opened.hostKey };
     } catch (error) {
-      if (error instanceof HostKeyMismatchError) throw error;
+      if (error instanceof HostKeyError) throw error;
       this.logger.error(`Test de conexión falló: ${error instanceof Error ? error.message : String(error)}`);
       return { ok: false, hostKey: null };
     } finally {

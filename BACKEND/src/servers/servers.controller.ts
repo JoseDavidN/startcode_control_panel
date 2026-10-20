@@ -37,6 +37,9 @@ import { DeleteServerDto } from './dto/agent-install.dto';
 import { AgentInstallService } from './services/agent-install.service';
 import { HostKeyService, type AcceptHostKeyResult } from '@servers/services/host-key.service';
 import { AcceptHostKeyDto } from '@servers/dto/accept-host-key.dto';
+import { ScanHostKeyDto } from '@servers/dto/scan-host-key.dto';
+import type { HostKey } from '@monitoring/services/host-key';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@auth/types/authenticated-request.type';
 import { ServerStatus, ServerOs } from './entities/server.entity';
@@ -198,12 +201,26 @@ export class ServersController {
     return { token, serverId: server.id, expiresIn: '30d' };
   }
 
+  @Post('host-key/scan')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Leer la clave de host SSH antes de dar de alta un servidor',
+    description:
+      'Abre el intercambio de claves sin enviar credenciales y devuelve el algoritmo y la huella SHA256 para que el usuario la compruebe. La que confirme se manda al crear el servidor.',
+  })
+  @ApiResponse({ status: 200, description: '`{ algorithm, fingerprint }`' })
+  @ApiResponse({ status: 400, description: 'Host o puerto no válidos' })
+  async scanHostKey(@Body() dto: ScanHostKeyDto): Promise<HostKey> {
+    return await this.hostKeys.scan(dto.host, dto.port ?? 22);
+  }
+
   @Post(':id/host-key/accept')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Aceptar la nueva clave de host SSH',
     description:
-      'Vuelve a leer la clave que presenta el servidor (sin autenticarse) y la fija en lugar de la anterior. Queda en las notificaciones de seguridad.',
+      'Vuelve a leer la clave que presenta el servidor (sin autenticarse) y la fija: la primera vez o en lugar de la anterior. Queda en las notificaciones de seguridad.',
   })
   @ApiParam({ name: 'id', description: 'ID del servidor (UUID)', type: 'string' })
   @ApiResponse({ status: 200, description: 'Clave aceptada' })

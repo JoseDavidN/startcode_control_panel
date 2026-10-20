@@ -11,6 +11,10 @@ import { INSTALL_ACTIVITIES, resolveActivities } from '@lib/agentSteps';
 import type { AgentInstallError } from '@typings/agent.types';
 import type { RequestFailure } from '@typings/api.types';
 import { copyText } from '@lib/clipboard';
+import { serverService } from '@services/server.service';
+import { HostKeyBlock } from '@components/servers/HostKeyBlock';
+import { HOST_KEY_CHECK_COMMAND, type HostKeyInfo } from '@typings/hostKey.types';
+import type { ApiError } from '@typings/api.types';
 
 interface AddServerModalProps {
   isOpen: boolean;
@@ -56,6 +60,11 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
   const [connStatus, setConnStatus]   = useState<ConnectionStatus>('running');
   const [createdId, setCreatedId]     = useState<string | null>(null);
   const [installError, setInstallError] = useState<AgentInstallError | null>(null);
+  /* Huella leída de host:puerto antes de crear: el usuario la compara con la
+     del servidor y solo entonces se guarda. Nada se autentica antes. */
+  const [hostKey, setHostKey]         = useState<{ target: string; key: HostKeyInfo } | null>(null);
+  const [reviewingKey, setReviewingKey] = useState(false);
+  const [scanning, setScanning]       = useState(false);
   const errorRef                      = useRef<HTMLDivElement>(null);
   const createMutation                = useCreateServer();
   const installMutation               = useInstallAgent();
@@ -75,19 +84,49 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     }
   };
 
+  const target = `${formData.host.trim()}:${formData.port}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const kv = validateKey(formData.privateKey);
     if (!kv.valid) { setError(kv.error || 'Clave privada inválida'); return; }
 
+    if (createdId) { await createAndInstall(); return; }
+
+    /* Primero la huella del host, para confirmarla antes de enviar la llave. */
+    setScanning(true);
+    try {
+      const key = await serverService.scanHostKey(formData.host.trim(), formData.port);
+      setHostKey({ target, key });
+      setReviewingKey(true);
+    } catch (err) {
+      setError((err as ApiError)?.message || 'No se pudo leer la clave de host del servidor. Verifica el host y el puerto.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const confirmHostKey = () => {
+    setReviewingKey(false);
+    void createAndInstall();
+  };
+
+  const createAndInstall = async () => {
     setConnStatus('running');
     setInstallError(null);
     install.reset();
     setConnecting(true);
 
     const { sudoPassword, tag, ...rest } = formData;
-    const serverData = { ...rest, tag: tag || null };
+    const confirmed = hostKey?.target === target ? hostKey.key : null;
+    const serverData = {
+      ...rest,
+      tag: tag || null,
+      ...(confirmed
+        ? { hostKeyFingerprint: confirmed.fingerprint, hostKeyAlgorithm: confirmed.algorithm ?? undefined }
+        : {}),
+    };
 
     let serverId = createdId;
     if (!serverId) {
@@ -154,6 +193,8 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     setConnStatus('running');
     setCreatedId(null);
     setInstallError(null);
+    setHostKey(null);
+    setReviewingKey(false);
     install.reset();
     onSuccess?.();
     onClose();
@@ -168,10 +209,45 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
     <Modal
       isOpen={isOpen}
       onClose={isConnecting ? () => {} : onClose}
-      title="Agregar Nuevo Servidor"
+      title={reviewingKey ? 'Confirma la clave de host SSH' : 'Agregar Nuevo Servidor'}
       size="lg"
     >
-      {isConnecting ? (
+      {reviewingKey && hostKey ? (
+        <div className="space-y-4">
+          <div className="glass-soft rounded-xl p-4 flex items-start gap-3 border border-amber-400/20">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+              strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-amber-300 shrink-0 mt-0.5">
+              <circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M16 7l3 3" />
+            </svg>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">¿Es este tu servidor?</div>
+              <p className="text-xs text-white/60 mt-1.5 leading-relaxed">
+                <span className="font-mono text-white/80">{hostKey.target}</span> presentó la clave de abajo. Aún no se
+                envió la llave privada: compárala con la del servidor ejecutando en él
+              </p>
+              <p className="text-xs mt-2">
+                <span className="font-mono text-white/80 select-text">{HOST_KEY_CHECK_COMMAND}</span>
+              </p>
+              <p className="text-xs text-white/60 mt-2 leading-relaxed">
+                Si no coincide, alguien podría estar interceptando la conexión: no continúes.
+              </p>
+            </div>
+          </div>
+
+          <HostKeyBlock label="Presentada por el servidor" info={hostKey.key} tone="muted" />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
+            <button type="button" onClick={() => setReviewingKey(false)}
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl glass-soft text-white/75 hover:text-white row-hit text-sm font-medium transition">
+              Volver
+            </button>
+            <button type="button" onClick={confirmHostKey}
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium elev-brand hover:elev-brand-hi transition">
+              Coincide: agregar e instalar
+            </button>
+          </div>
+        </div>
+      ) : isConnecting ? (
         /* Pantalla de proceso: reemplaza al formulario para verse completa */
         <div className="flex flex-col items-center gap-4 py-6">
           <ConnectionLoading
@@ -437,12 +513,12 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({ isOpen, onClose,
             Cancelar
           </button>
           <button type="submit"
-            disabled={createMutation.isPending || isConnecting}
+            disabled={createMutation.isPending || isConnecting || scanning}
             className="inline-flex items-center gap-2 h-10 px-4 rounded-xl grad-brand text-white text-sm font-medium elev-brand hover:elev-brand-hi transition disabled:opacity-50">
-            {createMutation.isPending || isConnecting ? (
+            {createMutation.isPending || isConnecting || scanning ? (
               <>
                 <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                {isConnecting ? 'Instalando…' : 'Agregando…'}
+                {scanning ? 'Leyendo huella…' : isConnecting ? 'Instalando…' : 'Agregando…'}
               </>
             ) : (
               <>

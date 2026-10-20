@@ -9,6 +9,7 @@ import type {
 	AgentUninstallResult,
 } from '@typings/agent.types';
 import type { ResourceTag } from '@utils/tags';
+import type { HostKeyInfo } from '@typings/hostKey.types';
 
 /* Instalar baja 7 MB y arranca un servicio: los 30 s del cliente se quedan
    cortos y el usuario vería un timeout mientras el trabajo sigue en marcha. */
@@ -39,6 +40,9 @@ export interface CreateServerDto {
 	os: string;
 	tag?: ResourceTag | null;
 	description?: string;
+	/** Huella que el usuario confirmó en el alta (`scanHostKey`): queda fijada al crear. */
+	hostKeyFingerprint?: string;
+	hostKeyAlgorithm?: string;
 }
 
 /** Campos que admite PATCH /servers/:id (el backend rechaza cualquier otro). */
@@ -93,7 +97,7 @@ export interface Server {
 	lastSeen?: string | null;
 	hostname?: string | null;
 	osVersion?: string | null;
-	/** Clave de host SSH fijada en la primera conexión (TOFU); null hasta entonces. */
+	/** Clave de host SSH confirmada por el usuario (alta o primera conexión); null hasta entonces. */
 	hostKeyAlgorithm?: string | null;
 	hostKeyFingerprint?: string | null;
 	hostKeyVerifiedAt?: string | null;
@@ -131,6 +135,15 @@ class ServerService {
 	/** Cambia la llave privada SSH. El backend la guarda cifrada y nunca la devuelve. */
 	async updatePrivateKey(id: string, privateKey: string): Promise<void> {
 		await apiService.put(`${API_CONFIG.ENDPOINTS.SERVERS}/${id}/private-key`, { privateKey });
+	}
+
+	/** Lee la clave de host de `host:port` sin autenticarse, para confirmarla antes de crear el servidor. */
+	async scanHostKey(host: string, port: number): Promise<HostKeyInfo> {
+		const response = await apiService.post<HostKeyInfo>(
+			`${API_CONFIG.ENDPOINTS.SERVERS}/host-key/scan`,
+			{ host, port },
+		);
+		return unwrapPayload(response) as HostKeyInfo;
 	}
 
 	/**

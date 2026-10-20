@@ -64,4 +64,22 @@ describe('HostKeyService.accept (POST servers/:id/host-key/accept)', () => {
     await expect(service.accept('s1', user)).resolves.toMatchObject({ hostKeyFingerprint: NEW });
     expect(repo.update).toHaveBeenCalled();
   });
+
+  it('primera confirmación: exige la huella vista y la notifica como confirmada', async () => {
+    servers.findOne.mockResolvedValue({
+      id: 's1', name: 'web', host: '10.0.0.1', port: 22, username: 'root',
+      hostKeyAlgorithm: null, hostKeyFingerprint: null,
+    });
+    await expect(service.accept('s1', user)).rejects.toThrow('huella');
+    expect(ssh.probeHostKey).not.toHaveBeenCalled();
+
+    await expect(service.accept('s1', user, NEW)).resolves.toMatchObject({ previous: { fingerprint: null }, hostKeyFingerprint: NEW });
+    expect(notifications.create).toHaveBeenCalledWith('u1', expect.objectContaining({ title: 'Clave de host confirmada' }));
+  });
+
+  it('scan lee la clave del host sin un servidor guardado', async () => {
+    await expect(service.scan('10.0.0.9', 2222)).resolves.toEqual({ algorithm: 'ssh-ed25519', fingerprint: NEW });
+    expect(ssh.probeHostKey).toHaveBeenCalledWith(expect.objectContaining({ host: '10.0.0.9', port: 2222 }));
+    expect(repo.update).not.toHaveBeenCalled();
+  });
 });

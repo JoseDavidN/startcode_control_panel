@@ -9,6 +9,38 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.9.2] — 2026-10-20
+
+Versión **parche** sobre 0.9.1. Requiere el backend 0.11.2.
+
+### Seguridad
+- Alta de servidor (`AddServerModal.tsx`): antes de crear el servidor, la app lee su clave de host (`POST servers/host-key/scan`, sin enviar la llave privada) y la muestra con el comando para comprobarla en el servidor (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`). Solo al confirmar «Coincide» se crea el servidor con esa huella fijada
+- Primera conexión sin huella confirmada (servidores anteriores o con host o puerto cambiados): `HostKeyMismatchModal.tsx` reconoce el 409 `HOST_KEY_UNVERIFIED` y pide confirmar la huella presentada, con el mismo flujo de dos pasos que el cambio de huella. La fila «Clave de host» del detalle indica «Sin confirmar» hasta entonces
+- Agente (`AgentCard.tsx`): si su token es de un agente anterior a 2.2.0, la tarjeta avisa de la fecha en que deja de valer y pide reinstalarlo
+
+### Cambiado
+- Instaladores en español (`tauri.conf.json`): el MSI se genera en `es-ES` y el instalador NSIS en español, sin selector de idioma. El paquete de macOS declara el español como idioma de la app (`src-tauri/Info.plist`). Editor, descripción corta y larga de los paquetes en español
+
+---
+
+## [0.11.2] — 2026-10-20
+
+Versión **parche** del backend sobre 0.11.1. Requiere la app 0.9.2 para confirmar huellas desde la interfaz.
+
+### Seguridad
+- Clave de host SSH sin confianza a ciegas (`monitoring/services/host-key.ts`, `ssh.service.ts`):
+  - ninguna conexión se autentica contra un servidor sin huella confirmada; responde 409 `HOST_KEY_UNVERIFIED` con la clave presentada (también por los sockets de terminal y SFTP) y no se envía ninguna credencial;
+  - `POST servers/host-key/scan` (`{ host, port }`, 10 por minuto) lee la clave sin autenticarse para enseñarla en el alta; la huella confirmada se manda en `POST servers`;
+  - `POST servers/:id/host-key/accept` sirve también para la primera confirmación, que exige la huella que vio el usuario (`fingerprint`); queda en las notificaciones de seguridad como «Clave de host confirmada»;
+  - `HostKeyError` agrupa `HostKeyMismatchError` y `HostKeyUnverifiedError`; la instalación del agente y la prueba de conexión los dejan pasar tal cual;
+  - `SSHService` ya no escribe en la base de datos (se quitó el TOFU)
+- Tokens heredados de agentes (anteriores a 2.2.0, sin `jti`): dejan de valer en la fecha de `AGENT_LEGACY_TOKEN_CUTOFF` (por defecto `2026-12-01T00:00:00Z`), estén o no fijados por su huella. Un servidor apagado ya no conserva su token de 365 días. El agente recibe `AGENT_TOKEN_REJECTED` con el motivo `legacy_expired` y el estado del agente (`GET servers/:id/agent`) devuelve `tokenLegacyUntil` para avisar en la interfaz. Una fecha pasada en la variable los corta al reiniciar
+
+### Configuración
+- Nueva variable `AGENT_LEGACY_TOKEN_CUTOFF` (ISO 8601). Una fecha no válida usa la de por defecto
+
+---
+
 ## [App de escritorio 0.9.1] — 2026-10-19
 
 Versión **parche** de seguridad sobre 0.9.0. Requiere el backend 0.11.1.

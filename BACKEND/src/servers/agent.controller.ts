@@ -135,6 +135,7 @@ export class AgentController {
       steps: agent?.steps ?? [],
       tokenIssuedAt: token.issuedAt?.toISOString() ?? null,
       tokenRotating: token.rotating,
+      tokenLegacyUntil: token.legacyUntil?.toISOString() ?? null,
     };
   }
 }

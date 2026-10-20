@@ -39,7 +39,8 @@ export type AgentTokenRejection =
   | 'wrong_type'
   | 'wrong_server'
   | 'server_not_found'
-  | 'revoked';
+  | 'revoked'
+  | 'legacy_expired';
 
 /**
  * Margen durante el que el token anterior a una rotación se sigue aceptando:
@@ -49,6 +50,14 @@ export const AGENT_TOKEN_GRACE_MS = 10 * 60_000;
 
 /** Edad a partir de la cual se rota un token con el agente conectado. */
 export const AGENT_TOKEN_ROTATE_AFTER_MS = 7 * 24 * 3_600_000;
+
+/**
+ * Fecha a partir de la cual ningún token sin `jti` (agentes anteriores a
+ * 2.2.0, tokens de 365 días) vale, aunque esté fijado: un servidor apagado
+ * que nunca llegó a rotar no conserva su token indefinidamente. Se cambia con
+ * `AGENT_LEGACY_TOKEN_CUTOFF` (ISO 8601; una fecha pasada los corta ya).
+ */
+export const AGENT_LEGACY_TOKEN_CUTOFF_DEFAULT = '2026-12-01T00:00:00Z';
 
 /** Columnas de token: `select: false` en la entidad, se piden aquí a propósito. */
 const TOKEN_COLUMNS = [
@@ -203,6 +212,9 @@ export class AgentTokenService {
     if (!server) return { ok: false, reason: 'server_not_found' };
 
     const tokenId = AgentTokenService.tokenIdOf(token, claims);
+    if (!claims.jti && Date.now() >= this.legacyCutoff().getTime()) {
+      return { ok: false, reason: 'legacy_expired' };
+    }
     const shouldRotate = this.isDueForRotation(claims);
 
     if (server.agentTokenId === tokenId) {
@@ -260,8 +272,19 @@ export class AgentTokenService {
     return age >= Math.min(AGENT_TOKEN_ROTATE_AFTER_MS, lifetime / 4);
   }
 
+  /** Fin de la validez de los tokens heredados; una fecha inválida no amplía nada. */
+  legacyCutoff(): Date {
+    const raw = this.config.get<string>('AGENT_LEGACY_TOKEN_CUTOFF')?.trim();
+    const parsed = raw ? new Date(raw) : null;
+    if (parsed && !Number.isNaN(parsed.getTime())) return parsed;
+    if (raw) this.logger.warn(`AGENT_LEGACY_TOKEN_CUTOFF no es una fecha válida: se usa ${AGENT_LEGACY_TOKEN_CUTOFF_DEFAULT}`);
+    return new Date(AGENT_LEGACY_TOKEN_CUTOFF_DEFAULT);
+  }
+
   /** Estado para la interfaz: nada de identificadores, solo fechas. */
-  async describe(serverId: string): Promise<{ issuedAt: Date | null; rotating: boolean }> {
+  async describe(
+    serverId: string,
+  ): Promise<{ issuedAt: Date | null; rotating: boolean; legacyUntil: Date | null }> {
     const server = await this.servers
       .createQueryBuilder('server')
       .select(['server.id'])
@@ -272,6 +295,11 @@ export class AgentTokenService {
     return {
       issuedAt: server?.agentTokenIssuedAt ?? null,
       rotating: Boolean(server?.agentTokenPendingId),
+      /* Heredado: sin fijar todavía o fijado por su huella. Vale hasta el corte. */
+      legacyUntil:
+        server && (server.agentTokenLegacy || server.agentTokenId?.startsWith('sha256:'))
+          ? this.legacyCutoff()
+          : null,
     };
   }
 

@@ -56,6 +56,8 @@ export interface AgentState {
 	tokenIssuedAt?: string | null;
 	/** Hay un token nuevo enviado al agente, a la espera de su confirmación. */
 	tokenRotating?: boolean;
+	/** Token de un agente anterior a 2.2.0: deja de valer en esta fecha si no se reinstala. */
+	tokenLegacyUntil?: string | null;
 }
 
 /** `rotating`: enviado al agente conectado. `revoked`: no estaba conectado; hay que reinstalar. */

@@ -6,7 +6,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   /** Botones de la cabecera, a la izquierda del de cerrar. */
   actions?: React.ReactNode;
   /** Ocupa todo el alto disponible (con el margen de arriba y abajo) aunque el contenido sea corto. */
@@ -15,7 +15,7 @@ interface ModalProps {
   dismissable?: boolean;
 }
 
-const sizeMap = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-3xl', xl: 'max-w-5xl' };
+const sizeMap = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-3xl', xl: 'max-w-5xl', '2xl': 'max-w-[1400px]' };
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md', actions, tall = false, dismissable = true }) => {
   useEffect(() => {

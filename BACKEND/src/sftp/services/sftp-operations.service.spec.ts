@@ -40,3 +40,58 @@ describe('SftpOperationsService: límites', () => {
     await expect(ops.mkdirp(session(), '/srv', 'x' as unknown as string[])).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('SftpOperationsService: subida por partes', () => {
+  const partSession = (data: Record<string, jest.Mock>) =>
+    ({
+      home: '/home/deploy',
+      ensuredDirs: new Set<string>(['/srv']),
+      partials: new Map<string, number>(),
+      activeUploads: 0,
+      meta: channel(),
+      data,
+    }) as unknown as SftpSession;
+
+  it('no continúa un archivo que la sesión no empezó', async () => {
+    const ops = new SftpOperationsService(config(1024 ** 3));
+    const data = channel();
+    const s = partSession(data);
+    await expect(
+      ops.uploadStream(s, { destDir: '/srv', relPath: 'a.bin', source: Readable.from([]), overwrite: false, offset: 10, total: 20, declaredSize: 10 }),
+    ).rejects.toThrow('no se puede continuar');
+    expect(data.createWriteStream).not.toHaveBeenCalled();
+  });
+
+  it('no continúa desde otra posición que la confirmada', async () => {
+    const ops = new SftpOperationsService(config(1024 ** 3));
+    const data = channel();
+    const s = partSession(data);
+    s.partials.set('/srv/a.bin', 8);
+    await expect(
+      ops.uploadStream(s, { destDir: '/srv', relPath: 'a.bin', source: Readable.from([]), overwrite: false, offset: 10, total: 20, declaredSize: 10 }),
+    ).rejects.toThrow('no se puede continuar');
+  });
+
+  it('rechaza un total por encima del límite antes de abrir nada', async () => {
+    const ops = new SftpOperationsService(config(1024));
+    const data = channel();
+    const s = partSession(data);
+    await expect(
+      ops.uploadStream(s, { destDir: '/srv', relPath: 'a.bin', source: Readable.from([]), overwrite: false, offset: 0, total: 4096, declaredSize: 512 }),
+    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(data.lstat).not.toHaveBeenCalled();
+  });
+
+  it('solo descarta archivos a medias de la propia sesión', async () => {
+    const ops = new SftpOperationsService(config(1024));
+    const data = { ...channel(), unlink: jest.fn((_p: string, cb: (e: null) => void) => cb(null)) };
+    const s = partSession(data);
+    await expect(ops.discardPartial(s, '/srv', 'otro.bin')).resolves.toBe(false);
+    expect(data.unlink).not.toHaveBeenCalled();
+
+    s.partials.set('/srv/a.bin', 8);
+    await expect(ops.discardPartial(s, '/srv', 'a.bin')).resolves.toBe(true);
+    expect(data.unlink).toHaveBeenCalledWith('/srv/a.bin', expect.any(Function));
+    expect(s.partials.size).toBe(0);
+  });
+});

@@ -351,7 +351,7 @@ Usar el componente `Modal` en `src/components/common/Modal.tsx`.
 - Contenedor: `glass elev-modal rounded-2xl grain` con `max-h-full flex flex-col`, dentro de un overlay con `py-12`: nunca supera la ventana y siempre deja 48 px arriba y abajo. `tall` lo estira a todo ese alto (lector de archivos)
 - Header: `shrink-0`
 - Body: `overflow-y-auto modal-scroll flex-1 min-h-0`
-- Tamaños: `sm=max-w-md`, `md=max-w-2xl`, `lg=max-w-3xl`, `xl=max-w-5xl`
+- Tamaños: `sm=max-w-md`, `md=max-w-2xl`, `lg=max-w-3xl`, `xl=max-w-5xl`, `2xl=max-w-[1400px]` (exploradores de varias columnas, como el SFTP). Con `w-full` y el `px` del overlay, ningún tamaño pasa del ancho de la ventana
 - `dismissable={false}`: para un paso obligatorio (la conexión de Cloud). Sin botón de cerrar ni cierre con Escape o el fondo; el contenido debe ofrecer siempre una salida (p. ej. volver a otra vista).
 - `actions`: botones de la cabecera, a la izquierda del de cerrar (p. ej. Descargar en el lector de Cloud). Van con `glass-soft row-hit` y `h-8`, la altura del botón de cerrar
 

@@ -23,7 +23,14 @@ export interface SftpSession {
   activeUploads: number;
   /** Directorios ya creados en esta sesión: evita repetir mkdir por archivo */
   ensuredDirs: Set<string>;
+  /**
+   * Subidas por partes sin terminar: ruta absoluta → bytes confirmados. Solo
+   * se puede continuar (o descartar) un archivo que esta sesión empezó.
+   */
+  partials: Map<string, number>;
   socketId: string | null;
+  /** Momento en que se fue el socket: la sesión espera un rato a que vuelva */
+  orphanedAt: number | null;
   closing: boolean;
 }
 

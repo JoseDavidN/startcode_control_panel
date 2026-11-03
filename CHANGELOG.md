@@ -9,9 +9,42 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.11.0] — 2026-11-03
+
+Versión **menor** sobre 0.10.0. Requiere el backend 0.12.1 (subida por partes y recuperación de la sesión SFTP).
+
+### Añadido
+- Vista previa en el explorador SFTP (`components/servers/sftp/SftpPreview.tsx`): un clic en una carpeta muestra lo que contiene sin entrar en ella (doble clic entra). Pulsar una de sus subcarpetas entra en la elegida y deja esa como la siguiente vista previa, así se construye la ruta viendo un nivel por delante. Un clic en un archivo muestra tamaño, permisos, fecha, propietario y ruta
+- Sugerencias en la barra de ruta (`SftpPathBar.tsx`): al escribir se listan las carpetas de ese punto de la ruta (sin ocultas salvo que se escriba el punto); flechas para recorrerlas, Tab o Enter para añadir la resaltada y Enter sin resaltar para ir. Escape cierra solo las sugerencias
+- Botón «Reintentar fallidos» en la cola de subidas, y cancelar también los archivos que siguen en cola
+- Tamaño `2xl` del `Modal` (`max-w-[1400px]`), sin pasar nunca del ancho de la ventana
+
+### Cambiado
+- Rediseño del modal SFTP: alto fijo (`tall`) y tres columnas en una sola vista (carpeta actual, vista previa y subidas). Cada columna desplaza dentro, así lo que se carga ya no aparece debajo de la lista ni obliga a hacer scroll en el modal
+- La lista de la carpeta usa una rejilla común para cabecera y filas (`SFTP_ROW_GRID`): nombre, tamaño, permisos y fecha quedan alineados con sus columnas. El filtro de ocultos sale de la cabecera de columnas a una barra propia con el recuento de carpetas y archivos
+
+### Corregido
+- Subidas SFTP que se caían a veces:
+  - al elegir archivos con el diálogo, cada uno se leía entero en memoria (`readFile`) y con tres a la vez la app se quedaba sin memoria con archivos grandes. Ahora se leen por tramos (`PickedFile.slice`, plugin `fs` con `open`/`seek`/`read`);
+  - un archivo iba en una sola petición, que el servidor HTTP corta a los 5 minutos y que un corte de red tiraba entera. Ahora va en partes de 8 MB, cada una con hasta 4 intentos ante cortes o errores del servidor; si al final falla o se cancela, el archivo a medias se borra del servidor;
+  - si el socket de la sesión se cortaba un momento, el backend cerraba la sesión entre dos archivos de la cola y el resto fallaba. Ahora se reconecta a la misma sesión y la cola sigue; el estado muestra «Reconectando…»
+
+---
+
+## [0.12.1] — 2026-11-03
+
+Versión **parche** del backend sobre 0.12.0. La app 0.11.0 la necesita para subir por SFTP.
+
+### Corregido
+- Subida SFTP por partes (`PUT sftp/sessions/:id/file` con `offset` y `total`): cada parte es una petición corta, así que no choca con el `requestTimeout` de Node (5 min) ni con el de un proxy. Solo se continúa un archivo que la misma sesión empezó y desde el byte confirmado (`SftpSession.partials`); una parte que falla deja el archivo como estaba antes de ella (`setstat` del tamaño) para reintentarla. Sin `offset`/`total` funciona como antes
+- Evento `sftp:discard`: borra el archivo a medias de una subida abandonada, solo si es de la propia sesión. Al cerrar la sesión se borran los que queden
+- La sesión SFTP sobrevive a un corte del socket: espera un minuto (`orphanedAt`) y el cliente la recupera al reconectar (`resume` en el handshake, `SftpSessionService.reattach`). Solo se cierra al momento cuando el cliente cierra el modal (`client namespace disconnect`) y no hay subidas en vuelo. Antes, el barrido la cerraba entre dos archivos de la cola y al reconectar se abría otra que la app ignoraba
+
+---
+
 ## [App de escritorio 0.10.0] — 2026-10-20
 
-Versión **menor** sobre 0.9.2. Requiere el backend 0.12.0.
+Versión **menor** sobre 0.9.2. Requiere el backend 0.12.0 y StartCode Cloud 0.3.0 (para las miniaturas; con una versión anterior la nube sigue mostrando iconos).
 
 ### Añadido
 - Túnel SSH en las conexiones a bases de datos (`ConnectionModal.tsx`, pestaña «Túnel SSH»): un interruptor lo activa y se elige entre un servidor ya dado de alta en el panel o credenciales SSH propias (host, puerto, usuario y contraseña o llave privada sin frase de paso). Con credenciales propias, la huella se lee sin autenticarse (`POST servers/host-key/scan`) y hay que confirmarla con el comando del servidor antes de guardar; si cambian el host o el puerto SSH, se pide de nuevo. Un servidor sin huella confirmada aparece marcado y no se puede usar hasta confirmarla en su detalle. La contraseña o llave guardada no vuelve a la app

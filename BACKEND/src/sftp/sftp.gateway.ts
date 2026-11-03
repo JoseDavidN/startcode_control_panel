@@ -3,7 +3,6 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
-  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
@@ -28,7 +27,7 @@ type Ack<T> = ({ ok: true } & T) | { ok: false; message: string };
  * streaming salen gratis.
  */
 @WebSocketGateway({ namespace: '/sftp' })
-export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class SftpGateway implements OnGatewayConnection {
   private readonly logger = new Logger(SftpGateway.name);
 
   constructor(
@@ -38,24 +37,39 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
-    const { token, serverId } = client.handshake.auth as {
+    const { token, serverId, resume } = client.handshake.auth as {
       token?: string;
       serverId?: string;
+      /** Sesión que tenía antes de que se cortara el socket */
+      resume?: string;
     };
+
+    /* Se escucha ya, antes de cualquier await. «client namespace disconnect»
+       es el cliente cerrando el modal; cualquier otro motivo es un corte, y
+       la sesión espera a que vuelva. */
+    client.once('disconnect', (reason: string) =>
+      this.sessions.onSocketGone(client.id, reason === 'client namespace disconnect'),
+    );
 
     try {
       const user = await this.wsAuth.authenticate(token, client);
       if (!serverId) throw new Error('Falta el servidor');
       if (typeof serverId !== 'string' || !isUUID(serverId)) throw new Error('Servidor no válido');
 
-      const session = await this.sessions.open(user.id, serverId, client.id);
+      const resumed =
+        typeof resume === 'string' && isUUID(resume)
+          ? this.sessions.reattach(resume, user.id, serverId, client.id)
+          : null;
+      const session = resumed ?? (await this.sessions.open(user.id, serverId, client.id));
       /* Sesión revocada: se cierra ya, aunque haya subidas en vuelo (que al
          desconectar normal sí se esperan). */
       this.wsAuth.onSessionEnd(client, () =>
         this.sessions.close(session.id, 'la sesión del panel terminó'),
       );
       if (client.disconnected) {
-        this.sessions.close(session.id, 'el cliente cerró la conexión');
+        /* Una recuperada vuelve a esperar: puede tener subidas en curso. */
+        if (resumed) this.sessions.release(session);
+        else this.sessions.close(session.id, 'el cliente cerró la conexión');
         return;
       }
       this.wsAuth.touch(client);
@@ -84,10 +98,6 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  handleDisconnect(client: Socket): void {
-    this.sessions.onSocketGone(client.id);
-  }
-
   @SubscribeMessage('sftp:list')
   async onList(
     @ConnectedSocket() client: Socket,
@@ -113,6 +123,17 @@ export class SftpGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<Ack<{ created: number }>> {
     return this.run(client, async (session) => ({
       created: await this.ops.mkdirp(session, body?.base, body?.dirs ?? []),
+    }));
+  }
+
+  /** Borra el archivo a medias de una subida por partes que no terminó. */
+  @SubscribeMessage('sftp:discard')
+  async onDiscard(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { destDir: string; relPath: string },
+  ): Promise<Ack<{ discarded: boolean }>> {
+    return this.run(client, async (session) => ({
+      discarded: await this.ops.discardPartial(session, body?.destDir, body?.relPath),
     }));
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadErrorStatus, uploadRemoteFile } from '@services/sftp.service';
+import { uploadErrorMessage, uploadErrorStatus, uploadRemoteFile } from '@services/sftp.service';
 import type { PickedFile } from '@lib/filePicker';
 import type { UploadItem } from '@typings/sftp.types';
 
@@ -7,13 +7,48 @@ import type { UploadItem } from '@typings/sftp.types';
 const CONCURRENCY = 3;
 /** Al aterrizar archivos se refresca el listado, pero no 300 veces seguidas. */
 const REFRESH_DEBOUNCE_MS = 500;
+/**
+ * Tamaño de cada parte. Una petición por archivo entero chocaba con el tiempo
+ * máximo del servidor HTTP (5 min en Node) en archivos grandes o conexiones
+ * lentas, y cualquier corte tiraba todo lo subido.
+ */
+const PART_BYTES = 8 * 1024 * 1024;
+/** Intentos por parte ante cortes de red o errores del servidor. */
+const PART_ATTEMPTS = 4;
 
 interface QueuedFile {
 	item: UploadItem;
 	picked: PickedFile;
 	controller: AbortController;
 	overwrite: boolean;
+	/** Bytes que el servidor ya confirmó */
+	sent: number;
 }
+
+interface UploadDeps {
+	sessionId: string | null;
+	destDir: string;
+	mkdirp: (base: string, dirs: string[]) => Promise<void>;
+	/** Borra en el servidor el archivo a medias de una subida que no terminó. */
+	discard: (destDir: string, relPath: string) => Promise<void>;
+	onLanded: () => void;
+}
+
+/* Se reintenta lo que puede ser pasajero: sin respuesta (red), 5xx o la
+   parte cortada (400). Un 404 es la sesión perdida; 409 y 413 no cambian. */
+const retryable = (error: unknown) => {
+	const status = uploadErrorStatus(error);
+	return status === undefined || status >= 500 || status === 400 || status === 408 || status === 429;
+};
+
+const wait = (ms: number, signal: AbortSignal) =>
+	new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(resolve, ms);
+		signal.addEventListener('abort', () => {
+			clearTimeout(timer);
+			reject(new DOMException('Cancelado', 'AbortError'));
+		}, { once: true });
+	});
 
 /**
  * Cola de subidas con progreso y error por archivo.
@@ -21,18 +56,16 @@ interface QueuedFile {
  * Cada item lleva su destino congelado desde que se encola: el usuario puede
  * seguir navegando mientras algo sube sin que los archivos acaben en otro sitio.
  */
-export function useSftpUploads(
-	sessionId: string | null,
-	destDir: string,
-	mkdirp: (base: string, dirs: string[]) => Promise<void>,
-	onLanded: () => void,
-) {
+export function useSftpUploads({ sessionId, destDir, mkdirp, discard, onLanded }: UploadDeps) {
 	const [items, setItems] = useState<UploadItem[]>([]);
 	const queueRef = useRef(new Map<string, QueuedFile>());
 	const runningRef = useRef(0);
 	const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const landedRef = useRef(onLanded);
-	landedRef.current = onLanded;
+
+	/* La sesión puede cambiar al reconectar y el usuario navega mientras sube:
+	   las subidas en curso leen siempre el valor de ahora. */
+	const live = useRef({ sessionId, destDir, discard, onLanded });
+	live.current = { sessionId, destDir, discard, onLanded };
 
 	useEffect(
 		() => () => {
@@ -49,12 +82,55 @@ export function useSftpUploads(
 
 	const scheduleRefresh = useCallback(() => {
 		if (refreshTimer.current) clearTimeout(refreshTimer.current);
-		refreshTimer.current = setTimeout(() => landedRef.current(), REFRESH_DEBOUNCE_MS);
+		refreshTimer.current = setTimeout(() => live.current.onLanded(), REFRESH_DEBOUNCE_MS);
 	}, []);
 
-	const pump = useCallback(() => {
-		if (!sessionId) return;
+	/** Sube un archivo parte a parte, reintentando cada una por separado. */
+	const send = useCallback(async (entry: QueuedFile) => {
+		const { item, picked, controller } = entry;
+		const signal = controller.signal;
+		const total = item.size;
+		/* Sin lectura por tramos (archivos de la nube) se descarga una vez y se parte. */
+		const whole = picked.slice ? null : await picked.blob();
+		const part = (start: number, end: number) =>
+			picked.slice ? picked.slice(start, end) : Promise.resolve(whole!.slice(start, end));
 
+		let offset = 0;
+		entry.sent = 0;
+		do {
+			const end = Math.min(total, offset + PART_BYTES);
+			const body = await part(offset, end);
+
+			for (let attempt = 1; ; attempt++) {
+				const sessionId = live.current.sessionId;
+				if (!sessionId) throw new Error('La sesión SFTP no está abierta');
+				try {
+					await uploadRemoteFile({
+						sessionId,
+						destDir: item.destDir,
+						relPath: item.relPath,
+						body,
+						offset,
+						total,
+						overwrite: offset === 0 && entry.overwrite,
+						signal,
+						onProgress: loaded => patch(item.id, { loaded: offset + loaded }),
+					});
+					break;
+				} catch (error) {
+					if (signal.aborted || attempt >= PART_ATTEMPTS || !retryable(error)) throw error;
+					patch(item.id, { loaded: offset });
+					await wait(1500 * 2 ** (attempt - 1), signal);
+				}
+			}
+
+			offset = end;
+			entry.sent = offset;
+			patch(item.id, { loaded: offset });
+		} while (offset < total);
+	}, [patch]);
+
+	const pump = useCallback(() => {
 		while (runningRef.current < CONCURRENCY) {
 			const next = [...queueRef.current.values()].find(
 				entry => entry.item.status === 'queued',
@@ -67,36 +143,35 @@ export function useSftpUploads(
 
 			void (async () => {
 				try {
-					const body = await next.picked.blob();
-					await uploadRemoteFile({
-						sessionId,
-						destDir: next.item.destDir,
-						relPath: next.item.relPath,
-						body,
-						overwrite: next.overwrite,
-						signal: next.controller.signal,
-						onProgress: loaded => patch(next.item.id, { loaded }),
-					});
+					await send(next);
 
 					next.item.status = 'done';
 					patch(next.item.id, { status: 'done', loaded: next.item.size });
-					if (next.item.destDir === destDir) scheduleRefresh();
+					if (next.item.destDir === live.current.destDir) scheduleRefresh();
 				} catch (error: unknown) {
 					const aborted = next.controller.signal.aborted;
 					const status = uploadErrorStatus(error);
+					const conflict = status === 409 && next.sent === 0;
 
-					next.item.status = aborted ? 'canceled' : status === 409 ? 'conflict' : 'error';
+					/* Lo que quedó a medias se borra: en el listado parecería completo.
+					   Si falló la primera parte, el servidor ya lo borró. */
+					if (next.sent > 0) {
+						void live.current.discard(next.item.destDir, next.item.relPath).catch(() => undefined);
+					}
+
+					next.item.status = aborted ? 'canceled' : conflict ? 'conflict' : 'error';
 					patch(next.item.id, {
 						status: next.item.status,
 						error: aborted
 							? 'Cancelado'
-							: status === 409
+							: conflict
 								? 'Ya existe en el destino'
 								: status === 413
 									? 'Supera el tamaño máximo permitido'
-									: error instanceof Error
-										? error.message
-										: 'No se pudo subir',
+									: status === 404
+										? 'La sesión SFTP se cerró; vuelve a abrir el explorador'
+										: uploadErrorMessage(error) ??
+											(error instanceof Error ? error.message : 'No se pudo subir'),
 					});
 				} finally {
 					runningRef.current--;
@@ -104,7 +179,7 @@ export function useSftpUploads(
 				}
 			})();
 		}
-	}, [sessionId, destDir, patch, scheduleRefresh]);
+	}, [patch, scheduleRefresh, send]);
 
 	const enqueue = useCallback(
 		async (files: PickedFile[]) => {
@@ -135,6 +210,7 @@ export function useSftpUploads(
 					picked: files[index],
 					controller: new AbortController(),
 					overwrite: false,
+					sent: 0,
 				});
 			});
 
@@ -145,8 +221,15 @@ export function useSftpUploads(
 	);
 
 	const cancel = useCallback((id: string) => {
-		queueRef.current.get(id)?.controller.abort();
-	}, []);
+		const entry = queueRef.current.get(id);
+		if (!entry) return;
+		entry.controller.abort();
+		/* Uno en cola no llega a arrancar: se marca aquí. */
+		if (entry.item.status === 'queued') {
+			entry.item.status = 'canceled';
+			patch(id, { status: 'canceled', error: 'Cancelado' });
+		}
+	}, [patch]);
 
 	const retry = useCallback(
 		(id: string, overwrite = false) => {
@@ -168,6 +251,13 @@ export function useSftpUploads(
 		items
 			.filter(item => item.status === 'conflict')
 			.forEach(item => retry(item.id, true));
+	}, [items, retry]);
+
+	/** Reintenta todos los que fallaron (p. ej. tras un corte de red largo). */
+	const retryAllFailed = useCallback(() => {
+		items
+			.filter(item => item.status === 'error')
+			.forEach(item => retry(item.id));
 	}, [items, retry]);
 
 	const clearFinished = useCallback(() => {
@@ -199,6 +289,7 @@ export function useSftpUploads(
 		cancel,
 		retry,
 		retryAllConflicts,
+		retryAllFailed,
 		clearFinished,
 		busy: items.some(item => item.status === 'queued' || item.status === 'uploading'),
 	};

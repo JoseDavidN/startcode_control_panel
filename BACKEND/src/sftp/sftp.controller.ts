@@ -68,6 +68,8 @@ export class SftpController {
       source: req,
       overwrite: query.overwrite === true,
       declaredSize: query.size,
+      offset: query.offset,
+      total: query.total,
     });
   }
 

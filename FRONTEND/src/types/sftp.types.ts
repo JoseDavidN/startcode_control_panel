@@ -31,7 +31,7 @@ export interface SftpReady {
 	entries: SftpEntry[];
 }
 
-export type SftpStatus = 'idle' | 'connecting' | 'ready' | 'error' | 'closed';
+export type SftpStatus = 'idle' | 'connecting' | 'ready' | 'reconnecting' | 'error' | 'closed';
 
 export type UploadStatus =
 	| 'queued'

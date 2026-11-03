@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { openSftpConnection, type SftpConnection } from '@services/sftp.service';
-import type { SftpEntry, SftpStatus } from '@typings/sftp.types';
+import type { SftpEntry, SftpListing, SftpStatus } from '@typings/sftp.types';
 
 /**
  * Sesión SFTP viva mientras el modal está abierto.
@@ -36,8 +36,15 @@ export function useSftpSession(serverId: string, enabled: boolean) {
 				}
 
 				connectionRef.current = connection;
+				/* Un corte no es el final: socket.io reintenta y el backend guarda
+				   la sesión un minuto. Mientras, las subidas siguen por HTTP. */
 				connection.onClosed(() => {
-					if (alive) setStatus('closed');
+					if (alive) setStatus('reconnecting');
+				});
+				connection.onReconnected(info => {
+					if (!alive) return;
+					setSessionId(info.sessionId);
+					setStatus('ready');
 				});
 
 				setSessionId(connection.sessionId);
@@ -100,6 +107,17 @@ export function useSftpSession(serverId: string, enabled: boolean) {
 		[cwd, navigate],
 	);
 
+	/** Lista una carpeta sin entrar en ella: vista previa y autocompletado. */
+	const peek = useCallback(async (path: string): Promise<SftpListing> => {
+		const connection = connectionRef.current;
+		if (!connection) throw new Error('La sesión SFTP no está abierta');
+		return connection.list(path);
+	}, []);
+
+	const discard = useCallback(async (destDir: string, relPath: string) => {
+		await connectionRef.current?.discard(destDir, relPath);
+	}, []);
+
 	const mkdirp = useCallback(async (base: string, dirs: string[]) => {
 		const connection = connectionRef.current;
 		if (!connection || dirs.length === 0) return;
@@ -120,5 +138,7 @@ export function useSftpSession(serverId: string, enabled: boolean) {
 		up,
 		createFolder,
 		mkdirp,
+		peek,
+		discard,
 	};
 }

@@ -20,11 +20,26 @@ export class UploadQueryDto {
   @MaxLength(4096)
   relPath: string;
 
-  @ApiPropertyOptional({ description: 'Tamaño declarado en bytes, solo informativo' })
+  @ApiPropertyOptional({ description: 'Bytes de este envío (la parte, en una subida por partes)' })
   @IsOptional()
   @IsInt()
   @Min(0)
   size?: number;
+
+  @ApiPropertyOptional({
+    description: 'Posición de esta parte dentro del archivo. Mayor que 0 continúa una subida empezada en la misma sesión',
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  offset?: number;
+
+  @ApiPropertyOptional({ description: 'Tamaño total del archivo, en una subida por partes' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  total?: number;
 
   @ApiPropertyOptional({ description: 'Sobrescribir si ya existe', default: false })
   @IsOptional()

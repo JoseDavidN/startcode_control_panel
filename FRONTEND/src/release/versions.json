@@ -3,10 +3,30 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.11.0",
+      "type": "minor",
+      "date": "2026-11-03",
+      "title": "Explorador SFTP rediseñado y subidas más fiables",
+      "changes": {
+        "added": [
+          "SFTP: un clic en una carpeta muestra lo que contiene sin entrar en ella; pulsa una de sus subcarpetas para seguir bajando y construir la ruta viendo siempre un nivel por delante. En un archivo verás su tamaño, permisos, fecha y ruta",
+          "SFTP: al escribir una ruta, la barra sugiere las carpetas que hay en ese punto; usa las flechas y Tab o Enter para añadirlas",
+          "SFTP: botón para reintentar de una vez todas las subidas que fallaron, y cancelar también lo que sigue en cola"
+        ],
+        "changed": [
+          "El explorador SFTP es más ancho y siempre del mismo alto, con la carpeta, la vista previa y las subidas en una sola vista: lo que subes ya no aparece debajo ni obliga a desplazarse",
+          "Las columnas de la lista de archivos (nombre, tamaño, permisos y fecha) quedan alineadas con su cabecera"
+        ],
+        "fixed": [
+          "Las subidas por SFTP ya no se caen con archivos grandes, conexiones lentas o cortes breves de red: los archivos se envían por partes que se reintentan solas, y si la conexión se corta un momento la subida continúa (requiere el backend 0.12.1)"
+        ]
+      }
+    },
+    {
       "version": "0.10.0",
       "type": "minor",
       "date": "2026-10-20",
-      "title": "Conexiones a bases de datos por túnel SSH",
+      "title": "Túnel SSH para bases de datos y miniaturas en la nube",
       "changes": {
         "added": [
           "Conexiones a bases de datos por túnel SSH, para motores que solo escuchan dentro del servidor o de su red privada. Puedes usar un servidor que ya tengas dado de alta o escribir credenciales SSH propias (contraseña o llave privada). Con credenciales propias, la app te muestra la huella del servidor SSH para que la confirmes antes de enviar nada (requiere el backend 0.12.0)",

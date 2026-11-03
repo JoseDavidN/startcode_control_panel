@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readFile, stat } from '@tauri-apps/plugin-fs';
+import { open as openFile, readDir, readFile, SeekMode, stat } from '@tauri-apps/plugin-fs';
 import { basename, join } from '@tauri-apps/api/path';
 
 /**
@@ -28,6 +28,8 @@ export interface PickedFile {
 	name: string;
 	size: number;
 	blob(): Promise<Blob>;
+	/** Bytes [start, end): para subir por partes sin cargar el archivo entero. Sin él, se parte `blob()`. */
+	slice?(start: number, end: number): Promise<Blob>;
 }
 
 /** Lo elegido o soltado, y las carpetas de paquetes que se dejaron fuera (ruta relativa). */
@@ -58,7 +60,31 @@ async function pickedFromPath(path: string, relPath: string): Promise<PickedFile
 		name: relPath.split('/').pop() ?? relPath,
 		size: info.size,
 		blob: async () => new Blob([await readFile(path)]),
+		slice: (start, end) => readRange(path, start, end),
 	};
+}
+
+/**
+ * Lee solo un tramo del archivo. `readFile` lo cargaría entero en memoria (y
+ * lo pasaría entero por IPC): con varios archivos grandes a la vez, la app se
+ * quedaba sin memoria y la subida se caía.
+ */
+async function readRange(path: string, start: number, end: number): Promise<Blob> {
+	const handle = await openFile(path, { read: true });
+	try {
+		await handle.seek(start, SeekMode.Start);
+		const buffer = new Uint8Array(end - start);
+		let filled = 0;
+		/* `read` puede devolver menos de lo pedido: se repite hasta llenar. */
+		while (filled < buffer.length) {
+			const n = await handle.read(buffer.subarray(filled));
+			if (!n) break;
+			filled += n;
+		}
+		return new Blob([filled === buffer.length ? buffer : buffer.subarray(0, filled)]);
+	} finally {
+		await handle.close();
+	}
 }
 
 /** Todos los archivos bajo `dir`, con su ruta relativa a la carpeta elegida. `root`: la elegida, que nunca se omite. */
@@ -98,6 +124,7 @@ function pickedFromFile(file: File, relPath?: string): PickedFile {
 		name: file.name,
 		size: file.size,
 		blob: () => Promise.resolve(file),
+		slice: (start, end) => Promise.resolve(file.slice(start, end)),
 	};
 }
 

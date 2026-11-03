@@ -35,6 +35,8 @@ export class SftpSessionService implements OnModuleDestroy {
   private readonly idleTimeoutMs: number;
   private readonly maxSessionsPerUser: number;
   private readonly maxLifetimeMs = 2 * 60 * 60 * 1000;
+  /** Tiempo que una sesión sin socket espera a que el cliente se reconecte. */
+  private readonly orphanGraceMs = 60_000;
 
   constructor(
     private readonly sshService: SSHService,
@@ -105,7 +107,9 @@ export class SftpSessionService implements OnModuleDestroy {
       lastUsedAt: now,
       activeUploads: 0,
       ensuredDirs: new Set<string>(),
+      partials: new Map<string, number>(),
       socketId,
+      orphanedAt: null,
       closing: false,
     };
 
@@ -129,6 +133,41 @@ export class SftpSessionService implements OnModuleDestroy {
     return session;
   }
 
+  /**
+   * El socket se cortó (red, suspensión) y el cliente vuelve con la misma
+   * sesión: se le devuelve en vez de abrir otra, y las subidas que siguen por
+   * HTTP no notan nada. Solo si es suya, del mismo servidor y está libre.
+   */
+  reattach(
+    sessionId: string,
+    userId: string,
+    serverId: string,
+    socketId: string,
+  ): SftpSession | null {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.closing ||
+      session.userId !== userId ||
+      session.serverId !== serverId ||
+      session.socketId !== null
+    ) {
+      return null;
+    }
+
+    session.socketId = socketId;
+    session.orphanedAt = null;
+    session.lastUsedAt = Date.now();
+    this.logger.log(`📂 Sesión SFTP ${session.id} recuperada tras reconectar`);
+    return session;
+  }
+
+  /** Deja la sesión sin socket, esperando otra reconexión. */
+  release(session: SftpSession): void {
+    session.socketId = null;
+    session.orphanedAt = Date.now();
+  }
+
   getBySocket(socketId: string): SftpSession | undefined {
     for (const session of this.sessions.values()) {
       if (session.socketId === socketId) return session;
@@ -141,15 +180,17 @@ export class SftpSessionService implements OnModuleDestroy {
   }
 
   /**
-   * El socket se fue. Si no hay subidas en vuelo se cierra ya; si las hay, se
-   * deja viva y el barrido la recogerá cuando terminen.
+   * El socket se fue. Si el cliente lo cerró (el modal) y no hay subidas en
+   * vuelo, se cierra ya. Si se cortó, se espera un rato a que se reconecte:
+   * cerrarla entre dos archivos de la cola tiraría el resto de la subida.
    */
-  onSocketGone(socketId: string): void {
+  onSocketGone(socketId: string, intentional: boolean): void {
     const session = this.getBySocket(socketId);
     if (!session) return;
 
     session.socketId = null;
-    if (session.activeUploads === 0) {
+    session.orphanedAt = Date.now();
+    if (intentional && session.activeUploads === 0) {
       this.close(session.id, 'el cliente cerró la conexión');
     }
   }
@@ -161,17 +202,42 @@ export class SftpSessionService implements OnModuleDestroy {
     session.closing = true;
     this.sessions.delete(sessionId);
 
-    for (const closeable of [session.meta, session.data]) {
-      try {
-        closeable.end();
-      } catch {
-        /* ya cerrado */
+    const end = () => {
+      for (const closeable of [session.meta, session.data]) {
+        try {
+          closeable.end();
+        } catch {
+          /* ya cerrado */
+        }
       }
-    }
-    try {
-      session.ssh.end();
-    } catch {
-      /* ya cerrada */
+      try {
+        session.ssh.end();
+      } catch {
+        /* ya cerrada */
+      }
+    };
+
+    /* Los archivos a medias se borran antes de soltar la conexión: en el
+       listado parecerían completos. Con un límite, por si el canal no responde. */
+    const partials = [...session.partials.keys()];
+    session.partials.clear();
+    if (partials.length === 0) {
+      end();
+    } else {
+      const unlinks = partials.map(
+        (path) =>
+          new Promise<void>((resolve) => {
+            try {
+              session.data.unlink(path, () => resolve());
+            } catch {
+              resolve();
+            }
+          }),
+      );
+      void Promise.race([
+        Promise.all(unlinks),
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]).then(end);
     }
 
     this.logger.log(`📂 Sesión SFTP ${sessionId} cerrada: ${reason}`);
@@ -186,7 +252,9 @@ export class SftpSessionService implements OnModuleDestroy {
       if (session.activeUploads > 0) continue;
 
       if (session.socketId === null) {
-        this.close(session.id, 'sin cliente');
+        if (now - (session.orphanedAt ?? 0) > this.orphanGraceMs) {
+          this.close(session.id, 'sin cliente');
+        }
       } else if (now - session.lastUsedAt > this.idleTimeoutMs) {
         this.close(session.id, 'inactividad');
       } else if (now - session.createdAt > this.maxLifetimeMs) {

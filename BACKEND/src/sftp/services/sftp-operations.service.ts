@@ -172,6 +172,12 @@ export class SftpOperationsService {
 
   /* ── Subida ─────────────────────────────────────────────────────── */
 
+  /**
+   * Escribe un archivo o una parte de él. El cliente manda los archivos
+   * grandes en partes consecutivas (`offset`, `total`): cada parte es una
+   * petición corta que no choca con los tiempos máximos del servidor HTTP ni
+   * de un proxy, y si una falla se reintenta solo esa.
+   */
   async uploadStream(
     session: SftpSession,
     opts: {
@@ -179,44 +185,75 @@ export class SftpOperationsService {
       relPath: string;
       source: Readable;
       overwrite: boolean;
-      /** Tamaño que declara el cliente; sirve para detectar una subida cortada */
+      /** Bytes que declara el cliente para este envío; detecta una subida cortada */
       declaredSize?: number;
+      /** Posición de la parte; mayor que 0 continúa una subida de esta sesión */
+      offset?: number;
+      /** Tamaño final del archivo, si llega por partes */
+      total?: number;
     },
-  ): Promise<{ path: string; bytes: number; overwritten: boolean }> {
+  ): Promise<{ path: string; bytes: number; overwritten: boolean; complete: boolean }> {
     const base = normalizeAbsolute(opts.destDir, session.home);
     const target = resolveInside(base, opts.relPath);
+    const offset = opts.offset ?? 0;
+    const total = opts.total;
 
     /* Si el cliente ya avisa de que no cabe, se rechaza sin abrir nada en el servidor. */
     const declared = opts.declaredSize ?? this.contentLength(opts.source);
-    if (declared !== undefined && declared > this.maxUploadBytes) {
+    if (
+      (declared !== undefined && offset + declared > this.maxUploadBytes) ||
+      (total !== undefined && total > this.maxUploadBytes)
+    ) {
       throw new PayloadTooLargeException('El archivo supera el tamaño máximo permitido');
     }
+    if (total !== undefined && offset > total) {
+      throw new BadRequestException('La parte queda fuera del archivo');
+    }
 
-    await this.ensureDir(session, parentOf(target), base);
+    let existing: Stats | null = null;
 
-    const existing = await this.promisify<Stats>((cb) =>
-      session.data.lstat(target, cb),
-    ).catch(() => null);
-
-    if (existing) {
-      if (existing.isSymbolicLink()) {
-        /* Escribir a través de un enlace acabaría tocando un archivo que el
-           usuario no ve en la lista. */
-        throw new ConflictException(
-          'El destino es un enlace simbólico; bórralo antes de sobrescribir',
-        );
+    if (offset > 0) {
+      /* Continuar solo lo que esta sesión empezó y justo donde se quedó: así
+         una parte no puede escribir en un archivo ajeno ni dejar huecos. */
+      if (session.partials.get(target) !== offset) {
+        throw new ConflictException('La subida no se puede continuar; empieza de nuevo');
       }
-      if (!opts.overwrite) {
-        throw new ConflictException('El archivo ya existe en el destino');
+      const stats = await this.promisify<Stats>((cb) => session.data.lstat(target, cb)).catch(() => null);
+      if (!stats || !stats.isFile()) {
+        session.partials.delete(target);
+        throw new ConflictException('El archivo a medias ya no está en el destino');
+      }
+    } else {
+      await this.ensureDir(session, parentOf(target), base);
+
+      existing = await this.promisify<Stats>((cb) =>
+        session.data.lstat(target, cb),
+      ).catch(() => null);
+
+      if (existing && !session.partials.has(target)) {
+        if (existing.isSymbolicLink()) {
+          /* Escribir a través de un enlace acabaría tocando un archivo que el
+             usuario no ve en la lista. */
+          throw new ConflictException(
+            'El destino es un enlace simbólico; bórralo antes de sobrescribir',
+          );
+        }
+        if (!opts.overwrite) {
+          throw new ConflictException('El archivo ya existe en el destino');
+        }
       }
     }
 
-    const counter = new ByteCounter(this.maxUploadBytes);
+    const counter = new ByteCounter(this.maxUploadBytes - offset);
     /* `wx` (O_CREAT|O_EXCL) es el segundo cerrojo: entre el lstat de arriba y
-       esta llamada cabe una carrera, y sin él se sobrescribiría a ciegas. */
+       esta llamada cabe una carrera, y sin él se sobrescribiría a ciegas. Una
+       primera parte que se reintenta pisa su propio archivo a medias. Las
+       siguientes escriben en su posición sin truncar. */
+    const restarting = offset === 0 && session.partials.has(target);
     const writeStream = session.data.createWriteStream(target, {
-      flags: opts.overwrite ? 'w' : 'wx',
+      flags: offset > 0 ? 'r+' : opts.overwrite || restarting ? 'w' : 'wx',
       mode: 0o644,
+      ...(offset > 0 ? { start: offset } : {}),
     });
 
     session.activeUploads++;
@@ -229,31 +266,65 @@ export class SftpOperationsService {
          el mensaje no llegó entero; el tamaño declarado lo confirma. */
       const incomplete =
         (opts.source as Readable & { complete?: boolean }).complete === false ||
-        (opts.declaredSize !== undefined && counter.bytes !== opts.declaredSize);
+        (opts.declaredSize !== undefined && counter.bytes !== opts.declaredSize) ||
+        (total !== undefined && offset + counter.bytes > total);
 
       if (incomplete) {
         throw new BadRequestException('La subida se interrumpió antes de terminar');
       }
     } catch (error) {
-      /* No dejar medio archivo: es peor que no tener nada, porque en el
-         listado parece completo. Primero hay que cerrar el stream y esperar a
-         que el canal SFTP se vacíe: si no, las escrituras que quedan en vuelo
-         llegan DESPUÉS del unlink y vuelven a crear el archivo. */
+      /* Primero hay que cerrar el stream y esperar a que el canal SFTP se
+         vacíe: si no, las escrituras que quedan en vuelo llegan DESPUÉS del
+         unlink (o del recorte) y vuelven a escribir el archivo. */
       await this.closeStream(writeStream);
-      await this.promisify<void>((cb) => session.data.unlink(target, cb)).catch(
-        () => undefined,
-      );
+      if (offset > 0) {
+        /* Se deja como estaba antes de esta parte, para poder reintentarla. */
+        await this.promisify<void>((cb) =>
+          session.data.setstat(target, { size: offset }, cb),
+        ).catch(() => undefined);
+      } else {
+        /* No dejar medio archivo: en el listado parece completo. */
+        session.partials.delete(target);
+        await this.promisify<void>((cb) => session.data.unlink(target, cb)).catch(
+          () => undefined,
+        );
+      }
       throw this.translate(error);
     } finally {
       session.activeUploads--;
       session.lastUsedAt = Date.now();
     }
 
+    const written = offset + counter.bytes;
+    const complete = total === undefined || written === total;
+    const overwritten = offset > 0 ? false : Boolean(existing) && !restarting;
+
+    if (!complete) {
+      session.partials.set(target, written);
+      return { path: target, bytes: counter.bytes, overwritten, complete };
+    }
+
+    session.partials.delete(target);
     this.logger.log(
-      `⬆️  ${session.username}@${session.host}:${target} · ${counter.bytes} bytes (usuario ${session.userId})`,
+      `⬆️  ${session.username}@${session.host}:${target} · ${written} bytes (usuario ${session.userId})`,
     );
 
-    return { path: target, bytes: counter.bytes, overwritten: Boolean(existing) };
+    return { path: target, bytes: counter.bytes, overwritten, complete };
+  }
+
+  /**
+   * Borra un archivo a medias que el cliente abandonó (cancelado o con
+   * error). Solo los que esta sesión dejó sin terminar: no es un borrado
+   * general.
+   */
+  async discardPartial(session: SftpSession, destDir: string, relPath: string): Promise<boolean> {
+    const base = normalizeAbsolute(destDir, session.home);
+    const target = resolveInside(base, relPath);
+    if (!session.partials.has(target)) return false;
+
+    session.partials.delete(target);
+    await this.promisify<void>((cb) => session.data.unlink(target, cb)).catch(() => undefined);
+    return true;
   }
 
   /* ── Internos ───────────────────────────────────────────────────── */

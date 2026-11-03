@@ -11,6 +11,8 @@ type Ack<T> = ({ ok: true } & T) | { ok: false; message: string };
 
 /** Ningún ack debería tardar esto: si tarda, algo se quedó colgado. */
 const ACK_TIMEOUT_MS = 20_000;
+/** Crear el árbol de una carpeta grande son miles de mkdir en el servidor. */
+const MKDIRP_TIMEOUT_MS = 120_000;
 
 export interface SftpConnection {
 	readonly sessionId: string;
@@ -22,7 +24,12 @@ export interface SftpConnection {
 	mkdir(path: string, name: string): Promise<string>;
 	mkdirp(base: string, dirs: string[]): Promise<number>;
 	realpath(path: string): Promise<string>;
+	/** Borra el archivo a medias de una subida por partes que no terminó. */
+	discard(destDir: string, relPath: string): Promise<void>;
+	/** El socket se cortó; socket.io reintenta solo. */
 	onClosed(cb: (reason: string) => void): () => void;
+	/** Volvió. Si el backend ya no tenía la sesión, `sessionId` es otra. */
+	onReconnected(cb: (info: SftpReady) => void): () => void;
 	close(): void;
 }
 
@@ -34,19 +41,25 @@ const socketBase = () => API_CONFIG.WS_URL;
  */
 export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 	return new Promise((resolve, reject) => {
+		/* Al reconectar se pide la misma sesión (`resume`): el backend la guarda
+		   un minuto tras un corte, y las subidas en curso siguen con ella. El
+		   token se lee en cada intento: puede haberse renovado. */
+		let sessionId: string | null = null;
+		let resolved = false;
 		const socket: Socket = io(`${socketBase()}/sftp`, {
 			transports: ['websocket'],
-			auth: { token: TokenManager.getAccessToken(), serverId },
+			auth: cb => cb({ token: TokenManager.getAccessToken(), serverId, resume: sessionId ?? undefined }),
 		});
 
 		const closedHandlers = new Set<(reason: string) => void>();
+		const reconnectedHandlers = new Set<(info: SftpReady) => void>();
 		watchSessionRevoked(socket);
 
-		const emit = <T,>(event: string, payload: unknown): Promise<T> =>
+		const emit = <T,>(event: string, payload: unknown, timeoutMs = ACK_TIMEOUT_MS): Promise<T> =>
 			new Promise<T>((ok, fail) => {
 				const timer = setTimeout(
 					() => fail(new Error('El servidor no respondió a tiempo')),
-					ACK_TIMEOUT_MS,
+					timeoutMs,
 				);
 
 				socket.emit(event, payload, (ack: Ack<T>) => {
@@ -60,7 +73,9 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 		socket.on('sftp:error', (payload: { message?: string; code?: string }) => {
 			/* Clave de host cambiada: el modal global enseña las dos huellas. */
 			reportHostKeyMismatch(payload);
-			reject(new Error(payload?.message ?? 'No se pudo abrir la sesión SFTP'));
+			const message = payload?.message ?? 'No se pudo abrir la sesión SFTP';
+			if (!resolved) reject(new Error(message));
+			else closedHandlers.forEach(cb => cb(message));
 		});
 
 		socket.on('disconnect', (reason: string) => {
@@ -68,8 +83,16 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 		});
 
 		socket.on('sftp:ready', (info: SftpReady) => {
+			sessionId = info.sessionId;
+			if (resolved) {
+				reconnectedHandlers.forEach(cb => cb(info));
+				return;
+			}
+			resolved = true;
 			resolve({
-				sessionId: info.sessionId,
+				get sessionId() {
+					return sessionId ?? info.sessionId;
+				},
 				home: info.home,
 				serverName: info.serverName,
 				user: info.user,
@@ -79,7 +102,10 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 				mkdir: async (path, name) =>
 					(await emit<{ path: string }>('sftp:mkdir', { path, name })).path,
 				mkdirp: async (base, dirs) =>
-					(await emit<{ created: number }>('sftp:mkdirp', { base, dirs })).created,
+					(await emit<{ created: number }>('sftp:mkdirp', { base, dirs }, MKDIRP_TIMEOUT_MS)).created,
+				discard: async (destDir, relPath) => {
+					await emit<{ discarded: boolean }>('sftp:discard', { destDir, relPath });
+				},
 				realpath: async path =>
 					(await emit<{ path: string }>('sftp:realpath', { path })).path,
 
@@ -87,8 +113,13 @@ export function openSftpConnection(serverId: string): Promise<SftpConnection> {
 					closedHandlers.add(cb);
 					return () => closedHandlers.delete(cb);
 				},
+				onReconnected: cb => {
+					reconnectedHandlers.add(cb);
+					return () => reconnectedHandlers.delete(cb);
+				},
 				close: () => {
 					closedHandlers.clear();
+					reconnectedHandlers.clear();
 					socket.disconnect();
 				},
 			});
@@ -101,8 +132,12 @@ export interface UploadArgs {
 	destDir: string;
 	relPath: string;
 	body: Blob;
+	/** Posición de esta parte en el archivo */
+	offset: number;
+	/** Tamaño total del archivo */
+	total: number;
 	overwrite?: boolean;
-	onProgress?: (loaded: number, total: number) => void;
+	onProgress?: (loaded: number) => void;
 	signal?: AbortSignal;
 }
 
@@ -110,22 +145,30 @@ export interface UploadResult {
 	path: string;
 	bytes: number;
 	overwritten: boolean;
+	complete: boolean;
 }
 
 /** Código HTTP de un error de axios, si lo hay. */
 export const uploadErrorStatus = (error: unknown): number | undefined =>
 	(error as { response?: { status?: number } })?.response?.status;
 
+/** Mensaje del backend en un error de axios, si lo hay. */
+export const uploadErrorMessage = (error: unknown): string | undefined => {
+	const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+	return typeof message === 'string' ? message : Array.isArray(message) ? message.join(', ') : undefined;
+};
+
 /**
- * Sube un archivo. El cuerpo va como octet-stream para que el navegador lo
- * transmita desde disco sin cargarlo en memoria; `timeout: 0` es obligatorio,
- * porque el de 30 s del cliente cortaría cualquier archivo grande.
+ * Sube una parte. El cuerpo va como octet-stream; `timeout: 0` porque el de
+ * 30 s del cliente cortaría una parte en una conexión lenta.
  */
 export async function uploadRemoteFile(args: UploadArgs): Promise<UploadResult> {
 	const params = new URLSearchParams({
 		destDir: args.destDir,
 		relPath: args.relPath,
 		size: String(args.body.size),
+		offset: String(args.offset),
+		total: String(args.total),
 	});
 	if (args.overwrite) params.set('overwrite', 'true');
 
@@ -136,9 +179,7 @@ export async function uploadRemoteFile(args: UploadArgs): Promise<UploadResult> 
 			headers: { 'Content-Type': 'application/octet-stream' },
 			timeout: 0,
 			signal: args.signal,
-			onUploadProgress: (event: { loaded: number; total?: number }) => {
-				args.onProgress?.(event.loaded, event.total ?? args.body.size);
-			},
+			onUploadProgress: (event: { loaded: number }) => args.onProgress?.(event.loaded),
 		},
 	);
 

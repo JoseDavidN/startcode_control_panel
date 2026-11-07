@@ -1,6 +1,6 @@
 import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import { Readable } from 'stream';
+import { Readable, Writable } from 'stream';
 import type { SftpSession } from '../sftp.types';
 import { MAX_MKDIRP_DIRS, SftpOperationsService } from './sftp-operations.service';
 
@@ -93,5 +93,33 @@ describe('SftpOperationsService: subida por partes', () => {
     await expect(ops.discardPartial(s, '/srv', 'a.bin')).resolves.toBe(true);
     expect(data.unlink).toHaveBeenCalledWith('/srv/a.bin', expect.any(Function));
     expect(s.partials.size).toBe(0);
+  });
+});
+
+describe('SftpOperationsService: descarga', () => {
+  const statsOf = (kind: 'file' | 'dir' | 'fifo', size = 0) => ({
+    size,
+    isFile: () => kind === 'file',
+    isDirectory: () => kind === 'dir',
+  });
+  const withStat = (stats: unknown) => {
+    const meta = { stat: jest.fn((_p: string, cb: (e: null, s: unknown) => void) => cb(null, stats)) };
+    return { home: '/home/deploy', meta, data: { open: jest.fn() }, activeDownloads: 0 } as unknown as SftpSession;
+  };
+
+  it('distingue archivo y carpeta, y la raíz tiene nombre', async () => {
+    const ops = new SftpOperationsService(config(1024));
+    await expect(ops.downloadInfo(withStat(statsOf('file', 5)), '/srv/a.txt')).resolves.toMatchObject({ kind: 'file', name: 'a.txt', size: 5 });
+    await expect(ops.downloadInfo(withStat(statsOf('dir')), '/')).resolves.toMatchObject({ kind: 'dir', name: 'raiz' });
+  });
+
+  it('rechaza lo que no es archivo ni carpeta antes de abrir nada: leer una tubería no acaba', async () => {
+    const ops = new SftpOperationsService(config(1024));
+    const s = withStat(statsOf('fifo'));
+    const res = Object.assign(new Writable(), { setHeader: jest.fn() });
+    await expect(ops.download(s, '/srv/pipe', res)).rejects.toBeInstanceOf(BadRequestException);
+    expect((s.data as unknown as { open: jest.Mock }).open).not.toHaveBeenCalled();
+    expect(res.setHeader).not.toHaveBeenCalled();
+    expect(s.activeDownloads).toBe(0);
   });
 });

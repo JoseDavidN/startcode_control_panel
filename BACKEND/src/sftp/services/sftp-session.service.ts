@@ -106,6 +106,7 @@ export class SftpSessionService implements OnModuleDestroy {
       createdAt: now,
       lastUsedAt: now,
       activeUploads: 0,
+      activeDownloads: 0,
       ensuredDirs: new Set<string>(),
       partials: new Map<string, number>(),
       socketId,
@@ -114,6 +115,12 @@ export class SftpSessionService implements OnModuleDestroy {
     };
 
     this.sessions.set(session.id, session);
+
+    /* Si se cae la conexión o un canal, una petición nueva sobre él no recibiría
+       respuesta nunca: se quedaría colgada. Sin la sesión, recibe un 404. */
+    for (const channel of [ssh, meta, data]) {
+      channel.once('close', () => this.close(session.id, 'la conexión SSH se cerró'));
+    }
     this.logger.log(
       `📂 Sesión SFTP abierta en ${server.name} (${session.id}) para el usuario ${userId}`,
     );
@@ -190,7 +197,7 @@ export class SftpSessionService implements OnModuleDestroy {
 
     session.socketId = null;
     session.orphanedAt = Date.now();
-    if (intentional && session.activeUploads === 0) {
+    if (intentional && session.activeUploads === 0 && session.activeDownloads === 0) {
       this.close(session.id, 'el cliente cerró la conexión');
     }
   }
@@ -249,7 +256,7 @@ export class SftpSessionService implements OnModuleDestroy {
     const now = Date.now();
 
     for (const session of [...this.sessions.values()]) {
-      if (session.activeUploads > 0) continue;
+      if (session.activeUploads > 0 || session.activeDownloads > 0) continue;
 
       if (session.socketId === null) {
         if (now - (session.orphanedAt ?? 0) > this.orphanGraceMs) {

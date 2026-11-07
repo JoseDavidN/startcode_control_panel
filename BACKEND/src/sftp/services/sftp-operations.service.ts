@@ -8,6 +8,7 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import archiver from 'archiver';
 import { Readable, Transform, TransformCallback, Writable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { posix } from 'path';
@@ -24,6 +25,28 @@ import {
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 /** Carpetas por lote de `mkdirp`: una subida de árbol real no se acerca. */
 export const MAX_MKDIRP_DIRS = 10_000;
+
+/** Trozo de lectura: 64 KB (lo de ssh2 por defecto) limita mucho con latencia alta. */
+const READ_CHUNK_BYTES = 256 * 1024;
+/** Sistemas de archivos virtuales: leerlos no acaba nunca o se queda colgado. */
+const VIRTUAL_ROOTS = ['/proc', '/sys', '/dev'];
+/** Tope de líneas de la lista de lo que no entró en un .zip. */
+const MAX_SKIPPED_LISTED = 5000;
+const SKIPPED_FILE = '_no-incluidos.txt';
+
+const isVirtualPath = (path: string) =>
+  VIRTUAL_ROOTS.some((root) => path === root || path.startsWith(`${root}/`));
+
+/**
+ * Nombre seguro dentro de un .zip. En Linux, `..\\..\\x` es un nombre válido
+ * que al descomprimir en Windows saldría de la carpeta de destino.
+ */
+const zipSegment = (name: string) =>
+  // eslint-disable-next-line no-control-regex
+  name.replace(/[\\\x00-\x1f\x7f]/g, '_');
+
+/** Cabecera de descarga; el nombre va codificado, así no puede romper la cabecera. */
+const attachment = (name: string) => `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
 
 /** Corta el stream en cuanto se pasa del límite, sin esperar al final. */
 class ByteCounter extends Transform {
@@ -42,6 +65,11 @@ class ByteCounter extends Transform {
     callback(null, chunk);
   }
 }
+
+/** La respuesta HTTP, en lo que la descarga necesita de ella. */
+export type DownloadTarget = Writable & {
+  setHeader(name: string, value: string): unknown;
+};
 
 @Injectable()
 export class SftpOperationsService {
@@ -325,6 +353,230 @@ export class SftpOperationsService {
     session.partials.delete(target);
     await this.promisify<void>((cb) => session.data.unlink(target, cb)).catch(() => undefined);
     return true;
+  }
+
+  /* ── Descarga ───────────────────────────────────────────────────── */
+
+  /** Qué hay en la ruta. Sigue los enlaces: descargar uno trae lo que apunta. */
+  async downloadInfo(
+    session: SftpSession,
+    rawPath: string,
+  ): Promise<{ path: string; name: string; kind: 'file' | 'dir'; size: number }> {
+    const path = normalizeAbsolute(rawPath, session.home);
+    const stats = await this.promisify<Stats>((cb) => session.meta.stat(path, cb));
+
+    /* Una tubería o un dispositivo no tienen fin: leerlos dejaría la descarga colgada. */
+    if (!stats.isFile() && !stats.isDirectory()) {
+      throw new BadRequestException('Solo se pueden descargar archivos y carpetas');
+    }
+
+    return {
+      path,
+      name: posix.basename(path) || 'raiz',
+      kind: stats.isDirectory() ? 'dir' : 'file',
+      size: stats.isFile() ? stats.size ?? 0 : 0,
+    };
+  }
+
+  /**
+   * Escribe el archivo o la carpeta en la respuesta. Lo que falla antes de
+   * empezar lanza (y llega como error HTTP). Después ya no hay forma de avisar:
+   * se corta la conexión y el cliente, al recibir la respuesta incompleta,
+   * descarta lo escrito.
+   */
+  async download(
+    session: SftpSession,
+    rawPath: string,
+    res: DownloadTarget,
+  ): Promise<void> {
+    const info = await this.downloadInfo(session, rawPath);
+    /* Abrir antes de responder: un permiso denegado aún puede ser un error HTTP. */
+    const handle = info.kind === 'file' ? await this.openForRead(session, info.path) : null;
+
+    session.activeDownloads++;
+    session.lastUsedAt = Date.now();
+    try {
+      const bytes = handle
+        ? await this.sendFile(session, info, handle, res)
+        : await this.sendZip(session, info, res);
+      this.logger.log(
+        `⬇️  ${session.username}@${session.host}:${info.path} · ${bytes} bytes (usuario ${session.userId})`,
+      );
+    } catch (error) {
+      /* El cliente canceló o se cayó el canal: no hay a quién contestarle. */
+      this.logger.warn(
+        `Descarga de ${info.path} cortada: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      res.destroy();
+    } finally {
+      session.activeDownloads--;
+      session.lastUsedAt = Date.now();
+    }
+  }
+
+  private async sendFile(
+    session: SftpSession,
+    info: { path: string; name: string; size: number },
+    handle: Buffer,
+    res: DownloadTarget,
+  ): Promise<number> {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', attachment(info.name));
+    /* Solo con tamaño: un archivo que dice medir 0 (los de /proc) puede tener
+       contenido, y uno que crece (un log) se corta en lo anunciado para que la
+       respuesta coincida con su `Content-Length`. */
+    if (info.size > 0) res.setHeader('Content-Length', String(info.size));
+
+    const counter = new ByteCounter(Number.MAX_SAFE_INTEGER);
+    await pipeline(
+      session.data.createReadStream(info.path, {
+        handle,
+        highWaterMark: READ_CHUNK_BYTES,
+        ...(info.size > 0 ? { end: info.size - 1 } : {}),
+      }),
+      counter,
+      res,
+    );
+    return counter.bytes;
+  }
+
+  /**
+   * Comprime la carpeta mientras la recorre, un archivo cada vez: ni ocupa
+   * memoria ni abre miles de archivos a la vez en el servidor. Lo que no se
+   * puede leer no tira la descarga: queda en `_no-incluidos.txt`, en la raíz
+   * del .zip. Los enlaces simbólicos tampoco entran: seguirlos puede dar ciclos
+   * o traer medio disco, y un enlace dentro de un .zip puede hacer que al
+   * descomprimir se escriba fuera de la carpeta.
+   */
+  private async sendZip(
+    session: SftpSession,
+    info: { path: string; name: string },
+    res: DownloadTarget,
+  ): Promise<number> {
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', attachment(`${info.name}.zip`));
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    const counter = new ByteCounter(Number.MAX_SAFE_INTEGER);
+    const sent = pipeline(archive, counter, res);
+
+    /* Si la respuesta se cae, la espera de cada entrada no terminaría nunca. */
+    let failure: Error | null = null;
+    /* El que se está leyendo: al abortar hay que soltar su handle en el servidor. */
+    let reading: Readable | null = null;
+    const stopped = sent.catch((error: Error) => {
+      failure = error;
+      archive.abort();
+      reading?.destroy();
+    });
+
+    const skipped: string[] = [];
+    let skippedCount = 0;
+    const skip = (path: string, reason: string) => {
+      skippedCount++;
+      if (skipped.length < MAX_SKIPPED_LISTED) skipped.push(`${path}: ${reason}`);
+    };
+
+    const nextEntry = () =>
+      Promise.race([
+        new Promise<void>((resolve) => archive.once('entry', () => resolve())),
+        stopped,
+      ]);
+
+    const pending: { path: string; rel: string }[] = [
+      { path: info.path, rel: zipSegment(info.name) },
+    ];
+
+    while (pending.length > 0 && !failure && !session.closing) {
+      const dir = pending.pop()!;
+      if (isVirtualPath(dir.path)) {
+        skip(dir.path, 'sistema de archivos virtual');
+        continue;
+      }
+
+      let items: FileEntryWithStats[];
+      try {
+        items = await this.promisify<FileEntryWithStats[]>((cb) =>
+          session.data.readdir(dir.path, cb),
+        );
+      } catch (error) {
+        skip(dir.path, this.reason(error));
+        continue;
+      }
+
+      /* Una carpeta vacía también es parte del árbol. */
+      if (items.length === 0) {
+        const entry = nextEntry();
+        archive.append(Buffer.alloc(0), { name: `${dir.rel}/` });
+        await entry;
+      }
+
+      for (const item of items) {
+        if (failure || session.closing) break;
+        session.lastUsedAt = Date.now();
+        const path = posix.join(dir.path, item.filename);
+        const rel = `${dir.rel}/${zipSegment(item.filename)}`;
+
+        if (item.attrs.isDirectory()) {
+          pending.push({ path, rel });
+        } else if (item.attrs.isSymbolicLink()) {
+          skip(path, 'enlace simbólico');
+        } else if (!item.attrs.isFile()) {
+          skip(path, 'no es un archivo normal');
+        } else if (isVirtualPath(path)) {
+          skip(path, 'sistema de archivos virtual');
+        } else {
+          let handle: Buffer;
+          try {
+            handle = await this.openForRead(session, path);
+          } catch (error) {
+            skip(path, this.reason(error));
+            continue;
+          }
+          const entry = nextEntry();
+          reading = session.data.createReadStream(path, { handle, highWaterMark: READ_CHUNK_BYTES });
+          archive.append(
+            reading,
+            {
+              name: rel,
+              date: new Date((item.attrs.mtime ?? 0) * 1000),
+              mode: item.attrs.mode & 0o777,
+            },
+          );
+          await entry;
+        }
+      }
+    }
+
+    if (session.closing) failure = new Error('la sesión SFTP se cerró');
+    if (failure) {
+      archive.abort();
+      await stopped;
+      throw failure;
+    }
+
+    if (skippedCount > 0) {
+      const more = skippedCount - skipped.length;
+      archive.append(
+        `No se incluyeron ${skippedCount} elementos:\n\n${skipped.join('\n')}\n${
+          more > 0 ? `… y ${more} más\n` : ''
+        }`,
+        { name: SKIPPED_FILE },
+      );
+    }
+
+    void archive.finalize();
+    await sent;
+    return counter.bytes;
+  }
+
+  private openForRead(session: SftpSession, path: string): Promise<Buffer> {
+    return this.promisify<Buffer>((cb) => session.data.open(path, 'r', cb));
+  }
+
+  /** El motivo en palabras, para la lista de lo que no entró en el .zip. */
+  private reason(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   /* ── Internos ───────────────────────────────────────────────────── */

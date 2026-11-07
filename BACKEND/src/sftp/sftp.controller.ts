@@ -1,6 +1,7 @@
 // src/sftp/sftp.controller.ts
 import {
   Controller,
+  Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -9,6 +10,7 @@ import {
   Query,
   Req,
   Request,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -20,10 +22,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
-import type { Request as ExpressRequest } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { JwtAuthGuard } from '@auth/jwt-auth/jwt-auth.guard';
 import { SftpSessionService } from './services/sftp-session.service';
 import { SftpOperationsService } from './services/sftp-operations.service';
+import { DownloadQueryDto } from './dto/download-query.dto';
 import { UploadQueryDto } from './dto/upload-query.dto';
 
 /**
@@ -71,6 +74,43 @@ export class SftpController {
       offset: query.offset,
       total: query.total,
     });
+  }
+
+  /**
+   * Comprueba que se puede descargar antes de empezar. La app la llama antes
+   * de cada descarga: la hace el cliente HTTP normal, que renueva el token si
+   * caducó, y da el error con su mensaje.
+   */
+  @Get('sessions/:sessionId/download/info')
+  @SkipThrottle()
+  @ApiOperation({ summary: 'Tipo y tamaño de lo que se va a descargar' })
+  @ApiParam({ name: 'sessionId', description: 'ID de la sesión SFTP' })
+  @ApiResponse({ status: 200, description: 'Se puede descargar' })
+  @ApiResponse({ status: 400, description: 'La ruta no existe o no es un archivo ni una carpeta' })
+  @ApiResponse({ status: 404, description: 'La sesión no existe o caducó' })
+  downloadInfo(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Query() query: DownloadQueryDto,
+    @Request() { user }: { user: { id: string } },
+  ) {
+    return this.ops.downloadInfo(this.sessions.get(sessionId, user.id), query.path);
+  }
+
+  /** Un archivo tal cual; una carpeta, como .zip que se comprime mientras se envía. */
+  @Get('sessions/:sessionId/download')
+  @SkipThrottle()
+  @ApiOperation({ summary: 'Descarga un archivo o una carpeta (.zip) del servidor' })
+  @ApiParam({ name: 'sessionId', description: 'ID de la sesión SFTP' })
+  @ApiResponse({ status: 200, description: 'Contenido del archivo o del .zip' })
+  @ApiResponse({ status: 400, description: 'La ruta no existe o no es un archivo ni una carpeta' })
+  @ApiResponse({ status: 404, description: 'La sesión no existe o caducó' })
+  async download(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Query() query: DownloadQueryDto,
+    @Res() res: Response,
+    @Request() { user }: { user: { id: string } },
+  ): Promise<void> {
+    await this.ops.download(this.sessions.get(sessionId, user.id), query.path, res);
   }
 
   @Post('sessions/:sessionId/close')

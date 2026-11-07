@@ -1,9 +1,9 @@
 import type { SftpEntry } from '@typings/sftp.types';
 import { FileIcon, FolderIcon, LinkIcon } from './icons';
 
-/* Una sola plantilla para cabecera y filas: icono, nombre, tamaño, permisos y
-   fecha caen siempre en la misma columna. */
-export const SFTP_ROW_GRID = 'grid grid-cols-[16px_minmax(0,1fr)_80px_96px_104px] items-center gap-3 px-3';
+/* Una sola plantilla para cabecera y filas: casilla, icono, nombre, tamaño,
+   permisos y fecha caen siempre en la misma columna. */
+export const SFTP_ROW_GRID = 'grid grid-cols-[18px_16px_minmax(0,1fr)_80px_96px_104px] items-center gap-3 px-3';
 
 export const entryIcon = (entry: SftpEntry, size = 'w-4 h-4') => {
 	if (entry.type === 'dir' || entry.linkType === 'dir')

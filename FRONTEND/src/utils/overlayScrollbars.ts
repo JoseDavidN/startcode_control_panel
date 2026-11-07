@@ -152,7 +152,10 @@ export function installOverlayScrollbars(): () => void {
       bar.thumbLen = thumbLen;
       const s = bar.track.style;
       if (axis === 'y') {
-        s.left = `${left + w - HIT}px`;
+        /* Contra el borde de la caja, no del área de contenido: el editor SQL
+           deja su margen derecho con un borde transparente y `clientWidth` no lo
+           cuenta, así que la barra quedaba dentro, encima del texto. */
+        s.left = `${rect.right - HIT}px`;
         s.top = `${top + INSET}px`;
         s.width = `${HIT}px`;
         s.height = `${trackLen}px`;
@@ -160,7 +163,7 @@ export function installOverlayScrollbars(): () => void {
         bar.thumb.style.transform = `translateY(${offset}px)`;
       } else {
         s.left = `${left + INSET}px`;
-        s.top = `${top + h - HIT}px`;
+        s.top = `${rect.bottom - HIT}px`;
         s.width = `${trackLen}px`;
         s.height = `${HIT}px`;
         bar.thumb.style.width = `${thumbLen}px`;

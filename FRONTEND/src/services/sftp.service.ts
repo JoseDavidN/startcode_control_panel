@@ -1,3 +1,4 @@
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { io, type Socket } from 'socket.io-client';
 import { apiService } from './api.service';
 import { API_CONFIG } from '@utils/constants';
@@ -148,13 +149,13 @@ export interface UploadResult {
 	complete: boolean;
 }
 
-/** Código HTTP de un error de axios, si lo hay. */
+/** Código HTTP del `ApiError` con el que rechaza `apiService`; 0 si no hubo respuesta. */
 export const uploadErrorStatus = (error: unknown): number | undefined =>
-	(error as { response?: { status?: number } })?.response?.status;
+	(error as { statusCode?: number })?.statusCode;
 
-/** Mensaje del backend en un error de axios, si lo hay. */
+/** Mensaje del `ApiError` (el del backend, o el de la red). */
 export const uploadErrorMessage = (error: unknown): string | undefined => {
-	const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+	const message = (error as { message?: unknown })?.message;
 	return typeof message === 'string' ? message : Array.isArray(message) ? message.join(', ') : undefined;
 };
 
@@ -188,6 +189,67 @@ export async function uploadRemoteFile(args: UploadArgs): Promise<UploadResult> 
 	const payload = (response as { data?: unknown })?.data ?? response;
 	const result = (payload as { data?: unknown })?.data ?? payload;
 	return result as UploadResult;
+}
+
+export interface DownloadArgs {
+	sessionId: string;
+	path: string;
+	dest: string;
+	onProgress: (loaded: number, total: number | null) => void;
+	signal: AbortSignal;
+}
+
+let downloadSeq = 0;
+
+/** Error de la descarga nativa (`CANCELLED`, `HTTP:<estado>:<cuerpo>`…) en palabras. */
+function downloadErrorMessage(raw: string): string {
+	const http = /^HTTP:(\d+):([\s\S]*)$/.exec(raw);
+	if (http) {
+		if (http[1] === '404') return 'La sesión SFTP se cerró; vuelve a abrir el explorador';
+		try {
+			const { message } = JSON.parse(http[2]) as { message?: string | string[] };
+			if (message) return Array.isArray(message) ? message.join('. ') : message;
+		} catch { /* cuerpo que no es JSON */ }
+		return `El servidor respondió con un error (${http[1]})`;
+	}
+	if (raw.startsWith('UNREACHABLE:')) return 'No se pudo contactar con el backend';
+	if (raw.startsWith('INTERRUPTED:')) return 'La descarga se cortó antes de terminar';
+	if (raw.startsWith('FILE:')) return `No se pudo escribir el archivo: ${raw.slice(5)}`;
+	return raw;
+}
+
+/**
+ * Descarga un archivo (o una carpeta como .zip) directo a `dest`, en Rust y
+ * fuera del webview (`cloud_download`, src-tauri/src/cloud_download.rs): la
+ * ventana no se congela y el archivo no pasa por memoria. Si falla o se
+ * cancela, Rust borra lo escrito.
+ *
+ * Rust no renueva el token: antes se pregunta por la ruta con el cliente HTTP
+ * normal, que lo renueva si caducó y trae el error con su mensaje.
+ */
+export async function downloadRemoteFile(args: DownloadArgs): Promise<void> {
+	const url = `${API_CONFIG.ENDPOINTS.SFTP}/sessions/${args.sessionId}/download`;
+	const query = new URLSearchParams({ path: args.path }).toString();
+	await apiService.get(`${url}/info?${query}`, { signal: args.signal });
+
+	const id = `sftp-${Date.now()}-${++downloadSeq}`;
+	const channel = new Channel<{ loaded: number; total: number | null }>();
+	channel.onmessage = p => args.onProgress(p.loaded, p.total);
+	const cancel = () => { void invoke('cloud_download_cancel', { id }).catch(() => undefined); };
+	args.signal.addEventListener('abort', cancel, { once: true });
+	try {
+		await invoke<number>('cloud_download', {
+			id,
+			url: `${API_CONFIG.BASE_URL}${url}?${query}`,
+			token: TokenManager.getAccessToken(),
+			dest: args.dest,
+			onProgress: channel,
+		});
+	} catch (raw) {
+		throw new Error(downloadErrorMessage(String(raw)));
+	} finally {
+		args.signal.removeEventListener('abort', cancel);
+	}
 }
 
 /** Tamaño legible; el mismo criterio que el resto del panel. */

@@ -5,7 +5,7 @@ import { STORAGE_KEYS } from '@utils/constants';
    resultados ni historial de deshacer. En localStorage porque se lee de forma
    síncrona al montar la vista, antes de pintar las pestañas. */
 
-export interface SavedEditor { n: number; sql: string; name?: string }
+export interface SavedEditor { n: number; sql: string; name?: string; /** Consulta guardada que tiene abierta. */ savedId?: string }
 export interface SavedEditors { editors: SavedEditor[]; active: number }
 
 const keyOf = (connectionId: string) => `${STORAGE_KEYS.SQL_EDITORS}${connectionId}`;
@@ -13,9 +13,10 @@ const keyOf = (connectionId: string) => `${STORAGE_KEYS.SQL_EDITORS}${connection
 /* Lo leído viene de disco: se valida antes de usarlo. */
 const isEditor = (e: unknown): e is SavedEditor => {
   if (!e || typeof e !== 'object') return false;
-  const { n, sql, name } = e as Record<string, unknown>;
+  const { n, sql, name, savedId } = e as Record<string, unknown>;
   return Number.isInteger(n) && (n as number) > 0 && typeof sql === 'string'
-    && (name === undefined || typeof name === 'string');
+    && (name === undefined || typeof name === 'string')
+    && (savedId === undefined || typeof savedId === 'string');
 };
 
 export function loadEditors(connectionId: string, max: number): SavedEditors | null {

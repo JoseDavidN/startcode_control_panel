@@ -34,11 +34,13 @@ interface UploadDeps {
 	onLanded: () => void;
 }
 
-/* Se reintenta lo que puede ser pasajero: sin respuesta (red), 5xx o la
-   parte cortada (400). Un 404 es la sesión perdida; 409 y 413 no cambian. */
+/* Se reintenta lo que puede ser pasajero: sin respuesta (red, 0), 5xx o la
+   parte cortada (400). Un 404 es la sesión perdida; 409 y 413 no cambian, y un
+   502 es el servidor SFTP diciendo que no (permiso, disco lleno). */
 const retryable = (error: unknown) => {
 	const status = uploadErrorStatus(error);
-	return status === undefined || status >= 500 || status === 400 || status === 408 || status === 429;
+	if (!status) return true;
+	return status === 400 || status === 408 || status === 429 || (status >= 500 && status !== 502);
 };
 
 const wait = (ms: number, signal: AbortSignal) =>

@@ -9,6 +9,37 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 0.12.0] — 2026-11-07
+
+Versión **menor** sobre 0.11.0. Requiere el backend 0.13.0 para descargar por SFTP.
+
+### Añadido
+- Consultas guardadas en el editor SQL (`components/databases/SavedQueries.tsx`, `hooks/useSavedQueries.ts`, `lib/sqlQueries.ts`): se guardan con nombre, por conexión y en el equipo (`localStorage`, junto a las pestañas). «Guardar» o Ctrl + S guarda el editor activo; si ya tiene una consulta abierta, la actualiza, y la pestaña marca los cambios sin guardar. Ctrl + Mayús + S guarda como nueva. «Consultas» abre la lista con búsqueda, vista previa resaltada, cambiar nombre, eliminar y cargar: en el editor activo si está vacío, si no en uno nuevo o en el que ya la tenga abierta, o reemplazando el actual (con aviso si se pierde texto). Al cargar se vuelve a la base con la que se guardó. Se borran al eliminar la conexión
+- Descarga en el explorador SFTP: archivos tal cual y carpetas como `.zip`. Casillas en cada fila (y «Marcar todo»), botón «Descargar» en la barra de la lista (lo marcado, la fila elegida o «Descargar esta carpeta» si no hay nada), en la vista previa y en el menú contextual. Un elemento abre «Guardar como»; varios piden una carpeta de destino y no pisan lo que ya exista (`nombre (1).ext`). Los nombres remotos se limpian para el disco local (`safeFileName`)
+- Cola de descargas (`SftpDownloadQueue.tsx`, `useSftpDownloads.ts`) con progreso, cancelar, reintentar y «Mostrar» en la carpeta; tres a la vez. Corre en Rust con el comando `cloud_download` que ya usaba la nube: no pasa por la memoria del webview y borra lo escrito si falla o se cancela. Al cerrar el explorador se cancelan, como las subidas
+- `requireLiteralLeadingDot: false` en `tauri.conf.json`: sin él, el ámbito de `fs` no admite nombres con punto inicial (`.env`) dentro de una carpeta elegida en el diálogo, que es donde se guardan las descargas múltiples
+
+### Corregido
+- Editor SQL: la barra vertical quedaba 20 px dentro del borde, sobre el texto. `overlayScrollbars` la colocaba al final del área de contenido (`clientWidth`), que no cuenta el borde transparente del editor; ahora va contra el borde de la caja (`rect.right`). Lo mismo para la horizontal
+- Editor SQL: errata en el padding inferior del textarea (`pb-[calc(0.rem+12px)]`), un valor no válido que el navegador descartaba. Ahora es `0.75rem + 12px`, igual que el resaltado y la columna de números, así la última línea no queda bajo la barra horizontal y los tres tienen el mismo recorrido
+- Cola de subidas SFTP: `uploadErrorStatus` leía `error.response.status`, pero `apiService` rechaza con un `ApiError` plano (`statusCode`), así que ningún error tenía código. Un archivo existente nunca llegaba a «Ya existe» con su «Sobrescribir» (se reintentaba y acababa en error), los errores salían sin el mensaje del servidor y se reintentaba lo que no tiene arreglo. Los 502 del servidor SFTP (permiso, disco lleno) ya no se reintentan
+
+---
+
+## [0.13.0] — 2026-11-07
+
+Versión **menor** del backend sobre 0.12.1. Requiere la app 0.12.0 para usarla desde la interfaz.
+
+### Añadido
+- `GET sftp/sessions/:id/download?path=` (`SftpOperationsService.download`): un archivo por streaming con su `Content-Length`, o una carpeta como `.zip` que se comprime mientras se recorre, un archivo cada vez y por el protocolo SFTP, sin shell (dependencia `archiver`, la misma de Cloud). `GET …/download/info` comprueba la ruta antes de empezar. Solo archivos y carpetas: una tubería o un dispositivo se rechazan
+- En un `.zip`, lo que no se puede incluir no tira la descarga y se lista en `_no-incluidos.txt`, en la raíz: sin permiso de lectura, enlaces simbólicos (no se siguen: ciclos y salidas de la carpeta), archivos especiales y `/proc`, `/sys` y `/dev`. Los nombres con `\` o caracteres de control se limpian para que no salgan de la carpeta al descomprimir en Windows
+- Si la transferencia falla una vez empezada, se corta la conexión y el cliente descarta lo recibido. `activeDownloads` mantiene viva la sesión, como las subidas
+
+### Corregido
+- Si se cae la conexión SSH o un canal SFTP, la sesión se cierra (`SftpSessionService.open`). Antes seguía registrada y las peticiones nuevas se quedaban colgadas sin respuesta
+
+---
+
 ## [App de escritorio 0.11.0] — 2026-11-03
 
 Versión **menor** sobre 0.10.0. Requiere el backend 0.12.1 (subida por partes y recuperación de la sesión SFTP).

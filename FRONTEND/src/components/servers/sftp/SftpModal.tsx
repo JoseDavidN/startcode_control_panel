@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from '@components/common/Modal';
 import { useSftpSession } from '@hooks/useSftpSession';
+import { useSftpDownloads, type DownloadJob } from '@hooks/useSftpDownloads';
 import { useSftpUploads } from '@hooks/useSftpUploads';
+import { freePath, pickSaveFolder, pickSavePath, safeFileName } from '@lib/download';
 import { notify } from '@services/notification.service';
 import type { PickedFile } from '@lib/filePicker';
 import type { SftpEntry } from '@typings/sftp.types';
@@ -10,6 +12,8 @@ import { SftpFileList } from './SftpFileList';
 import { SftpPreview } from './SftpPreview';
 import { SftpDropZone } from './SftpDropZone';
 import { SftpUploadQueue } from './SftpUploadQueue';
+import { SftpDownloadQueue } from './SftpDownloadQueue';
+import { isNavigable } from './entry';
 
 interface SftpModalProps {
 	serverId: string;
@@ -54,6 +58,7 @@ export const SftpModal: React.FC<SftpModalProps> = ({
 	const [creatingFolder, setCreatingFolder] = useState(false);
 	const [folderError, setFolderError] = useState<string | null>(null);
 	const [selected, setSelected] = useState<SftpEntry | null>(null);
+	const [checked, setChecked] = useState<Set<string>>(new Set());
 	/* Carpeta a la que ya se mandó lo de Cloud: no se envía dos veces sin querer. */
 	const [sentTo, setSentTo] = useState<string | null>(null);
 
@@ -72,6 +77,55 @@ export const SftpModal: React.FC<SftpModalProps> = ({
 			prev && (prev.path.slice(0, prev.path.lastIndexOf('/')) || '/') === session.cwd ? prev : null,
 		);
 	}, [session.cwd]);
+
+	const downloads = useSftpDownloads(session.sessionId);
+
+	/* Las casillas son de la carpeta que se ve. */
+	useEffect(() => setChecked(new Set()), [session.cwd]);
+
+	/**
+	 * Uno: «Guardar como» con su nombre. Varios: una carpeta de destino, sin
+	 * pisar lo que ya haya en ella. Las carpetas llegan como .zip.
+	 */
+	const startDownloads = async (targets: { path: string; name: string; folder: boolean; size: number | null }[]) => {
+		const fileName = (t: { name: string; folder: boolean }) => safeFileName(t.folder ? `${t.name}.zip` : t.name);
+		try {
+			const jobs: DownloadJob[] = [];
+			if (targets.length === 1) {
+				const dest = await pickSavePath(fileName(targets[0]));
+				if (!dest) return;
+				jobs.push({ ...targets[0], name: fileName(targets[0]), dest });
+			} else {
+				const dir = await pickSaveFolder();
+				if (!dir) return;
+				const taken = new Set<string>();
+				for (const target of targets) {
+					const name = fileName(target);
+					jobs.push({ ...target, name, dest: await freePath(dir, name, taken) });
+				}
+			}
+			downloads.enqueue(jobs);
+			setChecked(new Set());
+		} catch (err: unknown) {
+			notify.error('No se pudo preparar la descarga', err instanceof Error ? err.message : String(err));
+		}
+	};
+
+	const downloadEntries = (entries: SftpEntry[]) =>
+		void startDownloads(entries.map(entry => ({
+			path: entry.path,
+			name: entry.name,
+			folder: isNavigable(entry),
+			size: isNavigable(entry) ? null : entry.size,
+		})));
+
+	const downloadCurrent = () =>
+		void startDownloads([{
+			path: session.cwd,
+			name: session.cwd.slice(session.cwd.lastIndexOf('/') + 1),
+			folder: true,
+			size: null,
+		}]);
 
 	const connected = session.status === 'ready' || session.status === 'reconnecting';
 
@@ -180,6 +234,10 @@ export const SftpModal: React.FC<SftpModalProps> = ({
 								creatingFolder={creatingFolder}
 								selected={selected?.path ?? null}
 								onSelect={setSelected}
+								checked={checked}
+								onCheckedChange={setChecked}
+								onDownload={downloadEntries}
+								onDownloadCurrent={session.cwd && session.cwd !== '/' ? downloadCurrent : null}
 								onNavigate={navigate}
 								onCreateFolder={handleCreateFolder}
 								onCancelCreateFolder={() => setCreatingFolder(false)}
@@ -189,6 +247,7 @@ export const SftpModal: React.FC<SftpModalProps> = ({
 								entry={selected}
 								peek={session.peek}
 								onOpen={navigate}
+								onDownload={entry => downloadEntries([entry])}
 								onDrill={drill}
 							/>
 
@@ -200,17 +259,30 @@ export const SftpModal: React.FC<SftpModalProps> = ({
 										onFiles={handleFiles}
 									/>
 								</div>
-								<div className="flex-1 min-h-0">
-									<SftpUploadQueue
-										items={uploads.items}
-										totals={uploads.totals}
-										onCancel={uploads.cancel}
-										onRetry={uploads.retry}
-										onRetryAllConflicts={uploads.retryAllConflicts}
-										onRetryAllFailed={uploads.retryAllFailed}
-										onClearFinished={uploads.clearFinished}
-									/>
-								</div>
+								{/* Sin subidas, las descargas se quedan con todo el alto. */}
+								{(uploads.items.length > 0 || downloads.items.length === 0) && (
+									<div className="flex-1 min-h-0">
+										<SftpUploadQueue
+											items={uploads.items}
+											totals={uploads.totals}
+											onCancel={uploads.cancel}
+											onRetry={uploads.retry}
+											onRetryAllConflicts={uploads.retryAllConflicts}
+											onRetryAllFailed={uploads.retryAllFailed}
+											onClearFinished={uploads.clearFinished}
+										/>
+									</div>
+								)}
+								{downloads.items.length > 0 && (
+									<div className="flex-1 min-h-0">
+										<SftpDownloadQueue
+											items={downloads.items}
+											onCancel={downloads.cancel}
+											onRetry={downloads.retry}
+											onClearFinished={downloads.clearFinished}
+										/>
+									</div>
+								)}
 							</div>
 						</div>
 					</>

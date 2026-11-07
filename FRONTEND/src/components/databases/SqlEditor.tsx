@@ -11,6 +11,10 @@ interface SqlEditorProps {
   onChange: (value: string) => void;
   /** Ctrl/⌘ + Enter. */
   onRun: () => void;
+  /** Ctrl/⌘ + S. */
+  onSave?: () => void;
+  /** Ctrl/⌘ + Mayús + S. */
+  onSaveAs?: () => void;
   disabled?: boolean;
   /** Tablas y columnas para predecir; sin él, el editor no sugiere nada. */
   completion?: CompletionIndex | null;
@@ -78,7 +82,7 @@ interface Suggest {
  * cursor y la selección. El color de cada token sale de `--sql-*` del tema.
  */
 export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
-  ({ value, dialect = 'mysql', onChange, onRun, disabled = false, completion = null }, ref) => {
+  ({ value, dialect = 'mysql', onChange, onRun, onSave, onSaveAs, disabled = false, completion = null }, ref) => {
     const textRef = useRef<HTMLTextAreaElement>(null);
     useImperativeHandle(ref, () => textRef.current!, []);
     const gutterRef = useRef<HTMLDivElement>(null);
@@ -162,6 +166,13 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
         onRun();
         return;
       }
+      if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setSuggest(null);
+        if (e.shiftKey) onSaveAs?.();
+        else onSave?.();
+        return;
+      }
       /* Ctrl + Espacio: sugerencias aunque no haya nada escrito. */
       if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -234,10 +245,10 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
             : <span key={i} className={`sql-${t.type}`}>{t.text}</span>)}
           {/* Sin barras nativas (las dibuja `overlayScrollbars`), el textarea y el <pre>
               tienen el mismo recorrido con el mismo padding. Abajo se reservan 12 px, la
-              franja de esas barras. A la derecha va un borde transparente de 32 px (margen
-              de 20 más la franja): el padding derecho de un textarea no cuenta en su
-              desplazamiento horizontal, así que con él el final de una línea larga
-              quedaba pegado al borde; el borde sí queda siempre fuera del texto.
+              franja de esas barras. A la derecha va un borde transparente de 20 px: el padding
+              derecho de un textarea no cuenta en su desplazamiento horizontal, así que con
+              él el final de una línea larga quedaba pegado al borde; el borde sí queda
+              siempre fuera del texto, y la barra vertical va dentro de él, al filo de la caja.
               Un salto final en el textarea abre una fila vacía: el <pre> también la necesita. */}
           {'\n'}
         </pre>
@@ -264,7 +275,7 @@ export const SqlEditor = forwardRef<HTMLTextAreaElement, SqlEditorProps>(
           autoCorrect="off"
           aria-label="Editor SQL"
           placeholder="SELECT * FROM tabla LIMIT 100;"
-          className="absolute inset-0 w-full h-full resize-none bg-transparent outline-none pt-3 pl-3 pb-[calc(0.rem+12px)] pr-0 border-r-[20px] border-transparent text-transparent caret-white placeholder:text-white/25 whitespace-pre overflow-auto scroll-thin selection:bg-violet-500/30 disabled:opacity-50"
+          className="absolute inset-0 w-full h-full resize-none bg-transparent outline-none pt-3 pl-3 pb-[calc(0.75rem+12px)] pr-0 border-r-[20px] border-transparent text-transparent caret-white placeholder:text-white/25 whitespace-pre overflow-auto scroll-thin selection:bg-violet-500/30 disabled:opacity-50"
         />
         </div>
         {suggest && createPortal(

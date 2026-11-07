@@ -6,6 +6,7 @@ import { useAuth } from '@hooks/useAuth';
 import type { DatabaseConnection, DatabaseConnectionForm, SchemaSection } from '@typings/database.types';
 import { MANAGEABLE_ENGINES } from '@typings/database.types';
 import { removeEditors } from '@lib/sqlEditors';
+import { removeQueries } from '@lib/sqlQueries';
 
 export const DATABASE_KEYS = {
 	list: ['databases'] as const,
@@ -193,6 +194,7 @@ export function useDeleteDatabaseConnection() {
 			queryClient.setQueryData<DatabaseConnection[]>(DATABASE_KEYS.list, (prev = []) =>
 				prev.filter(c => c.id !== id));
 			removeEditors(id);
+			removeQueries(id);
 		},
 	});
 }

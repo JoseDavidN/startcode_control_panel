@@ -3,13 +3,14 @@ import { formatSize } from '@services/sftp.service';
 import { timeAgo } from '@utils/time';
 import type { SftpEntry, SftpListing } from '@typings/sftp.types';
 import { entryIcon, isNavigable } from './entry';
-import { FolderIcon } from './icons';
+import { DownloadIcon, FolderIcon } from './icons';
 
 interface SftpPreviewProps {
 	entry: SftpEntry | null;
 	peek: (path: string) => Promise<SftpListing>;
 	/** Entra en la carpeta de la vista previa. */
 	onOpen: (path: string) => void;
+	onDownload: (entry: SftpEntry) => void;
 	/** Entra en la carpeta de la vista previa y deja elegida una de sus carpetas. */
 	onDrill: (parent: string, child: SftpEntry) => void;
 }
@@ -21,7 +22,7 @@ type Peeked = { path: string; entries: SftpEntry[] } | { path: string; error: st
  * sus carpetas entra en la elegida y deja esa como la siguiente vista previa:
  * así se baja por la ruta viendo siempre un nivel por delante.
  */
-export const SftpPreview: React.FC<SftpPreviewProps> = ({ entry, peek, onOpen, onDrill }) => {
+export const SftpPreview: React.FC<SftpPreviewProps> = ({ entry, peek, onOpen, onDownload, onDrill }) => {
 	const [peeked, setPeeked] = useState<Peeked | null>(null);
 	const folder = entry && isNavigable(entry) ? entry : null;
 
@@ -78,6 +79,17 @@ export const SftpPreview: React.FC<SftpPreviewProps> = ({ entry, peek, onOpen, o
 						<dt className="text-white/40">Ruta</dt>
 						<dd className="font-mono text-white/75 break-all">{entry.path}</dd>
 					</dl>
+					{entry.linkType !== 'broken' && (
+						<button
+							type="button"
+							onClick={() => onDownload(entry)}
+							className="w-full h-9 rounded-xl glass-soft row-hit text-xs font-medium text-white/80 hover:text-white
+								flex items-center justify-center gap-2 transition"
+						>
+							<DownloadIcon className="w-3.5 h-3.5" />
+							Descargar
+						</button>
+					)}
 				</div>
 			) : (
 				<>
@@ -86,6 +98,15 @@ export const SftpPreview: React.FC<SftpPreviewProps> = ({ entry, peek, onOpen, o
 						<span className="flex-1 min-w-0 text-sm text-white truncate" title={folder.path}>
 							{folder.name}
 						</span>
+						<button
+							type="button"
+							onClick={() => onDownload(folder)}
+							title="Descargar como .zip"
+							aria-label="Descargar como .zip"
+							className="w-7 h-7 rounded-lg glass-soft row-hit text-white/70 hover:text-white flex items-center justify-center transition shrink-0"
+						>
+							<DownloadIcon className="w-3.5 h-3.5" />
+						</button>
 						<button
 							type="button"
 							onClick={() => onOpen(folder.path)}

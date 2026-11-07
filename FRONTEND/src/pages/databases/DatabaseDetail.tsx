@@ -8,6 +8,7 @@ import { SqlEditor } from '@components/databases/SqlEditor';
 import { QueryResults } from '@components/databases/QueryResults';
 import { QueryAuditModal } from '@components/databases/QueryAuditModal';
 import { RedisBrowser } from '@components/databases/redis/RedisBrowser';
+import { SavedQueriesModal, SaveQueryModal } from '@components/databases/SavedQueries';
 import { Modal } from '@components/common/Modal';
 import {
   isSessionClosedError,
@@ -17,6 +18,8 @@ import {
   useRunQuery,
   useSchemaSection,
 } from '@hooks/useDatabases';
+import { useSavedQueries } from '@hooks/useSavedQueries';
+import { notify } from '@services/notification.service';
 import { buildCompletionIndex } from '@utils/sqlComplete';
 import { useAssistantSource, useAssistantTarget } from '@hooks/useAssistantBridge';
 import { maskValue, sensitiveKind } from '@utils/sensitiveColumns';
@@ -26,6 +29,7 @@ import { ROUTES } from '@utils/constants';
 import { engineDialect } from '@utils/sqlDialect';
 import { statementAt } from '@utils/sql';
 import { loadEditors, saveEditors, type SavedEditors } from '@lib/sqlEditors';
+import type { SavedQuery } from '@lib/sqlQueries';
 import type { ApiError } from '@typings/api.types';
 import type { QueryResult } from '@typings/database.types';
 
@@ -65,7 +69,7 @@ function dangerousQuery(err: unknown): { message: string; hint?: string } | null
 const MAX_CONSOLES = 6;
 interface QueryVars { sql: string; schema: string | null; confirm?: boolean }
 interface ConsoleRun { data?: QueryResult; error: unknown; running: boolean; variables?: QueryVars }
-interface SqlConsole { id: number; n: number; sql: string; run: ConsoleRun; /** Nombre puesto por el usuario; sin él, «Editor n». */ name?: string }
+interface SqlConsole { id: number; n: number; sql: string; run: ConsoleRun; /** Nombre puesto por el usuario; sin él, «Editor n». */ name?: string; /** Consulta guardada que tiene abierta. */ savedId?: string }
 const consoleName = (c: SqlConsole) => c.name ?? `Editor ${c.n}`;
 const MAX_CONSOLE_NAME = 40;
 const IDLE_RUN: ConsoleRun = { error: null, running: false };
@@ -164,7 +168,7 @@ const DatabaseDetailView: React.FC = () => {
      Arrancan con las guardadas en el equipo para esta conexión. */
   const [saved] = useState(() => loadEditors(id, MAX_CONSOLES));
   const [consoles, setConsoles] = useState<SqlConsole[]>(() =>
-    saved?.editors.map((e, i) => ({ id: i + 1, n: e.n, sql: e.sql, name: e.name, run: IDLE_RUN }))
+    saved?.editors.map((e, i) => ({ id: i + 1, n: e.n, sql: e.sql, name: e.name, savedId: e.savedId, run: IDLE_RUN }))
       ?? [{ id: 1, n: 1, sql: '', run: IDLE_RUN }]);
   const [activeId, setActiveId] = useState(() => (saved?.active ?? 0) + 1);
   const consoleSeq = useRef(consoles.length);
@@ -172,7 +176,7 @@ const DatabaseDetailView: React.FC = () => {
   /* Guardado en el equipo: medio segundo después del último cambio, para no
      escribir en cada tecla, y al salir de la vista o cerrar la app lo que quede pendiente. */
   const persisted = useMemo(() => ({
-    editors: consoles.map(c => ({ n: c.n, sql: c.sql, ...(c.name ? { name: c.name } : {}) })),
+    editors: consoles.map(c => ({ n: c.n, sql: c.sql, ...(c.name ? { name: c.name } : {}), ...(c.savedId ? { savedId: c.savedId } : {}) })),
     active: Math.max(0, consoles.findIndex(c => c.id === activeId)),
   }), [consoles, activeId]);
   const pendingSave = useRef<SavedEditors | null>(null);
@@ -234,6 +238,84 @@ const DatabaseDetailView: React.FC = () => {
     () => (predictTables.data || predictViews.data ? buildCompletionIndex([...(predictTables.data ?? []), ...(predictViews.data ?? [])]) : null),
     [predictTables.data, predictViews.data],
   );
+
+  /* ── Consultas guardadas ──
+     Una consola queda enlazada a la consulta que guardó o cargó: Guardar
+     actualiza esa, y si el texto cambió la pestaña lo indica. */
+  const savedQueries = useSavedQueries(id);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [queriesOpen, setQueriesOpen] = useState(false);
+  const savedOf = (c: SqlConsole) => (c.savedId ? savedQueries.queries.find(q => q.id === c.savedId) : undefined);
+  const hasChanges = (c: SqlConsole) => {
+    const query = savedOf(c);
+    return Boolean(query && query.sql !== c.sql);
+  };
+  const linked = savedOf(active);
+
+  const saveActive = () => {
+    if (!sql.trim()) return;
+    if (!linked) { setSaveAsOpen(true); return; }
+    if (linked.sql !== sql && savedQueries.update(linked.id, sql, activeSchema)) {
+      notify.success('Consulta guardada', linked.name);
+    }
+  };
+  const saveAsNew = (name: string) => {
+    const query = savedQueries.saveAs(name, sql, activeSchema);
+    if (!query) return;
+    patchConsole(active.id, () => ({ savedId: query.id, name: query.name.slice(0, MAX_CONSOLE_NAME) }));
+    setSaveAsOpen(false);
+    notify.success('Consulta guardada', query.name);
+  };
+
+  /* Vuelve a la base con la que se guardó (es de toda la vista, como al elegirla en el árbol). */
+  const restoreSchema = (query: SavedQuery) => {
+    if (conn?.database || !query.schema || query.schema === activeSchema) return;
+    const known = schemasQuery.data;
+    if (!known || known.some(s => s.name === query.schema)) setSelectedSchema(query.schema);
+    else notify.warning('La base de la consulta ya no está', `Se guardó con ${query.schema}. Sigue seleccionada ${activeSchema ?? 'ninguna'}.`);
+  };
+  const loadInto = (consoleId: number, query: SavedQuery) => {
+    patchConsole(consoleId, () => ({
+      sql: query.sql, savedId: query.id, name: query.name.slice(0, MAX_CONSOLE_NAME), run: IDLE_RUN,
+    }));
+    restoreSchema(query);
+    setActiveId(consoleId);
+    setQueriesOpen(false);
+    requestAnimationFrame(() => focusEditor(consoleId));
+  };
+  const loadQuery = (query: SavedQuery) => {
+    /* Ya abierta: se va a esa pestaña, con sus cambios. */
+    const open = consoles.find(c => c.savedId === query.id);
+    if (open) {
+      restoreSchema(query);
+      setActiveId(open.id);
+      setQueriesOpen(false);
+      requestAnimationFrame(() => focusEditor(open.id));
+    } else if (!sql.trim() && !active.run.running) {
+      loadInto(active.id, query);
+    } else if (consoles.length < MAX_CONSOLES) {
+      const consoleId = ++consoleSeq.current;
+      setConsoles(prev => [...prev, {
+        id: consoleId, n: freeNumber(prev), sql: query.sql, savedId: query.id,
+        name: query.name.slice(0, MAX_CONSOLE_NAME), run: IDLE_RUN,
+      }]);
+      restoreSchema(query);
+      setActiveId(consoleId);
+      setQueriesOpen(false);
+      requestAnimationFrame(() => focusEditor(consoleId));
+    }
+  };
+  const renameQuery = (queryId: string, name: string) => {
+    if (!savedQueries.rename(queryId, name)) return false;
+    /* La pestaña que la tiene abierta lleva su nombre. */
+    setConsoles(prev => prev.map(c => (c.savedId === queryId ? { ...c, name: name.trim().slice(0, MAX_CONSOLE_NAME) } : c)));
+    return true;
+  };
+  const removeQuery = (queryId: string) => {
+    if (!savedQueries.remove(queryId)) return;
+    /* Las pestañas conservan su texto, sin enlace: Guardar volverá a pedir nombre. */
+    setConsoles(prev => prev.map(c => (c.savedId === queryId ? { ...c, savedId: undefined } : c)));
+  };
 
   /* ── Asistente: lee el editor, el último resultado y la estructura, que el
      backend saca del motor al preguntar; puede dejar SQL en el editor, nunca ejecutarlo. */
@@ -423,7 +505,23 @@ const DatabaseDetailView: React.FC = () => {
                   <span className="font-mono">{activeSchema ?? 'Sin base seleccionada'}</span>
                 </span>
                 <span className="flex-1" />
-                <span className="text-[11px] text-white/35 hidden lg:inline">Ctrl + Enter ejecuta la consulta del cursor (o la selección) · Ctrl + Espacio sugiere</span>
+                <span title="Ctrl + Enter ejecuta la consulta del cursor (o la selección) · Ctrl + Espacio sugiere" className="text-[11px] text-white/35 hidden lg:inline min-w-0 truncate">Ctrl + Enter ejecuta la consulta del cursor (o la selección) · Ctrl + Espacio sugiere</span>
+                <button type="button" onClick={saveActive}
+                  disabled={!sql.trim() || (linked !== undefined && linked.sql === sql)}
+                  title={linked
+                    ? (linked.sql === sql ? `«${linked.name}» está guardada` : `Guardar los cambios en «${linked.name}» (Ctrl + S)`)
+                    : 'Guardar esta consulta con un nombre (Ctrl + S)'}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg glass-soft row-hit text-white/70 hover:text-white text-xs font-medium shrink-0 disabled:opacity-50">
+                  <DbIcon name="save" className="w-3.5 h-3.5" />
+                  Guardar
+                </button>
+                <button type="button" onClick={() => setQueriesOpen(true)}
+                  title="Ver y cargar las consultas guardadas de esta conexión"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg glass-soft row-hit text-white/70 hover:text-white text-xs font-medium shrink-0">
+                  <DbIcon name="folder" className="w-3.5 h-3.5" />
+                  Consultas
+                  {savedQueries.queries.length > 0 && <span className="text-white/40 tabular-nums">{savedQueries.queries.length}</span>}
+                </button>
                 <button type="button" onClick={() => setAuditOpen(true)}
                   title="Consultas peligrosas confirmadas sobre esta conexión"
                   className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg glass-soft row-hit text-white/70 hover:text-white text-xs font-medium shrink-0">
@@ -468,6 +566,7 @@ const DatabaseDetailView: React.FC = () => {
                               ? <span className="w-3 h-3 shrink-0 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                               : <DbIcon name="play" className="w-3 h-3 shrink-0 opacity-50" />}
                             <span className="truncate">{consoleName(c)}</span>
+                            {hasChanges(c) && <span title="Cambios sin guardar" className="w-1.5 h-1.5 shrink-0 rounded-full bg-amber-400" />}
                           </button>
                           )}
                           {consoles.length > 1 && (
@@ -493,7 +592,8 @@ const DatabaseDetailView: React.FC = () => {
                     <SqlEditor
                       ref={el => { if (el) editorRefs.current.set(c.id, el); else editorRefs.current.delete(c.id); }}
                       value={c.sql} dialect={engineDialect(conn.engine)}
-                      onChange={v => setConsoleSql(c.id, v)} onRun={run} completion={completion} />
+                      onChange={v => setConsoleSql(c.id, v)} onRun={run} completion={completion}
+                      onSave={saveActive} onSaveAs={() => { if (sql.trim()) setSaveAsOpen(true); }} />
                   </div>
                 ))}
               </div>
@@ -512,6 +612,31 @@ const DatabaseDetailView: React.FC = () => {
       )}
 
       <QueryAuditModal connectionId={id} isOpen={auditOpen} onClose={() => setAuditOpen(false)} />
+
+      <SaveQueryModal
+        isOpen={saveAsOpen}
+        onClose={() => setSaveAsOpen(false)}
+        queries={savedQueries.queries}
+        initialName={active.name ?? ''}
+        schema={activeSchema}
+        onSave={saveAsNew}
+      />
+      <SavedQueriesModal
+        isOpen={queriesOpen}
+        onClose={() => setQueriesOpen(false)}
+        queries={savedQueries.queries}
+        dialect={engineDialect(conn.engine)}
+        canAddEditor={consoles.length < MAX_CONSOLES}
+        activeEmpty={!sql.trim() && !active.run.running}
+        activeUnsaved={Boolean(sql.trim()) && (!linked || linked.sql !== sql)}
+        activeRunning={active.run.running}
+        canSaveCurrent={Boolean(sql.trim())}
+        onLoad={loadQuery}
+        onReplace={query => loadInto(active.id, query)}
+        onSaveCurrent={() => { setQueriesOpen(false); setSaveAsOpen(true); }}
+        onRename={renameQuery}
+        onRemove={removeQuery}
+      />
 
       <Modal isOpen={pending !== null} onClose={() => setPending(null)} title="Confirmar consulta peligrosa" size="sm">
         {pending && (

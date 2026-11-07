@@ -447,6 +447,7 @@ A las tres se suma **Symbols Nerd Font Mono** (MIT, `ryanoasis/nerd-fonts`), que
 
 Toda zona con scroll lleva `.scroll-area`, `.scroll-thin` o `.modal-scroll`; sin una de ellas no tiene barra. Las barras nativas de esas clases están ocultas: WebKit no deja cambiarles el cursor (siempre la flecha, y la I dentro de un textarea). Las dibuja `utils/overlayScrollbars.ts`, instalado una vez en `main.tsx`, en fijo sobre la zona. Cada barra toma el z-index de su zona (el mayor de ella y sus ancestros) más uno, con un mínimo de 40 (`levelOf`). `.osb-layer` solo las agrupa (`display: contents`), sin crear un nivel propio. Así lo que flota sobre una zona (el menú de sugerencias del editor, un modal) tapa sus barras, y una lista flotante muestra las suyas por encima.
 
+- Van contra el borde de la caja de la zona (`getBoundingClientRect`), no del área de contenido: un margen hecho con borde transparente (el del editor SQL, que el texto nunca pisa) queda debajo de la barra.
 - Solo aparecen en la zona bajo el mouse (y en las que la contienen) o que se está desplazando, y se desvanecen al salir. No ocupan espacio: el contenido no se corre.
 - Thumb de 6 px en tinta al 30 % (`color-mix(in oklab, var(--ink) 30%, transparent)`), legible en los tres temas. Al pasar el mouse por su franja (12 px), sube a 10 px con el gradiente de marca y `--hairline-strong`.
 - Cursor: `grab` sobre el thumb, `grabbing` en toda la ventana mientras se arrastra (`.osb-grabbing`, que también bloquea la selección de texto) y `pointer` en la pista, donde un clic avanza una página.

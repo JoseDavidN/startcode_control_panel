@@ -3,6 +3,22 @@
   "app": "startcode-panel",
   "versions": [
     {
+      "version": "0.12.0",
+      "type": "minor",
+      "date": "2026-11-07",
+      "title": "Descargas por SFTP y consultas guardadas",
+      "changes": {
+        "added": [
+          "Editor SQL: guarda tus consultas con un nombre y cárgalas cuando las necesites. Guardar o Ctrl + S guarda el editor activo y Consultas abre la lista de esa conexión, con búsqueda y vista previa. Se guardan en este equipo",
+          "SFTP: descarga archivos y carpetas del servidor (las carpetas llegan como .zip). Marca varios con las casillas o usa el botón de la vista previa y el menú del clic derecho; la cola muestra el progreso y puedes cancelar o reintentar. Si algo de una carpeta no se puede incluir, lo verás en _no-incluidos.txt dentro del .zip (requiere el backend 0.13.0)"
+        ],
+        "fixed": [
+          "Editor SQL: la barra de desplazamiento vertical queda pegada al borde y ya no tapa el texto",
+          "SFTP: al subir un archivo que ya existe vuelve a aparecer «Ya existe» con la opción de sobrescribir, y los errores muestran el motivo que da el servidor"
+        ]
+      }
+    },
+    {
       "version": "0.11.0",
       "type": "minor",
       "date": "2026-11-03",

@@ -21,6 +21,8 @@ export interface SftpSession {
   createdAt: number;
   lastUsedAt: number;
   activeUploads: number;
+  /** Descargas en curso: como las subidas, mantienen viva la sesión sin socket */
+  activeDownloads: number;
   /** Directorios ya creados en esta sesión: evita repetir mkdir por archivo */
   ensuredDirs: Set<string>;
   /**

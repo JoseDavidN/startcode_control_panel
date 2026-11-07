@@ -41,6 +41,24 @@ export type UploadStatus =
 	| 'canceled'
 	| 'conflict';
 
+export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'error' | 'canceled';
+
+export interface DownloadItem {
+	id: string;
+	/** Ruta en el servidor */
+	path: string;
+	/** Nombre del archivo que se guarda (una carpeta, con su .zip) */
+	name: string;
+	folder: boolean;
+	/** Ruta local elegida */
+	dest: string;
+	loaded: number;
+	/** Null mientras no se conoce: un .zip se comprime mientras se envía */
+	total: number | null;
+	status: DownloadStatus;
+	error?: string;
+}
+
 export interface UploadItem {
 	id: string;
 	/** Ruta relativa al destino: es lo que conserva el árbol de una carpeta */

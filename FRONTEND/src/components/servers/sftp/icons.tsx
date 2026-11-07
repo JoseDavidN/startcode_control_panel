@@ -55,6 +55,12 @@ export const FolderPlusIcon = ({ className = 'w-4 h-4' }) => (
 	</svg>
 );
 
+export const DownloadIcon = ({ className = 'w-4 h-4' }) => (
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>
+		<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+	</svg>
+);
+
 export const UploadIcon = ({ className = 'w-5 h-5' }) => (
 	<svg {...sp} className={className}>
 		<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />

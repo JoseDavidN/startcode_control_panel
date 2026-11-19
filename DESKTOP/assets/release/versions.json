@@ -1,0 +1,454 @@
+{
+  "$comment": "Novedades por versión. Se muestra en Configuración → Sistema y alimenta las notas de la actualización. La entrada de cada versión publicada es obligatoria: el workflow falla si falta. type: major | minor | patch. Secciones de changes (todas opcionales): added, changed, fixed, removed, security.",
+  "app": "startcode-panel",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "type": "major",
+      "date": "2026-11-19",
+      "title": "Aplicación nativa: StartCode Panel reconstruido desde cero",
+      "changes": {
+        "added": [
+          "Aplicación de escritorio nativa: la interfaz deja de ser una web embebida y pasa a ser una app real, más rápida al abrir y con menos consumo de memoria",
+          "Panel rediseñado: estado de la flota de un vistazo, indicadores de CPU, memoria y disco con tus umbrales, gráfica de actividad de 1 hora a 7 días y la lista de servidores que requieren atención",
+          "Notificaciones: confirmación antes de vaciar el historial y acceso directo al servidor de cada aviso",
+          "Linux: las alertas de seguridad llegan como notificación del escritorio y al pulsarlas la app pasa al frente; en Hyprland y otros escritorios en mosaico la ventana se adapta y no muestra botones de ventana",
+          "Instalador propio de la aplicación"
+        ],
+        "changed": [
+          "Servidores, terminal, SFTP, bases de datos, Redis, asistente y configuración conservan todas sus funciones en la nueva aplicación"
+        ],
+        "removed": [
+          "La sección Cloud deja de formar parte de la aplicación"
+        ]
+      }
+    },
+    {
+      "version": "0.12.0",
+      "type": "minor",
+      "date": "2026-11-07",
+      "title": "Descargas por SFTP y consultas guardadas",
+      "changes": {
+        "added": [
+          "Editor SQL: guarda tus consultas con un nombre y cárgalas cuando las necesites. Guardar o Ctrl + S guarda el editor activo y Consultas abre la lista de esa conexión, con búsqueda y vista previa. Se guardan en este equipo",
+          "SFTP: descarga archivos y carpetas del servidor (las carpetas llegan como .zip). Marca varios con las casillas o usa el botón de la vista previa y el menú del clic derecho; la cola muestra el progreso y puedes cancelar o reintentar. Si algo de una carpeta no se puede incluir, lo verás en _no-incluidos.txt dentro del .zip (requiere el backend 0.13.0)"
+        ],
+        "fixed": [
+          "Editor SQL: la barra de desplazamiento vertical queda pegada al borde y ya no tapa el texto",
+          "SFTP: al subir un archivo que ya existe vuelve a aparecer «Ya existe» con la opción de sobrescribir, y los errores muestran el motivo que da el servidor"
+        ]
+      }
+    },
+    {
+      "version": "0.11.0",
+      "type": "minor",
+      "date": "2026-11-03",
+      "title": "Explorador SFTP rediseñado y subidas más fiables",
+      "changes": {
+        "added": [
+          "SFTP: un clic en una carpeta muestra lo que contiene sin entrar en ella; pulsa una de sus subcarpetas para seguir bajando y construir la ruta viendo siempre un nivel por delante. En un archivo verás su tamaño, permisos, fecha y ruta",
+          "SFTP: al escribir una ruta, la barra sugiere las carpetas que hay en ese punto; usa las flechas y Tab o Enter para añadirlas",
+          "SFTP: botón para reintentar de una vez todas las subidas que fallaron, y cancelar también lo que sigue en cola"
+        ],
+        "changed": [
+          "El explorador SFTP es más ancho y siempre del mismo alto, con la carpeta, la vista previa y las subidas en una sola vista: lo que subes ya no aparece debajo ni obliga a desplazarse",
+          "Las columnas de la lista de archivos (nombre, tamaño, permisos y fecha) quedan alineadas con su cabecera"
+        ],
+        "fixed": [
+          "Las subidas por SFTP ya no se caen con archivos grandes, conexiones lentas o cortes breves de red: los archivos se envían por partes que se reintentan solas, y si la conexión se corta un momento la subida continúa (requiere el backend 0.12.1)"
+        ]
+      }
+    },
+    {
+      "version": "0.10.0",
+      "type": "minor",
+      "date": "2026-10-20",
+      "title": "Túnel SSH para bases de datos y miniaturas en la nube",
+      "changes": {
+        "added": [
+          "Conexiones a bases de datos por túnel SSH, para motores que solo escuchan dentro del servidor o de su red privada. Puedes usar un servidor que ya tengas dado de alta o escribir credenciales SSH propias (contraseña o llave privada). Con credenciales propias, la app te muestra la huella del servidor SSH para que la confirmes antes de enviar nada (requiere el backend 0.12.0)",
+          "Nube: las imágenes se ven en miniatura y los videos con su portada y el símbolo de reproducir, en el mosaico y en la lista, en lugar del icono del tipo (requiere StartCode Cloud 0.3.0; con una versión anterior sigue el icono)"
+        ],
+        "changed": [
+          "El formulario de nueva conexión y de edición se organiza en pestañas: Conexión, Base de datos y Túnel SSH",
+          "La pestaña Base de datos entra por defecto a todas las bases del servidor; si eliges una base concreta, la lista de bases se carga al entrar en la pestaña con los datos de la pestaña Conexión (y del túnel, si está activo); pulsa una para seleccionarla y arriba verás cuál está seleccionada",
+          "Al activar el túnel SSH, el host de la conexión queda fijo en 127.0.0.1, visto desde el servidor SSH",
+          "Las tarjetas de las conexiones por túnel SSH llevan la marca «Túnel SSH» junto al host; al pasar el ratón indica por dónde pasa el túnel"
+        ]
+      }
+    },
+    {
+      "version": "0.9.2",
+      "type": "patch",
+      "date": "2026-10-20",
+      "title": "Huellas SSH confirmadas e instaladores en español",
+      "changes": {
+        "security": [
+          "Al agregar un servidor, la app te muestra su huella SSH antes de enviar la llave privada para que la compares con la del servidor. Solo se guarda si confirmas que coincide (requiere el backend 0.11.2)",
+          "El panel ya no se conecta a ciegas a un servidor sin huella confirmada: la primera vez te la muestra y te pide confirmarla",
+          "Los tokens de agentes anteriores a 2.2.0 dejan de valer el 1 de diciembre de 2026. La tarjeta del agente te avisa si hay que reinstalarlo"
+        ],
+        "changed": [
+          "Los instaladores de Windows y la app en macOS están en español"
+        ]
+      }
+    },
+    {
+      "version": "0.9.1",
+      "type": "patch",
+      "date": "2026-10-20",
+      "title": "Parche de seguridad",
+      "changes": {
+        "security": [
+          "Descargas de la nube: la app solo guarda el archivo en la ruta que eliges al guardar y valida la dirección antes de descargar",
+          "La app usa solo los permisos del sistema que necesita, y los enlaces externos solo se abren si son http o https",
+          "Política de seguridad de contenido más estricta en la ventana de la app",
+          "Cerrar sesión borra siempre los datos guardados de la sesión, aunque falle la conexión con el backend",
+          "Contraseñas: al cambiarla se exigen de 8 a 72 caracteres, con mayúscula, minúscula, número y un carácter especial (requiere el backend 0.11.1)",
+          "Servidores: la app guarda la huella de cada servidor SSH y, si cambia, bloquea la conexión y te avisa de un posible ataque, con la huella esperada y la recibida. Puedes aceptar la nueva si el cambio es legítimo (requiere el backend 0.11.1)",
+          "Al cerrar sesión, cerrar otras sesiones o cambiar la contraseña, las terminales y el explorador de archivos abiertos de esa sesión se cortan al momento y la app vuelve al inicio de sesión. También se cierran por inactividad",
+          "Si alguien reutiliza un token de sesión ya renovado (por ejemplo, uno copiado de tu equipo), la sesión se cierra en todas partes, la app te lleva al inicio de sesión con el motivo y recibes un aviso de seguridad",
+          "Agente: su token caduca y rota solo cada pocos días sin perder la conexión, y desde la tarjeta del agente puedes regenerarlo. Si el agente se cae, vuelve a conectar con el token que tenga vigente (requiere el agente 2.2.0)",
+          "Dependencias actualizadas para corregir vulnerabilidades conocidas",
+          "Nube: las descargas ya no siguen redirecciones, así tu sesión de la nube no se envía a otro servidor. StartCode Cloud 0.2.2 aísla los archivos de cada usuario y bloquea los enlaces simbólicos que apuntan fuera de su carpeta",
+          "Backend 0.11.1: inicio de sesión protegido contra fuerza bruta y contra la detección de cuentas existentes, cabeceras de seguridad, validación estricta de lo que llega a la API, comandos y consultas protegidos contra inyección, y consultas enormes que ya no agotan la memoria"
+        ]
+      }
+    },
+    {
+      "version": "0.9.0",
+      "type": "minor",
+      "date": "2026-10-19",
+      "title": "Terminal minimizada y gestión de Redis",
+      "changes": {
+        "added": [
+          "Bases de datos: gestión de Redis. Explora las claves de cada base con buscador y filtro por tipo, mira y edita su valor (texto, hash, lista, conjunto, conjunto ordenado y stream), cambia la caducidad, renombra, borra y crea claves, y usa la consola de comandos como en redis-cli. Los comandos peligrosos, como FLUSHDB, piden confirmación y quedan en la auditoría",
+          "Asistente IA: ahora enseña. Con cada comando explica qué hace y para qué sirve cada opción, y te indica dónde aprender más, para que dependas menos de él. Si ya dominas algo no lo vuelve a explicar, y si pides solo el comando lo da sin más",
+          "Asistente IA: antes de proponer comandos o consultas comprueba el sistema del servidor (distribución, gestor de paquetes y arranque) o el motor y la versión de la base que tienes abierta, y te los da para ese sistema. Si no sabe cuál es, pregunta o te da primero el comando para averiguarlo",
+          "Asistente IA: comando /clear para limpiar el chat. Solo despeja la pantalla: el asistente sigue recordando la conversación y las preguntas anteriores",
+          "Servidores: la terminal se minimiza en una barra abajo a la derecha y sus sesiones siguen abiertas mientras navegas por otras vistas, como Bases de datos. Un clic la vuelve a abrir donde estés y la x termina las sesiones. Entrar al detalle de otro servidor cierra la terminal minimizada"
+        ],
+        "changed": [
+          "Asistente IA: gasta bastantes menos tokens por pregunta. Envía solo los datos de los servidores de los que hablas, recorta el historial y lo que adjunta de la pantalla, y con Claude reutiliza la caché entre preguntas seguidas",
+          "Barra lateral: el título lleva el logo de StartCode",
+          "Configuración → Sistema: el logo de StartCode encabeza la pestaña",
+          "Servidores: el botón de la esquina de la terminal ahora la minimiza en lugar de ocultarla",
+          "macOS: un solo instalador universal para Mac con Intel y con Apple Silicon"
+        ],
+        "fixed": [
+          "Terminal: los acentos y los iconos (por ejemplo los de nvim o de un prompt con Nerd Fonts) ya no salen a veces como � (requiere el backend 0.11.0)",
+          "Configuración: copiar los códigos de respaldo ya no deja un error sin manejar si falla el portapapeles"
+        ]
+      }
+    },
+    {
+      "version": "0.8.0",
+      "type": "minor",
+      "date": "2026-10-15",
+      "title": "Varias terminales por servidor",
+      "changes": {
+        "added": [
+          "Servidores: clic derecho en una tarjeta o fila para marcar hasta 3 servidores como favoritos (también editar y eliminar). Los favoritos aparecen siempre primero y llevan una estrella junto al nombre. Los botones de editar y eliminar de las tarjetas pasan a ese menú",
+          "Servidores: en Editar servidor, «Cambiar llave privada» muestra el campo para sustituir la llave SSH, con la misma validación que al darlo de alta. La llave actual nunca se muestra",
+          "Asistente IA: comando /resume en el chat. Guarda la conversación en la memoria del asistente (lo que recuerda en adelante) y deja el chat limpio. Al escribir / aparece la lista de comandos y Tab lo completa",
+          "Bases de datos: un clic en una celda de los resultados la marca y Ctrl + C (o «Copiar valor») copia su contenido (el puntero de mano indica que se puede hacer clic); las flechas mueven la celda marcada y Enter la edita",
+          "Bases de datos: las pestañas del editor SQL y sus consultas se guardan en el equipo para cada conexión y siguen ahí al volver a abrirla, incluso después de cerrar la app. Los resultados no se guardan: se vuelven a ejecutar",
+          "Terminal del servidor: pestañas para abrir hasta 5 terminales a la vez en la misma ventana, cada una con su propia conexión SSH. La pestaña activa sale de la propia consola, como en un navegador; el botón + abre otra y la x de cada pestaña cierra solo esa conexión"
+        ],
+        "changed": [
+          "Agregar servidor y Nueva conexión: la etiqueta va en la misma fila que el nombre",
+          "Editor SQL: más margen a la derecha, el texto ya no queda pegado al borde",
+          "Terminal del servidor: Limpiar y el asistente actúan sobre la pestaña activa; Terminar todas cierra todas las conexiones",
+          "Bases de datos: las pestañas del editor SQL se llaman por defecto «Editor #» en lugar de «Consola #»"
+        ],
+        "fixed": [
+          "Copiar al portapapeles ya no falla con «No se pudo copiar» (por ejemplo en Linux con Wayland)",
+          "Editor SQL: la vista sigue al cursor también en horizontal; al pulsar Enter tras una línea larga vuelve al inicio y muestra el cursor en la fila nueva"
+        ]
+      }
+    },
+    {
+      "version": "0.7.1",
+      "type": "patch",
+      "date": "2026-10-14",
+      "title": "Correcciones",
+      "changes": {
+        "added": [
+          "Bases de datos: al pasar el mouse por una celda cortada con puntos suspensivos, un globo muestra su contenido completo"
+        ],
+        "changed": [
+          "Editor SQL: con varias consultas separadas por `;`, Ejecutar (o Ctrl + Enter) corre solo la consulta donde está el cursor; con texto seleccionado, la selección"
+        ],
+        "fixed": [
+          "Bases de datos: la barra de desplazamiento ya no tapa la última fila ni la última columna de los resultados",
+          "Editor SQL: las sugerencias de tablas y columnas ya no quedan debajo de la barra de desplazamiento",
+          "Editor SQL: al pasar a mayúsculas una palabra reservada (como AS), el editor ya no salta al final de la consulta",
+          "El nombre de la app en la barra de título se lee mejor en todos los temas",
+          "Terminal del servidor: al cerrarla y volver a abrirla, el cursor ya no queda corrido sobre el texto del prompt"
+        ]
+      }
+    },
+    {
+      "version": "0.7.0",
+      "type": "minor",
+      "date": "2026-10-14",
+      "title": "Pods de Kubernetes en el detalle del servidor",
+      "changes": {
+        "added": [
+          "Bases de datos: sangría automática al saltar de línea dentro de una misma consulta; después de `;` la siguiente empieza en el margen",
+          "Bases de datos: el editor SQL predice tablas, vistas y columnas mientras escribes (Ctrl + Espacio para abrir las sugerencias), sin pedir nada nuevo al servidor",
+          "Bases de datos: hasta 6 consolas SQL en pestañas junto al editor; cada una conserva su consulta y sus resultados al cambiar de pestaña, y se renombra con doble clic",
+          "Bases de datos: «Nueva fila» agrega filas directamente en la tabla de resultados de un SELECT * de una sola tabla, con los valores por defecto ya marcados; al guardar aparecen como el primer registro",
+          "Bases de datos: selecciona filas de un resultado por su índice y elimínalas con «Eliminar filas»; se pide confirmación, se borran todas o ninguna y queda en la auditoría",
+          "Nueva pestaña Kubernetes en el detalle de los servidores que lo tienen (k3s, microk8s, rke2, k0s o kubelet): los pods de todos los namespaces con su estado, contenedores listos, reinicios, edad y, si el clúster tiene metrics-server, CPU y memoria",
+          "Filtros por namespace y texto, y vistas Activos, Con problemas y Todos; los pods que fallan salen primero. Al abrir un pod se ven su nodo, su IP y cada contenedor con su imagen y estado. La lista se lee al abrir la pestaña y se actualiza con el botón Actualizar",
+          "Instalar servicios desde el detalle del servidor: catálogo con el logo real de cada servicio. Ya se puede instalar Nginx en cualquier Linux con apt, dnf, yum, zypper, apk o pacman: lo instala, lo arranca, lo deja habilitado y muestra cada paso; los demás servicios llegan pronto",
+          "Si el servicio ya está instalado, el mismo botón ofrece desinstalarlo por completo, previa confirmación: quita paquetes, configuración, registros y usuario del sistema, y comprueba que no quede rastro",
+          "Instalar Kubernetes desde el detalle del servidor eligiendo la distribución: K3s, MicroK8s, k0s o RKE2. La desinstalación borra todo lo del clúster (datos, imágenes, configuración, red y reglas del cortafuegos) sin tocar Docker ni Podman",
+          "Instalar Docker (Engine, CLI, containerd, buildx y compose) desde el detalle del servidor; si ya está, el mismo botón lo desinstala por completo, con imágenes, contenedores, volúmenes y redes",
+          "Instalar bases de datos desde el detalle del servidor: PostgreSQL, MySQL o MariaDB, MongoDB y Redis. Si ya están, el mismo botón las desinstala por completo, con todas sus bases de datos",
+          "Instalar Fail2ban (protege SSH sin bloquear nunca al panel) y restic (copias de seguridad cifradas, versión oficial verificada) desde el detalle del servidor; también se desinstalan por completo",
+          "Instalar Tailscale (con el enlace para unir el servidor a tu red) y WireGuard (interfaz wg0 lista, con su clave pública para copiar) desde el detalle del servidor; también se desinstalan por completo, salvo si el panel entra al servidor por esa misma VPN",
+          "Instalar Node.js (versión LTS, con npm) desde el detalle del servidor; si ya está, el mismo botón lo desinstala por completo, con los paquetes globales de npm y sus cachés"
+        ],
+        "changed": [
+          "Barras de desplazamiento más visibles en toda la app, con la manito para agarrarlas y arrastrarlas",
+          "Al cerrar el modal de instalar servicios, el detalle del servidor se actualiza al momento: aparecen o se quitan pestañas como Docker o Kubernetes sin esperar al agente",
+          "Los enlaces al navegador vuelven a abrirse, como el de «Vincular a tu red» de Tailscale",
+          "La instalación de servicios vuelve a mostrar cada paso a medida que avanza, y los avisos y métricas en vivo no se pierden tras un corte de conexión",
+          "Barra de título propia con los colores del tema y los botones de ventana de tu sistema (los semáforos de macOS se mantienen)",
+          "Cloud: al descargar un archivo o carpeta, el diálogo para elegir dónde guardarlo se abre al instante y un aviso muestra el progreso de la descarga, que se puede cancelar en cualquier momento. La descarga corre en segundo plano: la app sigue respondiendo y puedes navegar aunque el archivo sea grande",
+          "Cada inicio de sesión en tu cuenta te avisa en tus otros equipos con una notificación del sistema: nombre del equipo, app, sistema e IP",
+          "Notificaciones del sistema en macOS más fiables: si macOS no deja usar su centro de notificaciones, se entregan igualmente",
+          "Puedes tener la sesión abierta en hasta 3 equipos a la vez; al entrar desde un cuarto se cierra la que lleva más tiempo sin usarse",
+          "Las notificaciones salen abajo al centro de la app con los colores del tema elegido, y ahora avisan al guardar o crear una fila desde los resultados",
+          "Docker: la lista de contenedores se lee al entrar a la pestaña y después solo con el botón Actualizar, en lugar de refrescarse sola cada 15 s"
+        ]
+      }
+    },
+    {
+      "version": "0.6.0",
+      "type": "minor",
+      "date": "2026-10-13",
+      "title": "El asistente prepara servidores y conexiones",
+      "changes": {
+        "added": [
+          "Pídele al asistente de IA que agregue un servidor o una conexión a base de datos: te muestra una tarjeta con los datos y «Revisar y crear» abre el formulario de siempre ya rellenado",
+          "La llave SSH y la contraseña las escribes tú en el formulario: nunca pasan por el asistente, y nada se crea hasta que lo guardas",
+          "Visor de imágenes en Cloud: doble clic en una imagen la abre ajustada a la ventana, con zoom (rueda, + y −), arrastrar para moverla, tamaño real y flechas para pasar a la anterior o la siguiente de la carpeta",
+          "Reproductor de video en Cloud: doble clic en un video empieza a verse enseguida, sin descargarlo entero, y saltar a cualquier punto es inmediato. Controles con el tema: reproducir, ±10 s, barra con lo ya cargado, volumen, velocidad y pantalla completa, también con el teclado. Requiere StartCode Cloud 0.2.0",
+          "Cloud: con clic derecho, «Compartir por SFTP» envía un archivo o una carpeta a cualquiera de tus servidores; eliges el servidor y la carpeta de destino y ves el progreso de cada archivo",
+          "Cloud reproduce videos de cualquier formato (MKV, AVI, WMV, HEVC…): la nube los prepara al vuelo sin esperar a convertirlos enteros, y los que ya convirtió una vez se abren al instante",
+          "Cloud: selección múltiple desde el clic derecho («Seleccionar» en cualquier parte de la vista o sobre un elemento) para mover, compartir por SFTP o eliminar varias carpetas y archivos a la vez. El mismo menú ofrece también nueva carpeta y cargar archivos o carpetas",
+          "Dashboard: gráficas de Cloud con el espacio de Home y Backups, la actividad de los últimos 30 días, el espacio por tipo de archivo y los archivos más grandes (requiere StartCode Cloud 0.2.0)"
+        ],
+        "fixed": [
+          "Conexión más estable con el proveedor de IA cuando el servidor del panel está en una VPN",
+          "Al exportar el resultado de una consulta, la app de escritorio abre el diálogo del sistema para elegir dónde guardarlo y avisa cuando termina",
+          "Las descargas de Cloud también preguntan dónde guardar en la app de escritorio",
+          "Exportar un resultado guarda todas las filas de la consulta, no solo las 1000 que se muestran (hasta 200 000). Las columnas ocultas siguen saliendo enmascaradas",
+          "Si el asistente no puede contactar con el proveedor, el error dice la causa (DNS, tiempo agotado, conexión cortada, certificado interceptado) y qué revisar",
+          "La pantalla completa del reproductor de video funciona: la ventana de la app pasa a pantalla completa y Escape vuelve sin cerrar el video",
+          "Descargar los códigos de respaldo de la verificación en dos pasos y exportar la configuración abren el diálogo para elegir dónde guardarlos",
+          "Los enlaces dentro de un archivo Markdown de Cloud se abren en tu navegador",
+          "Soltar archivos en la ventana de SFTP ya no puede quedarse sin subir nada",
+          "Copiar y pegar usan el portapapeles del sistema y ya no dependen de permisos del visor de la app"
+        ],
+        "changed": [
+          "Al abrir el asistente se muestra el final de la conversación",
+          "Nuevos controles del reproductor de video: botones redondos e independientes con los colores del tema, translúcidos sobre el video, barra de reproducción con lo ya cargado y el tiempo al pasar el ratón, y aviso al saltar ±10 s",
+          "La terminal SSH siempre se abre apaisada y, con el asistente abierto, se coloca a su lado en lugar de quedar debajo",
+          "Cerrar la terminal ya no corta la sesión: al volver está como la dejaste. «Terminar sesión» la cierra, y también salir del detalle del servidor",
+          "Se quitó «Imagen en imagen» del reproductor: no funcionaba en la app de escritorio",
+          "Dashboard más compacto: las gráficas y tarjetas se reparten en filas compartidas en pantallas grandes",
+          "Al cargar una carpeta en Cloud o por SFTP se omiten las carpetas de paquetes y cachés (node_modules, venv, __pycache__…), con un aviso de cuáles se dejaron fuera",
+          "Cloud: las carpetas se abren con doble clic, como los archivos",
+          "Servidores: en las tarjetas el estado de conexión y el indicador de en línea pasan a la parte inferior, y se quita el texto «Último reporte»"
+        ]
+      }
+    },
+    {
+      "version": "0.5.1",
+      "type": "patch",
+      "date": "2026-10-10",
+      "title": "El asistente valida la estructura de la base",
+      "changes": {
+        "fixed": [
+          "Antes de escribir una consulta SQL, el asistente de IA lee la estructura real de la base abierta (tablas, vistas y columnas) y usa los nombres que existen: si pides «students total» la consulta sale con tbl_students_total y sus columnas reales",
+          "El asistente ya no inventa tablas ni columnas: si no las encuentra en la base, lo dice y te propone primero una consulta para comprobarlas",
+          "La estructura que lee el asistente ya no depende de haber desplegado las tablas en el árbol",
+          "Las notificaciones del sistema funcionan en macOS: la primera vez se pide el permiso con el aviso del sistema y la alerta aparece aunque la app esté en primer plano"
+        ],
+        "added": [
+          "Filtros en Servidores: por sistema operativo y por etiqueta, con el número de filtros activos en el botón",
+          "Etiqueta opcional para cada servidor al agregarlo o editarlo: Producción, Preproducción, Pruebas, Desarrollo o Respaldo. Una por servidor y se muestra junto a su estado",
+          "Etiquetas también para las conexiones de Bases de Datos, con la misma lista que los servidores. Se muestran en la tarjeta, en la fila del usuario",
+          "Filtros en Bases de Datos: por motor y por etiqueta"
+        ],
+        "changed": [
+          "Tarjetas de Servidores más compactas: la misma información con las métricas en línea junto a su icono",
+          "El botón Agregar servidor pasa a la barra del buscador y sustituye a la tarjeta de agregar servidor",
+          "Los datos de los servidores se actualizan solos al entrar en la vista, sin el botón Actualizar",
+          "El panel del asistente de IA es casi opaco: el contenido de fondo ya no se confunde con el chat",
+          "Las alertas de seguridad como notificación del sistema se activan en cada equipo y ya no se guardan en tu cuenta. Configuración → Notificaciones muestra si el sistema dio permiso y permite pedirlo"
+        ]
+      }
+    },
+    {
+      "version": "0.5.0",
+      "type": "minor",
+      "date": "2026-10-10",
+      "title": "Tab de Cloud",
+      "changes": {
+        "added": [
+          "Nuevo tab Cloud en la barra lateral, que abre la vista de gestión de StartCode Cloud",
+          "Columna de navegación de la nube con la marca StartCode Cloud, tu cuenta y el tab Home",
+          "Explorador de archivos con migas de pan que siguen la carpeta abierta: un clic en cualquier tramo de la ruta te devuelve a esa carpeta",
+          "Filtros por tipo, por fecha y por tiempo desde la última modificación",
+          "Buscador por nombre en la carpeta abierta y botón Nueva carpeta en la barra de filtros",
+          "Vista en mosaico (por defecto) o en lista, con las carpetas primero y luego los archivos",
+          "En la vista de lista el contenido se separa en grupos que se pueden plegar: carpetas, archivos Word, archivos Excel, PDF, imágenes, etc. Los elementos de cada grupo se muestran sangrados, en forma de árbol",
+          "La vista en mosaico también se separa por tipo: carpetas, archivos Word, archivos Excel, etc.",
+          "Cada archivo se muestra con el icono de su tipo: Word, Excel, PowerPoint, PDF, imágenes, videos, audio, comprimidos, código y texto",
+          "Etiqueta al pie de la columna que indica si estás conectado a la nube",
+          "Almacenamiento al pie de la columna: espacio disponible, total y una barra con lo ocupado",
+          "Cloud trabaja con tus archivos reales en StartCode Cloud, un servidor aparte donde se guardan Home y Backups",
+          "La primera vez que entras a Cloud se pide conectar el panel con la dirección de tu nube, tu usuario y tu contraseña (también desde el engranaje → Conexión); la sesión queda guardada en el equipo y puedes desconectarla cuando quieras",
+          "El asistente de IA no está disponible en la vista Cloud por el momento",
+          "Arrastra carpetas o archivos a la vista Cloud para cargarlos en la carpeta abierta: aparece «Suelta para cargar», un aviso muestra el progreso de la carga y, al terminar, la confirmación se queda 10 segundos",
+          "Los avisos de Cloud aparecen abajo, dentro de la zona de contenido",
+          "Lector de archivos: doble clic en un documento Word, una hoja de Excel, un PDF, un texto o un archivo de código para verlo sin salir de la app, con el botón Descargar en la barra del lector. También se abre con clic derecho → Abrir",
+          "Los archivos Markdown (.md) se ven con formato en el lector: títulos, listas, tablas y código, con la opción de ver el texto original",
+          "Fija hasta 5 carpetas por sección en el menú de Cloud con clic derecho → Fijar en el menú: aparecen debajo de Home o de Backups para abrirlas con un clic",
+          "Nuevo tab Backups en Cloud, con el mismo funcionamiento que Home para tus respaldos",
+          "Configuración de Cloud desde el engranaje junto al título: conexión con la nube y rutas de las carpetas de Home y de Backups en el servidor",
+          "Mueve, cambia el nombre o elimina carpetas y archivos con clic derecho; se pueden mover entre Home y Backups",
+          "Detalles de carpetas y archivos con clic derecho: tamaño, contenido, fechas de carga y modificación, y ubicación",
+          "Botones Cargar archivos y Cargar carpeta en Cloud, que abren el explorador de archivos de tu sistema",
+          "Menú propio con el clic derecho en toda la app: en Cloud, Descargar sobre carpetas y archivos; sobre texto, Cortar, Copiar y Pegar; en la terminal, Copiar y Pegar"
+        ],
+        "changed": [
+          "Las ventanas emergentes nunca son más altas que la app y dejan espacio arriba y abajo",
+          "Elegir archivos o carpetas (en Cloud y en la transferencia SFTP de los servidores) abre el explorador de archivos de tu sistema",
+          "El indicador Cloud del Panel muestra el espacio usado y el total de tu nube y si está conectada",
+          "Los desplegables de toda la app (filtros de Cloud, servidor de la gráfica del Panel, intervalo de actualización, modelo del asistente y sistema operativo de los servidores) tienen ahora el diseño de la app en lugar del desplegable del sistema, y se pueden manejar con el teclado"
+        ]
+      }
+    },
+    {
+      "version": "0.4.0",
+      "type": "minor",
+      "date": "2026-10-09",
+      "title": "Asistente de IA",
+      "changes": {
+        "added": [
+          "Nueva pestaña Asistente IA en Configuración: conecta tu propio asistente con Anthropic (Claude), OpenAI (ChatGPT) o Google Gemini usando tu clave de API, con el modelo que prefieras",
+          "Cada usuario tiene su propio asistente, y este solo puede ver los datos de su cuenta",
+          "La clave de API se guarda cifrada y no vuelve a mostrarse; se puede probar la conexión, desactivar el asistente o desconectarlo",
+          "Botón Asistente en la barra superior y en la terminal para abrir el chat sin salir de la pantalla",
+          "El asistente puede leer tus servidores, métricas, conexiones a bases de datos, auditorías y notificaciones, además de la terminal, la línea de comandos, el editor SQL, los resultados de las consultas y la estructura de la base abierta. Cada fuente se puede quitar con un clic",
+          "Los comandos y consultas que propone se pegan en la terminal, la línea de comandos o el editor SQL con un botón; nunca se ejecutan solos",
+          "Solo consulta: el asistente no ejecuta comandos ni consultas y no tiene acceso a llaves SSH ni contraseñas de bases de datos",
+          "El asistente no da información interna de StartCode Panel: para credenciales y ajustes remite siempre a las pantallas de Servidores, Bases de Datos o Configuración",
+          "El modelo se elige de una lista con los modelos que tu proveedor ofrece en ese momento, que se actualiza sola al cambiar de proveedor o de clave y periódicamente",
+          "El asistente tiene memoria: recuerda tus conversaciones anteriores aunque recargues la app, entres desde otro equipo o cambies de Claude a ChatGPT o Gemini",
+          "En Configuración → Asistente IA puedes ver lo que recuerda a largo plazo y borrar su memoria"
+        ]
+      }
+    },
+    {
+      "version": "0.3.0",
+      "type": "minor",
+      "date": "2026-10-09",
+      "title": "Tab de Bases de Datos",
+      "changes": {
+        "added": [
+          "Nuevo tab Bases de Datos en la barra lateral, con la vista de las conexiones en tarjetas: motor, nombre, IP y puerto, usuario y la base específica a la que apunta cada conexión (o «Servidor completo» si no apunta a ninguna)",
+          "El indicador Bases de Datos del dashboard muestra cuántas conexiones tienes agregadas y de qué motores",
+          "Buscador de conexiones por nombre, motor, IP o base de datos, con el botón para agregar una conexión en la misma barra",
+          "Las conexiones se muestran en 3 columnas y se paginan de 9 en 9",
+          "Formulario para agregar una conexión: se elige el motor (MySQL, MariaDB, PostgreSQL o Redis) con botones con su logo, y se indica host, puerto, usuario, contraseña y, si se quiere, una base de datos concreta",
+          "Cada tarjeta muestra el logo de su motor de base de datos",
+          "Las conexiones se guardan en tu cuenta y la contraseña se almacena cifrada",
+          "Al crear o editar una conexión, el campo de base de datos muestra las bases disponibles en el servidor para elegir una",
+          "Probar conexión antes de guardar: muestra la versión del motor y el tiempo de respuesta, o el motivo del fallo",
+          "La conexión a la base de datos solo se abre mientras estás en su vista de consultas y se cierra al salir; las tarjetas no se conectan ni comprueban nada",
+          "Editar y eliminar conexiones desde la tarjeta; el campo de contraseña tiene un icono de ojo para verla u ocultarla",
+          "Al pulsar una conexión MySQL, MariaDB o PostgreSQL se abre su vista de gestión: lista de bases de datos con buscador, editor SQL con filas numeradas y resultados en una tabla desplazable",
+          "Cada base de datos se despliega en tablas (con buscador), vistas, triggers, índices y procedimientos; doble clic en cualquiera prepara la consulta para verlo. Si la conexión apunta a una base concreta, aparece ya desplegada",
+          "Doble clic en una tabla prepara la consulta de sus primeras 100 filas; Ctrl + Enter ejecuta y, si hay texto seleccionado, solo se ejecuta la selección",
+          "El editor SQL pone en mayúsculas las palabras reservadas (SELECT, FROM, INNER JOIN, WHERE, LIMIT…) mientras escribes, sin tocar textos entre comillas ni comentarios",
+          "El editor SQL colorea palabras reservadas, funciones, tipos, textos, números y comentarios con una paleta propia de cada tema",
+          "Exportar los resultados de una consulta a CSV o a Excel (XLSX); el Excel lleva el estilo de tabla del tema: cabecera con su color, filas alternas, bordes y filtros",
+          "Selección de filas en los resultados para copiarlas: clic en # selecciona todas y clic en el número de una fila la selecciona; se copian con Ctrl + C, listas para pegar en Excel",
+          "Doble clic en un campo de los resultados para editarlo; la fila muestra guardar y cancelar, y guardar actualiza solo esa fila en la base de datos",
+          "Las columnas de contraseñas, claves, tokens y correos aparecen ocultas en los resultados; un icono de ojo en la cabecera las muestra. Si se exportan ocultas, salen enmascaradas",
+          "La tabla de resultados alterna filas claras y oscuras según el tema y se desplaza en vertical y en horizontal cuando hay muchas columnas",
+          "Las consultas peligrosas (borrar bases o tablas, vaciar tablas, DELETE o UPDATE sin WHERE, cambiar permisos o usuarios…) piden confirmación antes de ejecutarse",
+          "Auditoría de las consultas peligrosas confirmadas en cada conexión: quién, cuándo, qué sentencia, sobre qué base y cómo terminó"
+        ]
+      }
+    },
+    {
+      "version": "0.2.0",
+      "type": "minor",
+      "date": "2026-10-08",
+      "title": "Actualizaciones automáticas y nueva línea de comandos",
+      "changes": {
+        "added": [
+          "Actualizaciones automáticas: la app busca versiones nuevas al abrirse y cada 6 horas, las descarga en segundo plano y se aplican al reiniciar",
+          "Aviso cuando hay una versión nueva o está lista para aplicar, con botón para instalar o reiniciar",
+          "Las preferencias de actualización se guardan en este equipo",
+          "La verificación en dos pasos se recuerda 7 días en cada equipo: el código no se pide en cada inicio de sesión"
+        ],
+        "changed": [
+          "El dashboard muestra tres indicadores: servidores en línea, bases de datos conectadas y estado de Cloud",
+          "Se retiran del dashboard los indicadores de servicios, sitios web y bases de datos detectadas; ese detalle sigue en cada servidor",
+          "Bases de datos y Cloud aparecen como «Próximamente» hasta que sus módulos estén disponibles",
+          "Nuevo diseño del icono de StartCode Panel",
+          "La línea de comandos queda siempre visible en la parte inferior del detalle del servidor; el resultado aparece encima de la barra y el botón sudo va al final de la línea",
+          "En Configuración → Monitoreo los umbrales de alerta aplican a cada servidor y ya no se comparan con un promedio; la sección de retención de datos se sustituye por Historial de métricas, que indica que los datos se conservan 30 días y se limpian a diario",
+          "Configuración → Sistema deja de mostrar el tiempo activo del backend y el ORM, y se quita el botón de refrescar de Información del Sistema",
+          "La tarjeta de cada servidor muestra servicios, procesos, tiempo activo y la hora del último reporte, en lugar de sitios y bases de datos",
+          "En Recursos detallados cada disco muestra su uso total y debajo sus particiones, en lugar de mostrar cada partición como un disco distinto",
+          "La línea de comandos es para comandos puntuales: todos se ejecutan en la carpeta del usuario y no permite cambiar de carpeta, ver la ruta actual, consultar los discos ni abrir un shell; para eso está la terminal",
+          "El tab Comandos solo muestra el registro de comandos ejecutados; pulsar uno lo carga en la línea de comandos"
+        ],
+        "fixed": [
+          "Las sesiones activas distinguen la app de escritorio del navegador y muestran la IP del equipo",
+          "Las alertas de seguridad se muestran como notificación del sistema operativo y no solo dentro de la app",
+          "El estado de la contraseña en Seguridad cuenta bien los días después de cambiarla",
+          "Al marcar sudo, la línea de comandos y el resultado muestran que el comando se ejecuta con sudo",
+          "Escribir sudo al inicio del comando ya no lo duplica ni da error: se ejecuta con sudo y pide la contraseña si hace falta",
+          "La ruta de la línea de comandos muestra ~ para la carpeta del usuario, también después del primer comando, y con sudo ya no salta a la carpeta de root"
+        ]
+      }
+    },
+    {
+      "version": "0.1.1",
+      "type": "patch",
+      "date": "2026-10-07",
+      "title": "Nuevo icono de la aplicación",
+      "changes": {
+        "fixed": [
+          "Icono propio de StartCode Panel en el instalador, la barra de tareas, el Dock y el menú de aplicaciones (sustituye al icono genérico de Tauri)"
+        ]
+      }
+    },
+    {
+      "version": "0.1.0",
+      "type": "minor",
+      "date": "2026-10-07",
+      "title": "Primera versión de escritorio",
+      "changes": {
+        "added": [
+          "Monitoreo en tiempo real de servidores con el agente StartCode",
+          "Gestión de servicios systemd, journal y servicios fijados",
+          "Terminal SSH, SFTP, línea de comandos con auditoría y contenedores Docker",
+          "Consumo de memoria por proceso con cierre por SIGTERM",
+          "Mantener sesión iniciada en el login"
+        ]
+      }
+    }
+  ]
+}

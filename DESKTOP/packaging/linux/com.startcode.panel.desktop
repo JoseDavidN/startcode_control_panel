@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=StartCode Panel
+GenericName=Panel de servidores
+Comment=Administra servidores, bases de datos y la nube de StartCode
+Exec=startcode-panel
+Icon=com.startcode.panel
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true
+StartupWMClass=com.startcode.panel

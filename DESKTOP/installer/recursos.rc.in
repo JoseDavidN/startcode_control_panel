@@ -1,0 +1,46 @@
+// Recursos del instalador (CMake rellena las rutas y la versión)
+#include <windows.h>
+
+// Este archivo está en UTF-8
+#pragma code_page(65001)
+
+1 RT_MANIFEST "@STARTCODE_MANIFIESTO@"
+
+// Icono del instalador y del desinstalador: el de StartCode Panel. Los
+// accesos directos y «Aplicaciones instaladas» lo toman de desinstalar.exe
+100 ICON "@STARTCODE_ICONO_USADO@"
+
+// Ver RecursoFuente y RecursoLogo en src/main.cpp
+101 RCDATA "@STARTCODE_FUENTE@"
+102 RCDATA "@STARTCODE_LOGO@"
+
+// Datos de la versión: lo que Windows enseña en Propiedades → Detalles y en
+// el aviso de SmartScreen
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @STARTCODE_VERSION_COMAS@,0
+PRODUCTVERSION  @STARTCODE_VERSION_COMAS@,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // Español (0x0C0A), Unicode (1200)
+        BLOCK "0C0A04B0"
+        BEGIN
+            VALUE "CompanyName",      "StartCode"
+            VALUE "FileDescription",  "Instalador de StartCode Panel"
+            VALUE "FileVersion",      "@STARTCODE_VERSION@"
+            VALUE "InternalName",     "StartCodePanelInstalador"
+            VALUE "OriginalFilename", "StartCodePanelInstalador.exe"
+            VALUE "ProductName",      "StartCode Panel"
+            VALUE "ProductVersion",   "@STARTCODE_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0C0A, 1200
+    END
+END

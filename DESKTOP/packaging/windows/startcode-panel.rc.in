@@ -1,0 +1,41 @@
+// Recursos de startcode-panel.exe en Windows (para el CMakeLists.txt de la
+// app: ver packaging/LEEME.md, «Cambios en el CMakeLists.txt de la app»).
+// Icono: Explorador, barra de tareas, accesos directos. Datos de la versión:
+// Windows enseña FileDescription como nombre de la aplicación (notificaciones,
+// Administrador de tareas, mezclador de volumen, «Abrir con»); sin ellos
+// enseña «startcode-panel.exe»
+#include <winver.h>
+
+// Este archivo está en UTF-8
+#pragma code_page(65001)
+
+IDI_ICON1 ICON "@STARTCODE_ICONO@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION  @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // Español (0x0C0A), Unicode (1200)
+        BLOCK "0C0A04B0"
+        BEGIN
+            VALUE "CompanyName",      "StartCode"
+            VALUE "FileDescription",  "StartCode Panel"
+            VALUE "FileVersion",      "@PROJECT_VERSION@"
+            VALUE "InternalName",     "startcode-panel"
+            VALUE "OriginalFilename", "startcode-panel.exe"
+            VALUE "ProductName",      "StartCode Panel"
+            VALUE "ProductVersion",   "@PROJECT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0C0A, 1200
+    END
+END

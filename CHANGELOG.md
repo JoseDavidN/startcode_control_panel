@@ -9,6 +9,26 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 1.0.0] — 2026-11-19
+
+Versión **mayor**: la app de escritorio se reconstruye como aplicación nativa (Qt 6 + QML + C++) en `DESKTOP/` y sustituye a la interfaz web embebida de `FRONTEND/` (React + Tauri). Usa el mismo backend (0.13.0).
+
+### Añadido
+- `DESKTOP/`: aplicación nativa completa — acceso, Panel, Servidores (detalle, servicios, procesos, comandos, Docker, Kubernetes, instalación de servicios, agente, terminal y SFTP), Bases de Datos (editor SQL, esquema, resultados, exportación, consultas guardadas, auditoría y Redis), Notificaciones, Configuración y Asistente.
+- Cliente propio de REST y de Socket.IO, emulador de terminal sobre libvterm y resaltado SQL en C++.
+- Panel rediseñado (`qml/dashboard/`): estado de la flota, indicadores con los umbrales del usuario, gráfica de actividad (1 h, 6 h, 24 h, 7 d) y servidores que requieren atención.
+- Notificaciones (`qml/notifications/`, `qml/app/NotificationWatcher.qml`): insignia de no leídas, avisos en la app y, en Linux, notificación del escritorio para las alertas de seguridad con activación de la ventana (testigo de Wayland y socket de Hyprland).
+- Compatibilidad con Hyprland y otros compositores en mosaico: sin botones de ventana, diseño adaptable y `app_id` `com.startcode.panel`.
+- Instalador propio (`DESKTOP/installer/`) y empaquetado (`DESKTOP/packaging/`).
+
+### Cambiado
+- La pantalla de acceso reproduce la de la versión anterior.
+
+### Eliminado
+- La sección Cloud no se incluye en la aplicación nativa.
+
+---
+
 ## [App de escritorio 0.12.0] — 2026-11-07
 
 Versión **menor** sobre 0.11.0. Requiere el backend 0.13.0 para descargar por SFTP.

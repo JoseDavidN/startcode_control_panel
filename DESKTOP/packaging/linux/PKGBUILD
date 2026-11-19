@@ -1,0 +1,90 @@
+# StartCode Panel (app de escritorio nativa, Qt 6) para Arch Linux, compilado
+# desde el repositorio. Usa el Qt y la libvterm del sistema (enlazado dinámico).
+#
+# Uso: copiar este archivo (y nada más) a una carpeta vacía y ejecutar
+#   STARTCODE_API_URL=https://panel.ejemplo.com/api/v1 makepkg -si
+# El .desktop y el icono se toman del propio repositorio (DESKTOP/packaging/linux
+# y DESKTOP/assets/img) con las reglas de instalación del CMakeLists.txt.
+#
+# Variables de entorno:
+#   STARTCODE_API_URL  URL base del API REST (sin barra final) que queda dentro
+#                      del ejecutable. Sin ella queda la de desarrollo
+#                      (http://localhost:3001/api/v1); al ejecutar la app, la
+#                      variable del mismo nombre la sustituye.
+#   STARTCODE_FUENTE   de dónde se clona, si no es el repositorio de GitHub:
+#                      otra rama («…#branch=dev») o una copia local
+#                      («git+file:///ruta/a/startcode_panel#branch=dev»).
+#                      El repositorio es privado: por https pide credenciales;
+#                      con clave SSH, «git+ssh://git@github.com/JoseDavidN/startcode_control_panel.git».
+
+pkgname=startcode-panel-git
+pkgver=1.0.0.r0.g0000000
+pkgrel=1
+pkgdesc='Administra servidores, bases de datos y la nube de StartCode'
+arch=('x86_64' 'aarch64')
+url='https://github.com/JoseDavidN/startcode_control_panel'
+license=('LicenseRef-StartCode')
+# Módulos de Qt que enlaza DESKTOP/CMakeLists.txt (Core, Gui, Network y DBus
+# van en qt6-base; Qml, Quick y QuickControls2, con Layouts, Dialogs, Effects y
+# Shapes, en qt6-declarative; WebSockets, en qt6-websockets) y libvterm, la
+# emulación de la terminal SSH.
+depends=(
+  'qt6-base>=6.9'
+  'qt6-declarative'
+  'qt6-websockets'
+  'libvterm'
+  # Ventana nativa en Wayland (Hyprland, GNOME, KDE…); sin él iría por XWayland
+  'qt6-wayland'
+  'hicolor-icon-theme'
+)
+makedepends=('git' 'cmake' 'ninja' 'pkgconf')
+optdepends=(
+  'qt6-translations: textos de Qt en español (diálogos del sistema, menús de edición)'
+  'xdg-desktop-portal: diálogos de archivos del escritorio (con el portal de tu entorno: -hyprland, -gnome, -kde…)'
+)
+provides=('startcode-panel')
+conflicts=('startcode-panel')
+source=("startcode-panel::${STARTCODE_FUENTE:-git+https://github.com/JoseDavidN/startcode_control_panel.git}")
+sha256sums=('SKIP')
+
+# La versión de project(... VERSION ...) de DESKTOP/CMakeLists.txt
+_version() {
+  sed -n 's/^project(StartCodePanel[[:space:]]\{1,\}VERSION[[:space:]]\{1,\}\([0-9.]*\).*/\1/p' \
+    startcode-panel/DESKTOP/CMakeLists.txt | head -1
+}
+
+# 1.0.0.r3.gabc1234: la versión de la app, los commits que tocan DESKTOP/ y el
+# último commit. (Las etiquetas «v*» del repositorio son de la app anterior,
+# así que no se usan.)
+pkgver() {
+  printf '%s.r%s.g%s' "$(_version)" \
+    "$(git -C startcode-panel rev-list --count HEAD -- DESKTOP)" \
+    "$(git -C startcode-panel rev-parse --short=7 HEAD)"
+}
+
+build() {
+  local api=()
+  if [[ -n ${STARTCODE_API_URL:-} ]]; then
+    api=("-DSTARTCODE_API_URL=$STARTCODE_API_URL")
+  else
+    echo 'Aviso: sin STARTCODE_API_URL el paquete apunta al API de desarrollo (localhost).' >&2
+  fi
+  # CMAKE_BUILD_TYPE=None: los CFLAGS/CXXFLAGS de makepkg.conf mandan
+  cmake -S startcode-panel/DESKTOP -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    "${api[@]}"
+  cmake --build build
+}
+
+package() {
+  # El CMakeLists.txt instala el ejecutable (startcode-panel), el .desktop
+  # (com.startcode.panel.desktop) y el icono (hicolor/512x512)
+  DESTDIR="$pkgdir" cmake --install build
+  for licencia in startcode-panel/DESKTOP/LICENSE startcode-panel/LICENSE; do
+    if [[ -f $licencia ]]; then
+      install -Dm644 "$licencia" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+      break
+    fi
+  done
+}

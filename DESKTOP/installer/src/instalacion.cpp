@@ -1,0 +1,434 @@
+#include "instalacion.h"
+
+#include <windows.h>
+#include <objidl.h>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <iterator>
+#include <vector>
+
+#include "miniz.h"
+
+namespace fs = std::filesystem;
+
+namespace {
+
+// Final del instalador: [stub][ZIP][desplazamiento del ZIP: 8 bytes][marca: 8 bytes]
+// «STCPANEL», la misma que escribe empaquetar.ps1
+constexpr char Marca[8] = { 'S', 'T', 'C', 'P', 'A', 'N', 'E', 'L' };
+// Bytes del pie (no «Pie»: así se llama una función de wingdi.h)
+constexpr int TamanoPie = 16;
+
+// «StartCodePanel», sin espacio: «StartCode Panel» es la clave que usaba el
+// instalador de la app anterior (Tauri/NSIS) y las dos pueden convivir
+const wchar_t *const ClaveDesinstalar
+    = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\StartCodePanel";
+const wchar_t *const Nombre = L"StartCode Panel";
+const wchar_t *const Ejecutable = L"startcode-panel.exe";
+const wchar_t *const Desinstalador = L"desinstalar.exe";
+
+std::wstring carpetaConocida(REFKNOWNFOLDERID id)
+{
+    PWSTR ruta = nullptr;
+    std::wstring resultado;
+    if (SUCCEEDED(SHGetKnownFolderPath(id, KF_FLAG_CREATE, nullptr, &ruta)))
+        resultado = ruta;
+    CoTaskMemFree(ruta);
+    return resultado;
+}
+
+std::wstring desdeUtf8(const char *texto)
+{
+    const int largo = MultiByteToWideChar(CP_UTF8, 0, texto, -1, nullptr, 0);
+    std::wstring resultado(largo > 0 ? largo - 1 : 0, L'\0');
+    if (largo > 1)
+        MultiByteToWideChar(CP_UTF8, 0, texto, -1, resultado.data(), largo);
+    return resultado;
+}
+
+// Avisa como mucho una vez por milésima: no satura la ventana de mensajes
+class Contador
+{
+public:
+    Contador(const Avance &avance, double desde, double hasta)
+        : m_avance(avance), m_desde(desde), m_hasta(hasta) {}
+    void fraccion(double f)
+    {
+        const int milesima = int(f * 1000);
+        if (milesima == m_ultima)
+            return;
+        m_ultima = milesima;
+        m_avance(m_desde + (m_hasta - m_desde) * f);
+    }
+
+private:
+    const Avance &m_avance;
+    double m_desde, m_hasta;
+    int m_ultima = -1;
+};
+
+struct Escritura {
+    HANDLE archivo;
+    uint64_t *hechos;
+    uint64_t total;
+    Contador *contador;
+};
+
+size_t escribir(void *opaco, mz_uint64, const void *datos, size_t n)
+{
+    auto *e = static_cast<Escritura *>(opaco);
+    DWORD escritos = 0;
+    if (!WriteFile(e->archivo, datos, DWORD(n), &escritos, nullptr) || escritos != n)
+        return 0;
+    *e->hechos += n;
+    if (e->total)
+        e->contador->fraccion(double(*e->hechos) / double(e->total));
+    return n;
+}
+
+// Un ZIP podría traer rutas que se salgan de la carpeta («..», absolutas)
+bool rutaSegura(const std::wstring &ruta)
+{
+    if (ruta.empty() || ruta[0] == L'/' || ruta[0] == L'\\' || ruta.find(L':') != std::wstring::npos)
+        return false;
+    for (const auto &parte : fs::path(ruta)) {
+        if (parte == L"..")
+            return false;
+    }
+    return true;
+}
+
+// `icono`: de dónde sale el dibujo del acceso (el desinstalador, que lleva el
+// icono de StartCode Panel como primer recurso)
+bool accesoDirecto(const std::wstring &destino, const std::wstring &icono, const std::wstring &enlace)
+{
+    IShellLinkW *link = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link))))
+        return false;
+    link->SetPath(destino.c_str());
+    link->SetWorkingDirectory(fs::path(destino).parent_path().c_str());
+    link->SetDescription(L"StartCode Panel: servidores, bases de datos y la nube de StartCode");
+    link->SetIconLocation(icono.c_str(), 0);
+    IPersistFile *archivo = nullptr;
+    bool hecho = false;
+    if (SUCCEEDED(link->QueryInterface(IID_PPV_ARGS(&archivo)))) {
+        hecho = SUCCEEDED(archivo->Save(enlace.c_str(), TRUE));
+        archivo->Release();
+    }
+    link->Release();
+    return hecho;
+}
+
+void textoRegistro(HKEY clave, const wchar_t *nombre, const std::wstring &valor)
+{
+    RegSetValueExW(clave, nombre, 0, REG_SZ, reinterpret_cast<const BYTE *>(valor.c_str()),
+                   DWORD((valor.size() + 1) * sizeof(wchar_t)));
+}
+
+void numeroRegistro(HKEY clave, const wchar_t *nombre, DWORD valor)
+{
+    RegSetValueExW(clave, nombre, 0, REG_DWORD, reinterpret_cast<const BYTE *>(&valor), sizeof(valor));
+}
+
+std::wstring accesoMenuInicio()
+{
+    return carpetaConocida(FOLDERID_Programs) + L"\\StartCode Panel.lnk";
+}
+
+std::wstring accesoEscritorio()
+{
+    return carpetaConocida(FOLDERID_Desktop) + L"\\StartCode Panel.lnk";
+}
+
+// Copia el principio del instalador (sin el paquete): sirve de desinstalador
+bool copiarDesinstalador(FILE *instalador, uint64_t tamano, const std::wstring &destino)
+{
+    FILE *salida = _wfopen(destino.c_str(), L"wb");
+    if (!salida)
+        return false;
+    std::vector<char> bloque(1 << 16);
+    _fseeki64(instalador, 0, SEEK_SET);
+    uint64_t faltan = tamano;
+    bool bien = true;
+    while (faltan > 0 && bien) {
+        const size_t pedir = size_t(faltan < bloque.size() ? faltan : bloque.size());
+        const size_t leidos = fread(bloque.data(), 1, pedir, instalador);
+        bien = leidos == pedir && fwrite(bloque.data(), 1, leidos, salida) == leidos;
+        faltan -= leidos;
+    }
+    return fclose(salida) == 0 && bien;
+}
+
+} // namespace
+
+std::wstring carpetaInstalacion()
+{
+    // %LOCALAPPDATA%\Programs: programas por usuario, sin administrador. Sin
+    // ella, "" (y no «\StartCode Panel», que sería una carpeta en la raíz del disco)
+    const std::wstring programas = carpetaConocida(FOLDERID_UserProgramFiles);
+    return programas.empty() ? std::wstring() : programas + L"\\" + Nombre;
+}
+
+Instalada instalacionExistente()
+{
+    Instalada actual;
+    HKEY clave = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, ClaveDesinstalar, 0, KEY_QUERY_VALUE, &clave) == ERROR_SUCCESS) {
+        actual.hay = true;
+        // Búfer a ceros y un carácter menos: el texto siempre acaba en nulo
+        wchar_t version[64] = {};
+        DWORD tipo = 0;
+        DWORD bytes = DWORD(sizeof(version) - sizeof(wchar_t));
+        if (RegQueryValueExW(clave, L"DisplayVersion", nullptr, &tipo, reinterpret_cast<BYTE *>(version), &bytes)
+                == ERROR_SUCCESS
+            && tipo == REG_SZ)
+            actual.version = version;
+        RegCloseKey(clave);
+    }
+    const std::wstring carpeta = carpetaInstalacion();
+    std::error_code error;
+    if (!carpeta.empty() && fs::exists(fs::path(carpeta) / Ejecutable, error))
+        actual.hay = true;
+    return actual;
+}
+
+bool tienePaquete(const std::wstring &ejecutable)
+{
+    FILE *exe = _wfopen(ejecutable.c_str(), L"rb");
+    if (!exe)
+        return false;
+    char pie[TamanoPie] = {};
+    const bool hay = _fseeki64(exe, -TamanoPie, SEEK_END) == 0 && fread(pie, 1, TamanoPie, exe) == TamanoPie
+        && std::memcmp(pie + 8, Marca, 8) == 0;
+    fclose(exe);
+    return hay;
+}
+
+bool dentroDeInstalacion(const std::wstring &ejecutable)
+{
+    const std::wstring carpeta = carpetaInstalacion();
+    if (carpeta.empty())
+        return false;
+    // equivalent() compara el archivo real: sin líos de mayúsculas ni rutas cortas
+    std::error_code error;
+    return fs::equivalent(fs::path(ejecutable).parent_path(), carpeta, error);
+}
+
+std::wstring instalar(const std::wstring &instalador, const Avance &avance)
+{
+    FILE *exe = _wfopen(instalador.c_str(), L"rb");
+    if (!exe)
+        return L"No se pudo leer el instalador.";
+
+    // El pie: dónde empieza el paquete
+    char pie[TamanoPie] = {};
+    _fseeki64(exe, -TamanoPie, SEEK_END);
+    const int64_t tamanoExe = _ftelli64(exe) + TamanoPie;
+    uint64_t inicio = 0;
+    if (fread(pie, 1, TamanoPie, exe) != TamanoPie || std::memcmp(pie + 8, Marca, 8) != 0) {
+        fclose(exe);
+        return L"El instalador está dañado: descárgalo de nuevo.";
+    }
+    std::memcpy(&inicio, pie, 8);
+    if (inicio == 0 || int64_t(inicio) >= tamanoExe - TamanoPie) {
+        fclose(exe);
+        return L"El instalador está dañado: descárgalo de nuevo.";
+    }
+
+    mz_zip_archive zip;
+    mz_zip_zero_struct(&zip);
+    _fseeki64(exe, int64_t(inicio), SEEK_SET);
+    if (!mz_zip_reader_init_cfile(&zip, exe, uint64_t(tamanoExe - TamanoPie) - inicio, 0)) {
+        fclose(exe);
+        return L"El instalador está dañado: descárgalo de nuevo.";
+    }
+
+    if (carpetaInstalacion().empty()) {
+        fclose(exe);
+        return L"Windows no indica dónde instalar los programas del usuario.";
+    }
+    const fs::path carpeta = carpetaInstalacion();
+    const fs::path anterior = carpeta.wstring() + L".anterior";
+    std::error_code error;
+    fs::remove_all(anterior, error);
+    // Una versión instalada se aparta (no se borra hasta terminar). Si no se
+    // puede mover es que StartCode Panel está abierto: sus archivos están en
+    // uso. Al actualizar desde la propia app, esta tarda un poco en cerrarse
+    // del todo: se reintenta unos segundos
+    if (fs::exists(carpeta)) {
+        for (int intento = 0; intento < 20; ++intento) {
+            error.clear();
+            fs::rename(carpeta, anterior, error);
+            if (!error)
+                break;
+            Sleep(500);
+        }
+        if (error) {
+            mz_zip_reader_end(&zip);
+            fclose(exe);
+            return L"StartCode Panel está abierto. Ciérralo y vuelve a intentarlo.";
+        }
+    }
+
+    // Si algo falla, se deja todo como estaba
+    bool zipAbierto = true;
+    bool exeAbierto = true;
+    auto deshacer = [&](const std::wstring &mensaje) {
+        if (zipAbierto)
+            mz_zip_reader_end(&zip);
+        if (exeAbierto)
+            fclose(exe);
+        std::error_code ignorado;
+        fs::remove_all(carpeta, ignorado);
+        if (fs::exists(anterior))
+            fs::rename(anterior, carpeta, ignorado);
+        return mensaje;
+    };
+
+    // ── Archivos (2 % → 92 %) ──
+    const mz_uint archivos = mz_zip_reader_get_num_files(&zip);
+    uint64_t total = 0;
+    for (mz_uint i = 0; i < archivos; ++i) {
+        mz_zip_archive_file_stat info;
+        if (mz_zip_reader_file_stat(&zip, i, &info))
+            total += info.m_uncomp_size;
+    }
+    avance(0.02);
+    Contador contador(avance, 0.02, 0.92);
+    uint64_t hechos = 0;
+    for (mz_uint i = 0; i < archivos; ++i) {
+        mz_zip_archive_file_stat info;
+        if (!mz_zip_reader_file_stat(&zip, i, &info))
+            return deshacer(L"El instalador está dañado: descárgalo de nuevo.");
+        std::wstring nombre = desdeUtf8(info.m_filename);
+        for (auto &c : nombre) {
+            if (c == L'/')
+                c = L'\\';
+        }
+        if (!rutaSegura(nombre))
+            continue;
+        const fs::path destino = carpeta / nombre;
+        if (info.m_is_directory) {
+            fs::create_directories(destino, error);
+            continue;
+        }
+        fs::create_directories(destino.parent_path(), error);
+        HANDLE archivo = CreateFileW(destino.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (archivo == INVALID_HANDLE_VALUE)
+            return deshacer(L"No se pudo escribir en " + carpeta.wstring() + L".");
+        Escritura escritura { archivo, &hechos, total, &contador };
+        const bool bien = mz_zip_reader_extract_to_callback(&zip, i, escribir, &escritura, 0);
+        CloseHandle(archivo);
+        if (!bien)
+            return deshacer(L"No se pudo copiar " + nombre + L". ¿Queda espacio en el disco?");
+    }
+    mz_zip_reader_end(&zip);
+    zipAbierto = false;
+
+    const fs::path panel = carpeta / Ejecutable;
+    if (!fs::exists(panel))
+        return deshacer(L"El instalador está incompleto: descárgalo de nuevo.");
+    const bool conDesinstalador = copiarDesinstalador(exe, inicio, (carpeta / Desinstalador).wstring());
+    fclose(exe);
+    exeAbierto = false;
+    if (!conDesinstalador)
+        return deshacer(L"No se pudo crear el desinstalador.");
+    avance(0.94);
+
+    // ── Accesos directos y entrada en «Aplicaciones instaladas» ──
+    // El icono sale del desinstalador: vale aunque startcode-panel.exe se haya
+    // compilado sin icono propio
+    const std::wstring icono = (carpeta / Desinstalador).wstring();
+    accesoDirecto(panel.wstring(), icono, accesoMenuInicio());
+    accesoDirecto(panel.wstring(), icono, accesoEscritorio());
+    HKEY clave = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, ClaveDesinstalar, 0, nullptr, 0, KEY_WRITE, nullptr, &clave, nullptr)
+        == ERROR_SUCCESS) {
+        textoRegistro(clave, L"DisplayName", Nombre);
+        textoRegistro(clave, L"DisplayVersion", desdeUtf8(STARTCODE_VERSION));
+        textoRegistro(clave, L"Publisher", L"StartCode");
+        textoRegistro(clave, L"DisplayIcon", icono + L",0");
+        textoRegistro(clave, L"InstallLocation", carpeta.wstring());
+        textoRegistro(clave, L"UninstallString", L"\"" + (carpeta / Desinstalador).wstring() + L"\" --desinstalar");
+        numeroRegistro(clave, L"EstimatedSize", DWORD(total / 1024));
+        numeroRegistro(clave, L"NoModify", 1);
+        numeroRegistro(clave, L"NoRepair", 1);
+        RegCloseKey(clave);
+    }
+    // Los iconos del menú y del escritorio aparecen al momento
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+
+    fs::remove_all(anterior, error);
+    avance(1.0);
+    return std::wstring();
+}
+
+std::wstring desinstalar(const Avance &avance)
+{
+    if (carpetaInstalacion().empty())
+        return L"Windows no indica dónde están los programas del usuario.";
+    const fs::path carpeta = carpetaInstalacion();
+    std::error_code error;
+
+    // Desde el instalador (fuera de la carpeta) todo se borra ya; desde el
+    // desinstalador copiado dentro, este no puede borrarse mientras se ejecuta
+    wchar_t propio[MAX_PATH * 4] = {};
+    GetModuleFileNameW(nullptr, propio, DWORD(std::size(propio)));
+    const bool dentro = dentroDeInstalacion(propio);
+
+    // Primero el ejecutable: si está en uso, la app está abierta y no se toca nada
+    const fs::path panel = carpeta / Ejecutable;
+    if (fs::exists(panel) && !DeleteFileW(panel.c_str()))
+        return L"StartCode Panel está abierto. Ciérralo y vuelve a intentarlo.";
+
+    DeleteFileW(accesoMenuInicio().c_str());
+    DeleteFileW(accesoEscritorio().c_str());
+    RegDeleteTreeW(HKEY_CURRENT_USER, ClaveDesinstalar);
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    avance(0.05);
+
+    // El resto de archivos, menos este desinstalador si está en marcha
+    std::vector<fs::path> archivos;
+    for (const auto &entrada : fs::recursive_directory_iterator(carpeta, error)) {
+        if (entrada.is_regular_file() && (!dentro || entrada.path().filename() != Desinstalador))
+            archivos.push_back(entrada.path());
+    }
+    for (size_t i = 0; i < archivos.size(); ++i) {
+        fs::remove(archivos[i], error);
+        avance(0.05 + 0.95 * double(i + 1) / double(archivos.size()));
+    }
+
+    if (!dentro) {
+        // Las subcarpetas, ya vacías, y la propia carpeta
+        fs::remove_all(carpeta, error);
+        if (fs::exists(carpeta, error))
+            return L"No se pudo borrar del todo " + carpeta.wstring() + L". Bórrala a mano.";
+        avance(1.0);
+        return std::wstring();
+    }
+
+    // La carpeta y el desinstalador se borran en cuanto este termine
+    std::wstring orden = L"cmd.exe /c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"" + carpeta.wstring() + L"\"";
+    STARTUPINFOW inicio { sizeof(inicio) };
+    PROCESS_INFORMATION proceso {};
+    if (CreateProcessW(nullptr, orden.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                       &inicio, &proceso)) {
+        CloseHandle(proceso.hThread);
+        CloseHandle(proceso.hProcess);
+    }
+    avance(1.0);
+    return std::wstring();
+}
+
+void abrirPanel()
+{
+    const fs::path carpeta = carpetaInstalacion();
+    ShellExecuteW(nullptr, L"open", (carpeta / Ejecutable).c_str(), nullptr, carpeta.c_str(), SW_SHOWNORMAL);
+}

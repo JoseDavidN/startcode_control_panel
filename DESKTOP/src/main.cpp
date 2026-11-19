@@ -12,6 +12,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QSettings>
+#include <QWindow>
 #include <algorithm>
 
 #ifdef STARTCODE_DEBUG_DRIVER

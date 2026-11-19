@@ -198,12 +198,20 @@ jobs:
 
       # Deja QT_ROOT_DIR y el bin de Qt en el PATH. En macOS el Qt oficial es
       # universal.
+      # Python fijado: la acción de Qt usa por defecto el 3.x más reciente del
+      # runner, y con uno recién publicado su instalador (aqtinstall) falla en
+      # Windows al no haber aún paquetes compilados de sus dependencias.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           modules: qtwebsockets
           cache: true
+          setup-python: false
 
       # ── libvterm ────────────────────────────────────────────────────
       # Estática y con versión fijada en las tres plataformas (en Windows y

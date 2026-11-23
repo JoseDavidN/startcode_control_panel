@@ -9,6 +9,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 1.0.2] — 2026-11-23
+
+### Corregido
+- «Ver detalle» del error al instalar o reinstalar el agente no se abría.
+- Los mensajes de error del agente y su detalle técnico no se podían seleccionar ni copiar: ahora admiten selección, Ctrl+C y menú de clic derecho.
+- En Servidores, una sola tarjeta ocupaba todo el ancho en lugar del de una columna.
+
+---
+
 ## [App de escritorio 1.0.1] — 2026-11-23
 
 ### Cambiado

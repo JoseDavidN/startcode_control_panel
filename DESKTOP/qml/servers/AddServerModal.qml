@@ -416,13 +416,12 @@ Modal {
             accent: Theme.danger
             spacing: 12
 
-            Label {
+            SelectableText {
                 width: parent.width
                 text: root.installError ? root.installError.message : ""
                 color: Theme.tone("rose").text
                 font.weight: Font.DemiBold
-                wrapMode: Text.WordWrap
-                elide: Text.ElideNone
+                wrapMode: TextEdit.WordWrap
             }
             ServerErrorDetail {
                 width: parent.width

@@ -793,6 +793,12 @@ Item {
                             server: modelData
                         }
                     }
+                    /* Con menos tarjetas que columnas, huecos vacíos: así cada
+                       tarjeta conserva el ancho de una columna y no se estira. */
+                    Repeater {
+                        model: root.view === "cards" ? Math.max(0, root.columns - root.visibleServers.length) : 0
+                        Item { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 1 }
+                    }
                 }
 
                 Glass {

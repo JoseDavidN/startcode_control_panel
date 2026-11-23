@@ -535,44 +535,18 @@ Modal {
                 width: parent.width - 32
                 spacing: 12
 
-                Label {
+                SelectableText {
                     width: parent.width
                     text: root.error ? String(root.error.message || "") : ""
                     color: Theme.tone("rose").text
                     font.weight: Font.DemiBold
-                    wrapMode: Text.WordWrap
-                    elide: Text.ElideNone
+                    wrapMode: TextEdit.WordWrap
                 }
 
-                Column {
-                    visible: errorBox.detail !== ""
+                ServerErrorDetail {
                     width: parent.width
-                    spacing: 8
-                    Label {
-                        text: "Ver detalle"
-                        tone: detailHover.hovered ? 0.75 : 0.5
-                        font.pixelSize: Theme.textXs
-                        Accessible.role: Accessible.Button
-                        Accessible.name: text
-                        HoverHandler { id: detailHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.detailOpen = !root.detailOpen }
-                    }
-                    ScrollArea {
-                        visible: root.detailOpen
-                        width: parent.width
-                        height: Math.min(160, detailText.implicitHeight)
-                        contentHeight: detailText.implicitHeight
-                        Label {
-                            id: detailText
-                            width: parent.width
-                            text: errorBox.detail
-                            mono: true
-                            tone: 0.6
-                            font.pixelSize: 11
-                            wrapMode: Text.Wrap
-                            elide: Text.ElideNone
-                        }
-                    }
+                    detail: errorBox.detail
+                    maxHeight: 160
                 }
 
                 Column {

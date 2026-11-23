@@ -38,15 +38,13 @@ Column {
         width: root.width
         height: Math.min(root.maxHeight, pre.implicitHeight)
         contentHeight: pre.implicitHeight
-        Label {
+        SelectableText {
             id: pre
             width: parent.width
             text: root.detail
             mono: true
             tone: 0.6
             font.pixelSize: 11
-            wrapMode: Text.Wrap
-            elide: Text.ElideNone
         }
     }
 }

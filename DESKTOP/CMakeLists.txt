@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(StartCodePanel VERSION 1.0.1 LANGUAGES CXX)
+project(StartCodePanel VERSION 1.0.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -67,6 +67,7 @@ qt_add_qml_module(startcode-panel
         qml/components/Select.qml
         qml/components/Toggle.qml
         qml/components/GlassArea.qml
+        qml/components/SelectableText.qml
         qml/components/DangerButton.qml
         qml/components/Sudo.qml
         qml/components/ScrollArea.qml

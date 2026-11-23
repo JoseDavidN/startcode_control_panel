@@ -263,39 +263,17 @@ Glass {
                 x: 12; y: 12
                 width: parent.width - 24
                 spacing: 6
-                Label {
+                SelectableText {
                     width: parent.width
                     text: root.showError ? String(root.agent.lastError.message || "") : ""
                     color: Qt.alpha(Theme.tone("rose").text, 0.8)
                     font.pixelSize: Theme.textXs
-                    wrapMode: Text.WordWrap
-                    elide: Text.ElideNone
+                    wrapMode: TextEdit.WordWrap
                 }
-                Label {
-                    visible: root.errorDetail !== ""
-                    text: "Ver detalle"
-                    tone: errorDetailHover.hovered ? 0.7 : 0.45
-                    font.pixelSize: 11
-                    Accessible.role: Accessible.Button
-                    Accessible.name: text
-                    HoverHandler { id: errorDetailHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.errorDetailOpen = !root.errorDetailOpen }
-                }
-                ScrollArea {
-                    visible: root.errorDetail !== "" && root.errorDetailOpen
+                ServerErrorDetail {
                     width: parent.width
-                    height: Math.min(128, errorDetailText.implicitHeight)
-                    contentHeight: errorDetailText.implicitHeight
-                    Label {
-                        id: errorDetailText
-                        width: parent.width
-                        text: root.errorDetail
-                        mono: true
-                        tone: 0.55
-                        font.pixelSize: 11
-                        wrapMode: Text.Wrap
-                        elide: Text.ElideNone
-                    }
+                    detail: root.errorDetail
+                    maxHeight: 128
                 }
             }
         }

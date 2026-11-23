@@ -42,6 +42,15 @@ Glass {
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed: root.clicked()
 
+    /* Orden de entrada dentro del panel (ver `Entrance`). */
+    property int enterIndex: 0
+    Entrance { target: root; index: root.enterIndex }
+    /* Al pasar el ratón la tarjeta se levanta un poco. */
+    transform: Translate {
+        y: hover.hovered && !Theme.reducedMotion ? -4 : 0
+        Behavior on y { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
+    }
+
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.clicked() }
 

@@ -15,7 +15,8 @@ T.Button {
 
     implicitHeight: 40
     hoverEnabled: true
-    scale: down ? 0.98 : 1
+    scale: down ? Theme.moPress : 1
+    Behavior on scale { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
     Accessible.name: badge !== "" ? text + ", " + badge + " sin leer" : text
 
     background: Item {
@@ -36,8 +37,11 @@ T.Button {
             onVisibleChanged: if (visible) pop.restart()
             ParallelAnimation {
                 id: pop
-                NumberAnimation { target: activeFill; property: "opacity"; from: 0.6; to: 1; duration: Theme.moBase }
-                NumberAnimation { target: activeFill; property: "scale"; from: 0.97; to: 1; duration: Theme.moBase; easing.type: Easing.OutCubic }
+                NumberAnimation { target: activeFill; property: "opacity"; from: 0.2; to: 1; duration: Theme.moBase }
+                NumberAnimation {
+                    target: activeFill; property: "scale"; from: Theme.reducedMotion ? 1 : 0.86; to: 1; duration: Theme.moSlow
+                    easing.type: Easing.OutBack; easing.overshoot: Theme.moOvershoot
+                }
             }
         }
         Rectangle {

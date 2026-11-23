@@ -22,7 +22,7 @@ El fondo **nunca** va en el contenedor del layout. Siempre es un elemento `fixed
 ```tsx
 <div
   className="fixed inset-0 overflow-hidden pointer-events-none"
-  style={{ zIndex: -1, background: 'radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%)' }}
+  style={{ zIndex: -1, background: 'radial-gradient(ellipse at 20% 0%, #4c1d95 0%, #2e1065 35%, #1b0b40 80%)' }}
 >
   <div className="aurora" style={{ width:580, height:580, background:'#a855f7', top:-140, left:-100, animation:'float1 22s ease-in-out infinite' }} />
   <div className="aurora" style={{ width:520, height:520, background:'#ec4899', top:'35%', right:-120, opacity:0.58, animation:'float2 28s ease-in-out infinite' }} />
@@ -32,11 +32,13 @@ El fondo **nunca** va en el contenedor del layout. Siempre es un elemento `fixed
 
 ### Gradiente base
 ```
-radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%)
+radial-gradient(ellipse at 20% 0%, #4c1d95 0%, #2e1065 35%, #1b0b40 80%)
 ```
-- `#2a1352` — púrpura oscuro (esquina superior izquierda)
-- `#150a2e` — transición
-- `#07050d` — casi negro (resto de la pantalla)
+- `#4c1d95` — púrpura (esquina superior izquierda)
+- `#2e1065` — transición
+- `#1b0b40` — púrpura profundo (resto de la pantalla)
+
+El fondo **no llega al negro** en ningún tema: se queda en el color del tema para que la app se vea colorida. La legibilidad se asegura por otro lado: las superficies de cristal van teñidas del mismo color pero oscuras (`surfaceRgb`), y el texto secundario se refuerza (`Theme.ink` sube la opacidad un 20 % de lo que le falta desde el 25 %). Valores vigentes de cada tema (fondo, auroras y su opacidad, superficies): `DESKTOP/qml/theme/Theme.qml`.
 
 ### Auroras (blobs animados)
 Tres blobs de color con `filter: blur(72px)` y opacidad base `0.72` (clase `.aurora`):
@@ -66,9 +68,9 @@ No hay conflicto de orden entre los archivos: `:root` tiene especificidad (0,1,0
 
 | id | Nombre | Fondo | Marca | Tinta |
 |---|---|---|---|---|
-| `dark` (por defecto) | Nocturno | `#07050d` · radial `#2a1352→#150a2e→#07050d` | `#a855f7 → #ec4899` | `#f4f1ff` |
-| `aurora` | Aurora | `#050d1a` · radial `#102a4d→#0a1a33→#050d1a` | `#22d3ee → #3b82f6` | `#eaf4ff` |
-| `solar` | Solar | `#fdfaf6` · radial `#ffe8d1→#fff4e8→#fdfaf6` | `#f97316 → #fb923c` | `#2a1a0c` |
+| `dark` (por defecto) | Nocturno | `#1b0b40` · radial `#4c1d95→#2e1065→#1b0b40` | `#a855f7 → #ec4899` | `#f4f1ff` |
+| `aurora` | Aurora | `#0a2247` · radial `#1d4f91→#12356b→#0a2247` | `#22d3ee → #3b82f6` | `#eaf4ff` |
+| `solar` | Solar | `#fff1e0` · radial `#ffd3a8→#ffe6cc→#fff1e0` | `#f97316 → #fb923c` | `#2a1a0c` |
 
 ### Tokens
 
@@ -107,7 +109,7 @@ Tailwind v4 compila cada utilidad de color a `var(--color-*)`, así que cada tem
 | Brand primary | `#a855f7 → #ec4899` (135°) | Botones primarios, activos, acentos |
 | Brand soft | `rgba(168,85,247,0.18) → rgba(236,72,153,0.18)` | Fondos de acento suave |
 | Brand text | `#c084fc → #f472b6` | Texto con gradiente de marca |
-| Fondo base | `#07050d` | HTML/body |
+| Fondo base | `#1b0b40` | HTML/body |
 | Fondo glass | `rgba(8,3,20,0.62)` | Base oscura de paneles principales |
 | Éxito | `#34d399` / `emerald-400` | Estados online, positivos |
 | Advertencia | `#fbbf24` / `amber-400` | Estados de atención |
@@ -470,6 +472,23 @@ Toda la animación compartida vive en **`FRONTEND/src/styles/motion.css`**, impo
 | `--mo-ease` | `cubic-bezier(0.22,1,0.36,1)` | Entradas |
 | `--mo-ease-inout` | `cubic-bezier(0.4,0,0.2,1)` | Hover y estado |
 | `--mo-rise` | `8px` | Desplazamiento de entrada de vista |
+
+**App de escritorio (`DESKTOP/qml/theme/Theme.qml`)**: mismos tokens con valores más marcados, para que el movimiento se note, y algunos propios:
+
+| Token | Valor | Uso |
+|---|---|---|
+| `moFast` | `160ms` | Hover y cambios de estado |
+| `moBase` | `280ms` | Selección de tab, pulsación y hover de botones, menús |
+| `moSlow` | `460ms` | Entrada de página, de modal y de tarjetas |
+| `moRise` | `22px` | Desplazamiento de entrada |
+| `moStagger` | `55ms` | Retraso entre tarjetas o filas que entran escalonadas (máximo 12 pasos) |
+| `moPress` / `moHover` | `0.95` / `1.03` | Escala de un botón al pulsarlo y al pasar el ratón |
+| `moOvershoot` | `1.35` | Rebote (`Easing.OutBack`) de modales, menús, avisos y del *pop* de selección |
+
+- **Entradas**: el componente `Entrance` (hijo del elemento que anima) hace aparecer tarjetas, filas y bloques subiendo y creciendo, escalonados por `index`. En listas que se repintan con cada dato, `key` + `seen` hacen que cada elemento entre solo la primera vez.
+- **Tarjetas pulsables** (servidores, conexiones, indicadores del panel): se levantan 4 px al pasar el ratón.
+- **Modal**: entra desde `scale(0.9)` con rebote y sale encogiéndose; el menú flotante, desde `scale(0.88)`; los avisos entran deslizándose desde la derecha.
+- Todo queda anulado con «Reducir animaciones» (`Theme.reducedMotion`): los tiempos pasan a 1 ms y las escalas y desplazamientos a su valor de reposo.
 
 ### Clases
 

@@ -19,6 +19,8 @@ T.Button {
     implicitHeight: size
     hoverEnabled: true
     opacity: enabled ? 1 : 0.4
+    scale: !enabled || Theme.reducedMotion ? 1 : down ? 0.88 : hovered ? 1.08 : 1
+    Behavior on scale { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
     Accessible.name: hint
 
     background: Item {

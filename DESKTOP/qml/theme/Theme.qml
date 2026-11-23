@@ -22,7 +22,12 @@ QtObject {
 
     function rgba(rgb, alpha) { return Qt.rgba(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, alpha) }
     /* Canal de tinta: texto e iconos con opacidad (`text-white/NN`). */
-    function ink(alpha) { return rgba(p.inkChannel, alpha === undefined ? 1 : alpha) }
+    function ink(alpha) {
+        if (alpha === undefined) return rgba(p.inkChannel, 1)
+        /* El texto secundario (del 25 % en adelante) se refuerza: los fondos son
+           más coloridos y con la opacidad original perdía contraste. */
+        return rgba(p.inkChannel, alpha >= 0.25 ? alpha + (1 - alpha) * 0.2 : alpha)
+    }
     function brand1(alpha) { return rgba(p.brand1Rgb, alpha === undefined ? 1 : alpha) }
     function brand2(alpha) { return rgba(p.brand2Rgb, alpha === undefined ? 1 : alpha) }
     function surface(alpha) { return rgba(p.surfaceRgb, alpha) }
@@ -104,20 +109,27 @@ QtObject {
     readonly property int titleBarHeight: 38
 
     /* ── Movimiento: igual en los tres temas ───────────────────────── */
-    readonly property int moFast: reducedMotion ? 1 : 140
-    readonly property int moBase: reducedMotion ? 1 : 200
-    readonly property int moSlow: reducedMotion ? 1 : 260
-    readonly property int moRise: 8
+    readonly property int moFast: reducedMotion ? 1 : 160
+    readonly property int moBase: reducedMotion ? 1 : 280
+    readonly property int moSlow: reducedMotion ? 1 : 460
+    readonly property int moRise: reducedMotion ? 0 : 22
+    /* Retraso entre elementos que entran escalonados (tarjetas, filas). */
+    readonly property int moStagger: reducedMotion ? 0 : 55
+    /* Escala al pulsar y al pasar el ratón por un botón. */
+    readonly property real moPress: reducedMotion ? 1 : 0.95
+    readonly property real moHover: reducedMotion ? 1 : 1.03
+    /* Rebote de las entradas con «pop» (modal, menú, selección). */
+    readonly property real moOvershoot: 1.35
     readonly property var moEase: [0.22, 1, 0.36, 1, 1, 1]
     readonly property var moEaseInOut: [0.4, 0, 0.2, 1, 1, 1]
 
     readonly property var palettes: ({
         dark: {
-            bg: ["#2a1352", "#150a2e", "#07050d"],
+            bg: ["#4c1d95", "#2e1065", "#1b0b40"],
             auroras: ["#a855f7", "#ec4899", "#6366f1"],
-            auroraOpacity: [0.72, 0.58, 0.52],
-            surfaceRgb: [8, 3, 20],
-            glassAlpha: { glass: 0.62, soft: 0.40, input: 0.30, float: 0.88, media: 0.42 },
+            auroraOpacity: [0.85, 0.72, 0.68],
+            surfaceRgb: [22, 9, 48],
+            glassAlpha: { glass: 0.60, soft: 0.40, input: 0.34, float: 0.90, media: 0.44 },
             sheen: { glass: [0.06, 0.02], soft: [0.05, 0.02], input: [0.07, 0.04] },
             edgeRgb: [255, 255, 255],
             edge: { hairline: 0.13, soft: 0.12, strong: 0.20, hover: 0.18, line: 0.07, dashed: 0.16, dashedHover: 0.30 },
@@ -155,11 +167,11 @@ QtObject {
             semantic: { ok: "#34d399", warn: "#fbbf24", danger: "#fb7185", info: "#38bdf8" }
         },
         aurora: {
-            bg: ["#102a4d", "#0a1a33", "#050d1a"],
+            bg: ["#1d4f91", "#12356b", "#0a2247"],
             auroras: ["#22d3ee", "#3b82f6", "#6366f1"],
-            auroraOpacity: [0.6, 0.5, 0.45],
-            surfaceRgb: [10, 26, 51],
-            glassAlpha: { glass: 0.55, soft: 0.35, input: 0.28, float: 0.86, media: 0.40 },
+            auroraOpacity: [0.7, 0.62, 0.6],
+            surfaceRgb: [9, 27, 58],
+            glassAlpha: { glass: 0.60, soft: 0.40, input: 0.34, float: 0.90, media: 0.44 },
             sheen: { glass: [0.08, 0.03], soft: [0.06, 0.03], input: [0.09, 0.05] },
             edgeRgb: [255, 255, 255],
             edge: { hairline: 0.13, soft: 0.12, strong: 0.20, hover: 0.18, line: 0.07, dashed: 0.16, dashedHover: 0.30 },
@@ -197,9 +209,9 @@ QtObject {
             semantic: { ok: "#34d399", warn: "#fbbf24", danger: "#fb7185", info: "#38bdf8" }
         },
         solar: {
-            bg: ["#ffe8d1", "#fff4e8", "#fdfaf6"],
-            auroras: ["#fb923c", "#f59e0b", "#fca5a5"],
-            auroraOpacity: [0.35, 0.28, 0.25],
+            bg: ["#ffd3a8", "#ffe6cc", "#fff1e0"],
+            auroras: ["#fb923c", "#f59e0b", "#fb7185"],
+            auroraOpacity: [0.5, 0.42, 0.38],
             surfaceRgb: [255, 255, 255],
             glassAlpha: { glass: 0.72, soft: 0.55, input: 0.75, float: 0.94, media: 0.58 },
             sheen: { glass: [0.55, 0.15], soft: [0.45, 0.15], input: [0.6, 0.3] },

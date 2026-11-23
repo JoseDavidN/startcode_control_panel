@@ -82,7 +82,11 @@ Item {
                 anchors.margins: root.width < 760 ? 12 : 24
 
                 property real rise: 0
-                transform: Translate { y: view.rise }
+                property real grow: 1
+                transform: [
+                    Scale { origin.x: view.width / 2; origin.y: view.height / 2; xScale: view.grow; yScale: view.grow },
+                    Translate { y: view.rise }
+                ]
 
                 sourceComponent: root.page === "servers" ? servers : root.page === "databases" ? databases
                                : root.page === "settings" ? settings : root.page === "notifications" ? notifications : dashboard
@@ -96,6 +100,10 @@ Item {
                 ParallelAnimation {
                     id: enter
                     NumberAnimation { target: view; property: "opacity"; from: 0; to: 1; duration: Theme.moSlow }
+                    NumberAnimation {
+                        target: view; property: "grow"; from: Theme.reducedMotion ? 1 : 0.985; to: 1; duration: Theme.moSlow
+                        easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.moEase
+                    }
                     NumberAnimation {
                         target: view; property: "rise"; from: Theme.moRise; to: 0; duration: Theme.moSlow
                         easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.moEase

@@ -635,6 +635,7 @@ Item {
                 rowSpacing: root.gap
 
                 DashboardKpi {
+                    enterIndex: 0
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "Servidores en línea"
                     iconName: "server"; tone: "emerald"
@@ -650,6 +651,7 @@ Item {
                     onClicked: AppNav.open("servers", "")
                 }
                 DashboardKpi {
+                    enterIndex: 1
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "CPU media"
                     iconName: "cpu"; tone: "blue"
@@ -663,6 +665,7 @@ Item {
                     onClicked: AppNav.open("servers", "")
                 }
                 DashboardKpi {
+                    enterIndex: 2
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "Memoria media"
                     iconName: "memory"; tone: "teal"
@@ -676,6 +679,7 @@ Item {
                     onClicked: AppNav.open("servers", "")
                 }
                 DashboardKpi {
+                    enterIndex: 3
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "Disco medio"
                     iconName: "disk"; tone: "orange"
@@ -689,6 +693,7 @@ Item {
                     onClicked: AppNav.open("servers", "")
                 }
                 DashboardKpi {
+                    enterIndex: 4
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "Avisos sin leer"
                     iconName: "bell"; tone: "amber"
@@ -699,6 +704,7 @@ Item {
                     onClicked: AppNav.open("notifications", "")
                 }
                 DashboardKpi {
+                    enterIndex: 5
                     Layout.fillWidth: true; Layout.preferredWidth: 1
                     label: "Bases de datos"
                     iconName: "database"; tone: "violet"
@@ -724,6 +730,7 @@ Item {
 
                     /* Cargando */
                     DashboardCard {
+                        enterIndex: 4
                         Layout.fillWidth: true
                         visible: root.loading
                         title: "Actividad de la flota"
@@ -735,6 +742,7 @@ Item {
 
                     /* Error de carga */
                     DashboardCard {
+                        enterIndex: 5
                         Layout.fillWidth: true
                         visible: !root.loading && root.failed
                         title: "Servidores"
@@ -750,6 +758,7 @@ Item {
 
                     /* Sin servidores */
                     DashboardCard {
+                        enterIndex: 6
                         Layout.fillWidth: true
                         visible: !root.loading && !root.failed && root.servers.length === 0
                         title: "Servidores"
@@ -765,6 +774,7 @@ Item {
 
                     /* Gráfica histórica */
                     DashboardCard {
+                        enterIndex: 7
                         id: chartCard
                         Layout.fillWidth: true
                         visible: !root.loading && !root.failed && root.servers.length > 0
@@ -864,6 +874,7 @@ Item {
 
                     /* Servidores por prioridad */
                     DashboardCard {
+                        enterIndex: 7
                         Layout.fillWidth: true
                         visible: !root.loading && !root.failed && root.servers.length > 0
                         title: root.downCount + root.attentionCount > 0 ? "Servidores que requieren atención" : "Servidores por carga"
@@ -923,6 +934,7 @@ Item {
                     spacing: root.gap
 
                     DashboardCard {
+                        enterIndex: 7
                         Layout.fillWidth: true
                         title: "Últimos avisos"
                         hint: NotificationState.unread > root.notices.length && root.notices.length > 0
@@ -955,6 +967,7 @@ Item {
                     }
 
                     DashboardCard {
+                        enterIndex: 7
                         Layout.fillWidth: true
                         title: "Bases de datos"
                         hint: root.connections.length > 6 ? "6 de " + root.connections.length : ""
@@ -988,6 +1001,7 @@ Item {
                     }
 
                     DashboardCard {
+                        enterIndex: 7
                         Layout.fillWidth: true
                         title: "Accesos rápidos"
 

@@ -28,7 +28,16 @@ T.Popup {
     focus: true
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
 
-    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.moFast } }
+    transformOrigin: T.Popup.TopLeft
+    enter: Transition {
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.moFast }
+            NumberAnimation {
+                property: "scale"; from: Theme.reducedMotion ? 1 : 0.88; to: 1; duration: Theme.moBase
+                easing.type: Easing.OutBack; easing.overshoot: Theme.moOvershoot
+            }
+        }
+    }
     exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.moFast } }
 
     background: Glass {

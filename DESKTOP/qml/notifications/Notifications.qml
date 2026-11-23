@@ -10,6 +10,8 @@ import StartCode
 Item {
     id: root
 
+    /* Filas que ya entraron con animación (ver `Entrance`). */
+    readonly property var entranceSeen: ({})
     readonly property int pageSize: 50
     /* Tope del backend para `limit` (y del historial que guarda por usuario). */
     readonly property int maxLimit: 200
@@ -527,8 +529,11 @@ Item {
                     Repeater {
                         model: rowModel
                         NotificationRow {
+                            id: noticeItem
                             required property string nid
+                            required property int index
                             width: rows.width
+                            Entrance { target: noticeItem; index: noticeItem.index; from: 1; rise: 12; key: noticeItem.nid; seen: root.entranceSeen }
                             item: root.byId[nid] || ({})
                             busy: root.busyIds[nid] === true
                             onRead: id => root.markRead(id)

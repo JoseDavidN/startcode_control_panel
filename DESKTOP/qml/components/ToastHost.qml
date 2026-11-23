@@ -63,6 +63,12 @@ Column {
             TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: Toasts.dismiss(toast.toastId) }
 
             NumberAnimation on opacity { from: 0; to: 1; duration: Theme.moBase }
+            transform: Translate { id: toastShift }
+            NumberAnimation {
+                target: toastShift; property: "x"; running: true
+                from: Theme.reducedMotion ? 0 : 48; to: 0; duration: Theme.moSlow
+                easing.type: Easing.OutBack; easing.overshoot: Theme.moOvershoot
+            }
         }
     }
 }

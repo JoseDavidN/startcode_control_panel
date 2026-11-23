@@ -29,6 +29,8 @@ Item {
     readonly property string view: ((Auth.user.preferences || {}).appearance || {}).serversView === "list" ? "list" : "cards"
     /* Por el ancho del contenido, no de la pantalla: en mosaico la ventana
        puede ocupar media pantalla. */
+    /* Tarjetas y filas que ya entraron con animación (ver `Entrance`). */
+    readonly property var entranceSeen: ({})
     readonly property int columns: Math.max(1, Math.min(3, Math.floor((width + 16) / 400)))
     readonly property bool compact: width < 720
     readonly property int activeFilters: (osFilter !== "" ? 1 : 0) + (tagFilter !== "" ? 1 : 0)
@@ -163,6 +165,12 @@ Item {
         if (seconds === null) return "—"
         const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600), m = Math.floor(seconds % 3600 / 60)
         return d > 0 ? d + "d " + h + "h " + m + "m" : h > 0 ? h + "h " + m + "m" : m + "m"
+    }
+    /* En la tarjeta el hueco es corto: con días, sin los minutos. */
+    function uptimeShort(seconds) {
+        if (seconds === null) return "—"
+        const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600)
+        return d > 0 ? d + "d " + h + "h" : uptime(seconds)
     }
     function timeAgo(at) {
         const seconds = Math.floor((Date.now() - at) / 1000)
@@ -398,6 +406,12 @@ Item {
         Keys.onSpacePressed: root.openServer(card.server)
         borderColor: activeFocus ? Theme.focusRing : highlighted ? Theme.hairlineHover : Theme.hairline
 
+        /* Al pasar el ratón la tarjeta se levanta un poco. */
+        transform: Translate {
+            y: cardHover.hovered && !Theme.reducedMotion ? -4 : 0
+            Behavior on y { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
+        }
+
         HoverHandler { id: cardHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.openServer(card.server) }
         TapHandler {
@@ -451,7 +465,7 @@ Item {
                 opacity: card.rt.stale ? 0.6 : 1
                 Tile { label: "Servicios"; iconName: "wrench"; tone: "fuchsia"; value: root.count(card.rt.services) }
                 Tile { label: "Procesos"; iconName: "activity"; tone: "amber"; value: root.count(card.rt.processes) }
-                Tile { label: "Activo"; iconName: "clock"; tone: "sky"; value: root.uptime(card.rt.uptime) }
+                Tile { label: "Activo"; iconName: "clock"; tone: "sky"; value: root.uptimeShort(card.rt.uptime) }
             }
 
             Rectangle { Layout.fillWidth: true; Layout.topMargin: 16; implicitHeight: 1; color: Theme.line }
@@ -461,21 +475,28 @@ Item {
                 spacing: 8
                 StatusBadge { state: card.rt.state }
                 LiveDot { visible: card.rt.live && card.rt.state === "online" }
+                /* Los textos del pie ceden sitio y se recortan: sin esto, en una
+                   tarjeta estrecha ensanchaban todo el contenido y se salía. */
                 Label {
                     visible: !card.rt.hasMetrics
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: "Instala el agente para ver métricas"
                     tone: 0.4
                     font.pixelSize: Theme.textXs
                 }
                 Label {
                     visible: card.rt.stale
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: "Último reporte " + root.timeAgo(card.rt.lastMetricAt)
                     tone: 0.4
                     font.pixelSize: Theme.textXs
                 }
-                Item { Layout.fillWidth: true }
+                Item { visible: card.rt.hasMetrics && !card.rt.stale; Layout.fillWidth: true }
                 Label {
                     visible: card.rt.servicesTotal !== null
+                    Layout.maximumWidth: Math.max(0, content.width * 0.55)
                     text: card.rt.services + " de " + card.rt.servicesTotal + " servicios activos"
                     tone: 0.45
                     font.pixelSize: Theme.textXs
@@ -787,10 +808,13 @@ Item {
                     Repeater {
                         model: root.view === "cards" ? root.visibleServers : []
                         ServerCard {
+                            id: cardItem
                             required property var modelData
+                            required property int index
                             Layout.fillWidth: true
                             Layout.preferredWidth: 1
                             server: modelData
+                            Entrance { target: cardItem; index: cardItem.index; key: "card:" + cardItem.modelData.id; seen: root.entranceSeen }
                         }
                     }
                     /* Con menos tarjetas que columnas, huecos vacíos: así cada
@@ -812,11 +836,13 @@ Item {
                         Repeater {
                             model: root.view === "list" ? root.visibleServers : []
                             ServerRow {
+                                id: rowItem
                                 required property var modelData
                                 required property int index
                                 width: rows.width
                                 server: modelData
                                 last: index === root.visibleServers.length - 1
+                                Entrance { target: rowItem; index: rowItem.index; from: 1; rise: 12; key: "row:" + rowItem.modelData.id; seen: root.entranceSeen }
                             }
                         }
                     }

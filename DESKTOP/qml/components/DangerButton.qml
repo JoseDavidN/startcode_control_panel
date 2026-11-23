@@ -12,7 +12,8 @@ T.Button {
     implicitWidth: Math.max(88, row.implicitWidth + 32)
     hoverEnabled: true
     opacity: enabled ? 1 : 0.5
-    scale: down ? 0.98 : 1
+    scale: !enabled ? 1 : down ? Theme.moPress : 1
+    Behavior on scale { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
 
     background: Rectangle {
         radius: Theme.radiusXl

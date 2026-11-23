@@ -20,12 +20,17 @@ Item {
 
     default property alias body: bodyColumn.data
 
+    /* Orden de entrada dentro del panel (ver `Entrance`); también al mostrarse. */
+    property int enterIndex: 0
+    onVisibleChanged: if (visible) enter.play()
+
     implicitHeight: bodyColumn.y + bodyColumn.implicitHeight + padding
 
     Glass {
         anchors.fill: parent
         elevation: "raised"
     }
+    Entrance { id: enter; target: root; index: root.enterIndex; from: 0.98 }
 
     Item {
         id: head

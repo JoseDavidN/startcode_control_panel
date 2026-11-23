@@ -11,6 +11,8 @@ Item {
     id: root
 
     /* 3 columnas × 3 filas: con muchas conexiones se pagina en vez de alargar la rejilla. */
+    /* Tarjetas que ya entraron con animación (ver `Entrance`). */
+    readonly property var entranceSeen: ({})
     readonly property int pageSize: 9
 
     property var connections: []
@@ -184,6 +186,12 @@ Item {
         Keys.onEnterPressed: root.openConnection(card.conn.id)
         Keys.onSpacePressed: root.openConnection(card.conn.id)
         borderColor: activeFocus ? Theme.focusRing : highlighted ? Theme.hairlineHover : Theme.hairline
+
+        /* Al pasar el ratón la tarjeta se levanta un poco. */
+        transform: Translate {
+            y: cardHover.hovered && !Theme.reducedMotion ? -4 : 0
+            Behavior on y { NumberAnimation { duration: Theme.moBase; easing.type: Easing.OutBack; easing.overshoot: 2 } }
+        }
 
         HoverHandler { id: cardHover; cursorShape: Qt.PointingHandCursor }
         TapHandler {
@@ -658,11 +666,14 @@ Item {
                     Repeater {
                         model: root.loading || root.failed ? [] : root.pageItems
                         ConnectionCard {
+                            id: connItem
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredWidth: 1
                             Layout.alignment: Qt.AlignTop
                             conn: modelData
+                            required property int index
+                            Entrance { target: connItem; index: connItem.index; key: String(connItem.modelData.id); seen: root.entranceSeen }
                         }
                     }
 

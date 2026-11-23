@@ -503,6 +503,8 @@ Item {
                                : root.tab === "commands" ? commandsTab
                                : root.tab === "docker" ? dockerTab
                                : root.tab === "kubernetes" ? kubernetesTab : null
+                onLoaded: tabEnter.play()
+                Entrance { id: tabEnter; target: tabLoader; from: 1; rise: 14 }
             }
 
             /* Aviso sin agente */

@@ -9,6 +9,17 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 1.0.3] — 2026-11-23
+
+### Cambiado
+- Temas más coloridos: el fondo de Nocturno, Aurora y Solar ya no se apaga hacia el negro, las tarjetas llevan el color del tema y el texto secundario gana contraste.
+- Animaciones más visibles: tarjetas y filas entran escalonadas, las páginas y pestañas entran con más recorrido, los modales y menús aparecen con un pequeño rebote, las tarjetas se levantan al pasar el ratón y los botones responden al pulsarlos.
+
+### Corregido
+- En las tarjetas de Servidores, el texto del pie se salía de la tarjeta cuando el servidor tenía datos del agente.
+
+---
+
 ## [App de escritorio 1.0.2] — 2026-11-23
 
 ### Cambiado

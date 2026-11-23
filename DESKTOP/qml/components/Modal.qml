@@ -47,16 +47,25 @@ T.Popup {
 
     T.Overlay.modal: Rectangle {
         color: Qt.rgba(0, 0, 0, 0.6)
-        Behavior on opacity { NumberAnimation { duration: Theme.moFast } }
+        Behavior on opacity { NumberAnimation { duration: Theme.moBase } }
     }
 
+    /* Entra creciendo con un pequeño rebote; sale encogiéndose. */
     enter: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.moSlow }
-            NumberAnimation { property: "scale"; from: 0.98; to: 1; duration: Theme.moSlow; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.moBase }
+            NumberAnimation {
+                property: "scale"; from: Theme.reducedMotion ? 1 : 0.9; to: 1; duration: Theme.moSlow
+                easing.type: Easing.OutBack; easing.overshoot: Theme.moOvershoot
+            }
         }
     }
-    exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.moFast } }
+    exit: Transition {
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.moFast }
+            NumberAnimation { property: "scale"; from: 1; to: Theme.reducedMotion ? 1 : 0.96; duration: Theme.moFast; easing.type: Easing.InCubic }
+        }
+    }
 
     background: Glass {
         variant: "float"

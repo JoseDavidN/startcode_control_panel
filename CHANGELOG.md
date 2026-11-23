@@ -9,6 +9,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [0.13.1] — 2026-11-23
+
+Versión de **parche** del backend sobre 0.13.0, para publicar una imagen nueva. Sin cambios de código.
+
+### Notas de despliegue
+- El agente (2.2.0-go) se recompiló: copiar sus artefactos a `BACKEND/agent-dist/` en el servidor del panel.
+- `PANEL_PUBLIC_URL` en `.env.production` debe ser la dirección por la que los servidores monitorizados alcanzan al panel; con un nombre que no resuelven, la instalación del agente falla al descargarlo.
+
+---
+
 ## [App de escritorio 1.0.3] — 2026-11-23
 
 ### Cambiado

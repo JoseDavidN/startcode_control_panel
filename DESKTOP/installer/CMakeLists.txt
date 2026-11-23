@@ -59,7 +59,7 @@ endif()
 # Recursos: manifiesto, fuente Space Grotesk (la de la interfaz por defecto)
 # e icono de StartCode Panel (rutas absolutas)
 set(STARTCODE_FUENTE "${CMAKE_CURRENT_SOURCE_DIR}/../assets/fonts/SpaceGrotesk.ttf")
-set(STARTCODE_LOGO "${CMAKE_CURRENT_SOURCE_DIR}/../assets/img/icono-oscuro-180.png")
+set(STARTCODE_LOGO "${CMAKE_CURRENT_SOURCE_DIR}/../assets/icons/app-512.png")
 set(STARTCODE_MANIFIESTO "${CMAKE_CURRENT_SOURCE_DIR}/instalador.manifest")
 configure_file(recursos.rc.in "${CMAKE_CURRENT_BINARY_DIR}/recursos.rc" @ONLY)
 

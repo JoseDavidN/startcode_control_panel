@@ -41,10 +41,13 @@ using namespace Gdiplus;
 
 namespace {
 
-// Tokens del tema Nocturno (DESIGN.md y qml/theme/Theme.qml: los mismos valores)
-const Color BgBase(255, 0x07, 0x05, 0x0d);
-const Color BgMid(255, 0x15, 0x0a, 0x2e);
-const Color BgGlow(255, 0x2a, 0x13, 0x52);
+// Colores del panel (tema Nocturno de DESIGN.md y qml/theme/Theme.qml). El
+// fondo usa la parte púrpura del degradado de la app, sin llegar al casi negro
+// de sus bordes: en una ventana tan pequeña se veía apagado, y las auroras de
+// la marca (púrpura, rosa, índigo) van más presentes.
+const Color BgBase(255, 0x1a, 0x0c, 0x38);
+const Color BgMid(255, 0x2a, 0x13, 0x52);
+const Color BgGlow(255, 0x3d, 0x1d, 0x78);
 const Color Brand1(255, 0xa8, 0x55, 0xf7);
 const Color Brand2(255, 0xec, 0x48, 0x99);
 const Color Aurora3(255, 0x63, 0x66, 0xf1);
@@ -144,7 +147,7 @@ void cargarRecursos()
     }
     if (!estado.familia)
         estado.familia = std::make_unique<FontFamily>(L"Segoe UI");
-    // Icono de StartCode Panel (assets/img/icono-oscuro-180.png)
+    // Icono de StartCode Panel (assets/icons/app-512.png)
     if (const void *png = recurso(RecursoLogo, &tamano)) {
         if (IStream *flujo = SHCreateMemStream(static_cast<const BYTE *>(png), tamano)) {
             estado.logo.reset(Bitmap::FromStream(flujo));
@@ -299,8 +302,8 @@ void dibujar(HDC hdc, int ancho, int alto)
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 
     // Fondo de la app (AppBackground): radial desde arriba a la izquierda,
-    // radial-gradient(ellipse at 20% 0%, #2a1352 0%, #150a2e 35%, #07050d 80%),
-    // y encima las auroras
+    // como radial-gradient(ellipse at 20% 0%, …) de la app pero en su gama
+    // púrpura (#3d1d78 → #2a1352 → #1a0c38), y encima las auroras
     SolidBrush base(BgBase);
     g.FillRectangle(&base, 0, 0, ancho, alto);
     {
@@ -313,13 +316,13 @@ void dibujar(HDC hdc, int ancho, int alto)
         PathGradientBrush radial(&elipse);
         // En GDI+ la posición 0 es el borde y 1 el centro: al revés que en CSS
         const Color colores[] = { BgBase, BgBase, BgMid, BgGlow };
-        const REAL posiciones[] = { 0.0f, 0.2f, 0.65f, 1.0f };
+        const REAL posiciones[] = { 0.0f, 0.25f, 0.65f, 1.0f };
         radial.SetInterpolationColors(colores, posiciones, 4);
         g.FillPath(&radial, &elipse);
     }
-    aurora(g, 40, -30, 210, Brand1, 70);
-    aurora(g, float(Ancho) + 20, 150, 170, Brand2, 46);
-    aurora(g, 190, float(Alto) + 70, 190, Aurora3, 40);
+    aurora(g, 40, -30, 260, Brand1, 120);
+    aurora(g, float(Ancho) + 20, 150, 220, Brand2, 84);
+    aurora(g, 190, float(Alto) + 70, 240, Aurora3, 84);
 
     // Icono de StartCode Panel y el nombre. Sin el recurso, un cuadrado
     // redondeado con el degradado de la marca

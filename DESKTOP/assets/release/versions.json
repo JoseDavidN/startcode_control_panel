@@ -8,6 +8,9 @@
       "date": "2026-11-23",
       "title": "Errores del agente y tarjetas de servidores",
       "changes": {
+        "changed": [
+          "El instalador de Windows usa los colores del panel, con un fondo púrpura más claro, y muestra el icono de la aplicación"
+        ],
         "fixed": [
           "«Ver detalle» del error al instalar o reinstalar el agente no se abría",
           "Los mensajes de error del agente y su detalle técnico no se podían seleccionar ni copiar: ahora admiten selección, Ctrl+C y menú de clic derecho",

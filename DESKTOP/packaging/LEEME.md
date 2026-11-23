@@ -71,7 +71,7 @@ Sale `StartCode-Panel-<versión>-Instalador.exe` en la carpeta actual (`-Salida`
 - **`--actualizar <pid>`**: espera a que el proceso `<pid>` (la app) termine, instala sin preguntar y vuelve a abrirla. Es para que la app se actualice sola tras descargar el instalador; hoy la app solo avisa y abre la página de descargas, así que nadie lo usa todavía.
 - Si la app está abierta, lo dice y no toca nada.
 
-La ventana sigue `DESIGN.md` (tema Nocturno): fondo radial `#2a1352 → #150a2e → #07050d` con auroras, Space Grotesk, botón primario con el degradado de la marca, secundario de cristal y peligro en rojo semántico, radio de 12 px.
+La ventana usa los colores del panel (tema Nocturno de `DESIGN.md`): fondo radial púrpura `#3d1d78 → #2a1352 → #1a0c38` con las auroras de la marca, Space Grotesk, botón primario con el degradado de la marca, secundario de cristal y peligro en rojo semántico, radio de 12 px.
 
 **Convivencia con la app anterior (Tauri)**: su instalador NSIS usa `%LOCALAPPDATA%\StartCode Panel` y la clave `Uninstall\StartCode Panel`; este usa `Programs\StartCode Panel` y `Uninstall\StartCodePanel`, así que no se pisan, pero los accesos directos se llaman igual: quien tenga la anterior debería desinstalarla antes (si la desinstala después, se lleva los accesos directos y hay que reinstalar esta).
 

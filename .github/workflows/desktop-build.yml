@@ -50,8 +50,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # El Qt con el que se desarrolla la app (mínimo admitido: 6.9).
-  QT_VERSION: '6.12.1'
+  # Qt 6.10.3 y no el 6.12 de desarrollo: aqtinstall 3.3 (lo que usa la acción
+  # para descargar Qt) no entiende el repositorio de Windows de Qt 6.11 y 6.12
+  # y falla al instalarlo. Subirlo cuando salga un aqtinstall con soporte.
+  # Mínimo admitido por la app: 6.9.
+  QT_VERSION: '6.10.3'
 
 jobs:
   # Falla en segundos si la versión no está lista, antes de gastar minutos

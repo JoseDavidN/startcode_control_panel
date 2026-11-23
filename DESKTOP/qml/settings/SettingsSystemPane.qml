@@ -61,7 +61,6 @@ Column {
         if (exportDialog.visible) return
         const folder = Transfers.downloadsDir()
         const name = "startcode-config-" + new Date().toISOString().split("T")[0] + ".json"
-        exportDialog.currentFolder = Transfers.urlFromLocalPath(folder)
         exportDialog.selectedFile = Transfers.urlFromLocalPath(Transfers.joinPath(folder, name))
         exportDialog.open()
     }

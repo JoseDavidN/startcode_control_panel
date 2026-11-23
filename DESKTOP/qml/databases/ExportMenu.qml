@@ -76,7 +76,6 @@ Item {
             const folder = Transfers.downloadsDir()
             saveDialog.nameFilters = [format.toUpperCase() + " (*." + format + ")"]
             saveDialog.defaultSuffix = format
-            saveDialog.currentFolder = Transfers.urlFromLocalPath(folder)
             saveDialog.selectedFile = Transfers.urlFromLocalPath(Transfers.joinPath(folder, root.fileName + "." + format))
             saveDialog.open()
         })

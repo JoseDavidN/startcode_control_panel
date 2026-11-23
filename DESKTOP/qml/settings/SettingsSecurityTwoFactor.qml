@@ -118,7 +118,6 @@ Column {
 
     function downloadCodes() {
         const folder = Transfers.downloadsDir()
-        saveDialog.currentFolder = Transfers.urlFromLocalPath(folder)
         saveDialog.selectedFile = Transfers.urlFromLocalPath(Transfers.joinPath(folder, "startcode-codigos-respaldo.txt"))
         saveDialog.open()
     }

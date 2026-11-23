@@ -139,7 +139,6 @@ Modal {
             const match = /\.(\w+)$/.exec(name)
             const folder = Transfers.downloadsDir()
             saveDialog.nameFilters = match ? [match[1].toUpperCase() + " (*." + match[1] + ")"] : []
-            saveDialog.currentFolder = Transfers.urlFromLocalPath(folder)
             saveDialog.selectedFile = Transfers.urlFromLocalPath(Transfers.joinPath(folder, name))
             saveDialog.open()
         } else {

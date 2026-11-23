@@ -93,6 +93,9 @@ export class AgentInstallService {
       this.gateway.holdRotations(server.id, true);
       const agentToken = await this.agentTokens.issueForInstall(server);
       const script = this.buildInstallScript(server, binary, arch, panel, agentToken.token);
+      /* El agente nuevo arranca durante el script: lo que se conecte desde
+         aquí es el recién instalado, no el que ya corría. */
+      const installStartedAt = Date.now();
 
       const result = await this.runPrivilegedScript(conn, sudo, script, {
         timeoutMs: INSTALL_TIMEOUT_MS,
@@ -108,7 +111,7 @@ export class AgentInstallService {
 
       /* Último paso sin SSH: el agente tiene que aparecer en el gateway. */
       steps.set('handshake', 'running');
-      const connected = await this.waitForAgent(server.id);
+      const connected = await this.waitForAgent(server.id, installStartedAt);
       steps.set(
         'handshake',
         connected ? 'done' : 'failed',
@@ -547,11 +550,17 @@ export class AgentInstallService {
 
   /* ── Esperas y errores ──────────────────────────────────────────── */
 
-  private async waitForAgent(serverId: string): Promise<boolean> {
+  /**
+   * Espera a que el agente recién instalado aparezca en el gateway. Solo vale
+   * una conexión posterior a `since`: al reinstalar, el registro del agente
+   * anterior puede seguir ahí unos segundos y daba el paso por bueno sin que
+   * el nuevo hubiera arrancado.
+   */
+  private async waitForAgent(serverId: string, since: number): Promise<boolean> {
     const deadline = Date.now() + HANDSHAKE_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
-      if (this.gateway.isAgentConnected(serverId)) return true;
+      if (this.gateway.isAgentConnectedSince(serverId, since)) return true;
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     return false;

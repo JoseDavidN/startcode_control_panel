@@ -1180,7 +1180,7 @@ export class AuthService {
    * Token efímero para que el servidor remoto descargue el binario del agente
    * durante su instalación.
    *
-   * No se reutiliza el token del agente (dura un año y da acceso al gateway:
+   * No se reutiliza el token del agente (dura 30 días y da acceso al gateway:
    * si se filtra en el log de un proxy, alguien suplanta al agente) ni se deja
    * el endpoint abierto. Este caduca en minutos, solo sirve para leer un
    * artefacto y lleva dentro el servidor al que pertenece.

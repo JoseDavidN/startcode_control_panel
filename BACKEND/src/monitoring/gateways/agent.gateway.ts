@@ -86,6 +86,8 @@ export class AgentGateway
 
   // Mapa de conexiones activas: serverId -> socket
   private connections = new Map<string, Socket>();
+  /** Cuándo se registró el socket actual de cada servidor (ms). */
+  private connectedAt = new Map<string, number>();
 
   /* Última vez que se escribió `lastSeen` de cada servidor. Sin esto era un
      UPDATE por mensaje: con 50 servidores a 30 s, 144.000 escrituras al día
@@ -220,6 +222,7 @@ export class AgentGateway
       if (socket.id === client.id) {
         this.logger.log(`❌ Agente desconectado: ${serverId}`);
         this.connections.delete(serverId);
+        this.connectedAt.delete(serverId);
 
         // Actualizar estado del servidor a OFFLINE
         await this.serversRepository.update(serverId, {
@@ -274,9 +277,31 @@ export class AgentGateway
       }
       const server = auth.server;
 
+      /* El agente volvió por un socket nuevo antes de que se detectara la caída
+         del anterior (reinicio del servicio, corte de red): el registro pasa
+         al nuevo. Si se quedara en el viejo, su desconexión tardía marcaría
+         el servidor como caído con el agente conectado, y la rotación o la
+         revocación del token irían a un socket muerto. El viejo ya no figura
+         en el mapa, así que su `handleDisconnect` no toca nada. */
+      const previous = this.connections.get(server.id);
+      if (previous && previous !== client) {
+        this.connections.set(server.id, client);
+        this.connectedAt.set(server.id, Date.now());
+        const rotation = this.rotations.get(server.id);
+        if (rotation?.socketId === previous.id) this.clearRotation(server.id);
+        this.logger.log(
+          `🔁 Agente reconectado por otro socket: ${server.name} (${server.id})`,
+        );
+        await this.serversRepository.update(server.id, {
+          status: ServerStatus.ONLINE,
+          lastSeen: new Date(),
+        });
+      }
+
       // Registrar conexión activa
       if (!this.connections.has(server.id)) {
         this.connections.set(server.id, client);
+        this.connectedAt.set(server.id, Date.now());
         this.logger.log(
           `✅ Agente autenticado: ${server.name} (${server.id})`,
         );
@@ -857,6 +882,16 @@ export class AgentGateway
    */
   public isAgentConnected(serverId: string): boolean {
     return this.connections.has(serverId);
+  }
+
+  /**
+   * El agente se conectó (o reconectó por un socket nuevo) a partir de
+   * `since`. Para la instalación: el registro del agente que ya corría antes
+   * de reinstalar no cuenta como que el nuevo arrancó.
+   */
+  public isAgentConnectedSince(serverId: string, since: number): boolean {
+    const at = this.connectedAt.get(serverId);
+    return at !== undefined && at >= since && this.connections.has(serverId);
   }
 
   /**

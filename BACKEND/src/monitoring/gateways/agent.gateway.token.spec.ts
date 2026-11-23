@@ -74,6 +74,59 @@ describe('AgentGateway: token del agente', () => {
     expect(gateway.isAgentConnected(SERVER.id)).toBe(false);
   });
 
+  it('si el agente vuelve por otro socket, la caída tardía del anterior no lo marca caído', async () => {
+    const { gateway, serversRepository } = setup(() => ok());
+    const viejo = socket('sock-viejo');
+    const nuevo = socket('sock-nuevo');
+
+    await gateway.handleMessage(viejo, heartbeat('tok'));
+    await gateway.handleMessage(nuevo, heartbeat('tok'));
+    serversRepository.update.mockClear();
+    await gateway.handleDisconnect(viejo);
+
+    expect(gateway.isAgentConnected(SERVER.id)).toBe(true);
+    expect(serversRepository.update).not.toHaveBeenCalledWith(
+      SERVER.id,
+      expect.objectContaining({ status: ServerStatus.OFFLINE }),
+    );
+
+    /* Y el corte por revocación va al socket vivo, no al anterior. */
+    gateway.disconnectAgent(SERVER.id);
+    expect(nuevo.disconnect).toHaveBeenCalledWith(true);
+    expect(viejo.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('la caída del socket vigente sí marca el servidor como caído', async () => {
+    const { gateway, serversRepository } = setup(() => ok());
+    const viejo = socket('sock-viejo');
+    const nuevo = socket('sock-nuevo');
+    await gateway.handleMessage(viejo, heartbeat('tok'));
+    await gateway.handleMessage(nuevo, heartbeat('tok'));
+
+    await gateway.handleDisconnect(nuevo);
+
+    expect(gateway.isAgentConnected(SERVER.id)).toBe(false);
+    expect(serversRepository.update).toHaveBeenCalledWith(SERVER.id, { status: ServerStatus.OFFLINE });
+  });
+
+  it('isAgentConnectedSince solo cuenta una conexión posterior al instante dado', async () => {
+    const { gateway } = setup(() => ok());
+    const viejo = socket('sock-viejo');
+    await gateway.handleMessage(viejo, heartbeat('tok'));
+
+    const despues = Date.now() + 1000;
+    /* El agente que ya corría no vale, aunque siga enviando mensajes. */
+    expect(gateway.isAgentConnectedSince(SERVER.id, despues)).toBe(false);
+    await gateway.handleMessage(viejo, heartbeat('tok'));
+    expect(gateway.isAgentConnectedSince(SERVER.id, despues)).toBe(false);
+
+    /* El recién instalado entra por un socket nuevo. */
+    jest.spyOn(Date, 'now').mockReturnValue(despues + 500);
+    await gateway.handleMessage(socket('sock-nuevo'), heartbeat('tok'));
+    jest.restoreAllMocks();
+    expect(gateway.isAgentConnectedSince(SERVER.id, despues)).toBe(true);
+  });
+
   it('un fallo de base de datos no es un 401: no se desconecta al agente', async () => {
     const { gateway, agentTokens } = setup(() => ok());
     agentTokens.verify.mockRejectedValueOnce(new Error('connection refused'));

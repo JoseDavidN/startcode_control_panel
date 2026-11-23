@@ -11,7 +11,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ## [0.13.1] — 2026-11-23
 
-Versión de **parche** del backend sobre 0.13.0, para publicar una imagen nueva. Sin cambios de código.
+Versión de **parche** del backend sobre 0.13.0.
+
+### Corregido
+- Si el agente reconectaba por un socket nuevo antes de detectarse la caída del anterior, el servidor podía quedar marcado como caído con el agente conectado, y la rotación o la revocación del token iban al socket muerto. El registro pasa ahora al socket nuevo (`AgentGateway.handleMessage`).
+- Al reinstalar el agente, el paso de conexión se daba por bueno con el registro del agente anterior. Ahora solo cuenta una conexión posterior al inicio de la instalación (`isAgentConnectedSince`).
 
 ### Notas de despliegue
 - El agente (2.2.0-go) se recompiló: copiar sus artefactos a `BACKEND/agent-dist/` en el servidor del panel.

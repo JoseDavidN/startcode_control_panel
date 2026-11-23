@@ -9,6 +9,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
 
 ---
 
+## [App de escritorio 1.0.1] — 2026-11-23
+
+### Cambiado
+- El icono de la aplicación vuelve a ser el original de StartCode Panel, también en el instalador.
+
+### Corregido
+- Las consultas y pestañas del editor SQL, las consultas guardadas y otras preferencias locales ya se conservan al cerrar y volver a abrir la app.
+- Iconos que se veían deformados (campana, engranaje, candado, usuario y otros) y logos de servicios.
+- «Marcar como leída» y otras acciones que enviaban la petición vacía.
+- Cierre inesperado al descargar por SFTP o exportar una tabla por segunda vez cuando el sistema no ofrece su propio diálogo de archivos.
+
+---
+
 ## [App de escritorio 1.0.0] — 2026-11-19
 
 Versión **mayor**: la app de escritorio se reconstruye como aplicación nativa (Qt 6 + QML + C++) en `DESKTOP/` y sustituye a la interfaz web embebida de `FRONTEND/` (React + Tauri). Usa el mismo backend (0.13.0).

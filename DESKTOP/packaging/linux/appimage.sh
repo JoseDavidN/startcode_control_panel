@@ -108,7 +108,7 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR"
 
 # El icono se llama como dice el .desktop (Icon=com.startcode.panel)
-cp "$RAIZ/assets/img/icono-oscuro-512.png" "$TRABAJO/com.startcode.panel.png"
+cp "$RAIZ/assets/icons/app-512.png" "$TRABAJO/com.startcode.panel.png"
 
 # Variables del plugin de Qt. Lo enlazado (Quick, Controls, Network,
 # WebSockets, DBus) lo detecta solo; los módulos QML, por los .qml

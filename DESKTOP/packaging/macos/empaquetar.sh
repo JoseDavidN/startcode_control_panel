@@ -90,7 +90,7 @@ plist CFBundleVersion "$VERSION"
 # aquí si el .app no trae ya uno
 mkdir -p "$APP/Contents/Resources"
 if ! compgen -G "$APP/Contents/Resources/*.icns" >/dev/null; then
-    PNG=$RAIZ/assets/img/icono-oscuro-512.png
+    PNG=$RAIZ/assets/icons/app-512.png
     ICONOS=$TRABAJO/startcode-panel.iconset
     mkdir -p "$ICONOS"
     for lado in 16 32 128 256; do

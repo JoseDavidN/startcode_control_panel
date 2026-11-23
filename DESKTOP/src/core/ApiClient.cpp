@@ -1,6 +1,7 @@
 #include "core/ApiClient.h"
 
 #include "core/SessionStore.h"
+#include "core/Variant.h"
 
 #include <QJSEngine>
 #include <QJsonArray>
@@ -195,28 +196,6 @@ void ApiClient::refreshSession()
              for (const Pending &pending : waiting)
                  send(pending);
          });
-}
-
-/* Según la versión de Qt, un objeto de QML llega como mapa o envuelto en un
-   QJSValue (también dentro de mapas y listas), que QJsonDocument no entiende:
-   se deja siempre en mapas y listas simples. */
-static QVariant plainVariant(const QVariant &value)
-{
-    if (value.userType() == qMetaTypeId<QJSValue>())
-        return plainVariant(value.value<QJSValue>().toVariant());
-    if (value.typeId() == QMetaType::QVariantMap) {
-        QVariantMap map = value.toMap();
-        for (auto it = map.begin(); it != map.end(); ++it)
-            *it = plainVariant(*it);
-        return map;
-    }
-    if (value.typeId() == QMetaType::QVariantList) {
-        QVariantList list = value.toList();
-        for (QVariant &item : list)
-            item = plainVariant(item);
-        return list;
-    }
-    return value;
 }
 
 void ApiClient::request(const QString &method, const QString &path, const QVariant &rawBody,

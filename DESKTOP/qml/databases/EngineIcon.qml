@@ -42,7 +42,7 @@ Item {
             /* Como en SVG: relleno «nonzero». */
             fillRule: ShapePath.WindingFill
             fillColor: root.color
-            PathSvg { path: root.logos[root.engine] ?? "" }
+            PathSvg { path: Format.svgPath(root.logos[root.engine] ?? "") }
         }
     }
 }

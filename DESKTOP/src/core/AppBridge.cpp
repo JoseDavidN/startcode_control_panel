@@ -1,5 +1,7 @@
 #include "core/AppBridge.h"
 
+#include "core/Variant.h"
+
 #include "core/ApiClient.h"
 #include "core/SessionStore.h"
 #include "core/SocketIoClient.h"
@@ -143,7 +145,7 @@ bool AppBridge::notifyWith(const QString &title, const QString &body, const QVar
         const QString file = dir + QStringLiteral("/icono.png");
         if (!QFile::exists(file)) {
             QDir().mkpath(dir);
-            QFile::copy(QStringLiteral(":/qt/qml/StartCode/assets/img/icono-oscuro-512.png"), file);
+            QFile::copy(QStringLiteral(":/qt/qml/StartCode/assets/icons/app-512.png"), file);
         }
         m_notificationIcon = QFile::exists(file) ? file : QGuiApplication::desktopFileName();
     }
@@ -312,7 +314,7 @@ QVariant AppBridge::storeGet(const QString &key) const
 
 void AppBridge::storeSet(const QString &key, const QVariant &value)
 {
-    const QJsonArray wrapped { QJsonValue::fromVariant(value) };
+    const QJsonArray wrapped { QJsonValue::fromVariant(plainVariant(value)) };
     m_store.setValue(storeKey(key), QJsonDocument(wrapped).toJson(QJsonDocument::Compact));
 }
 

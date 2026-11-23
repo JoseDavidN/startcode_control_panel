@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
        de la app anterior, así las reglas de ventana del compositor y el icono
        del archivo .desktop siguen valiendo. */
     QGuiApplication::setDesktopFileName(QStringLiteral("com.startcode.panel"));
-    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/StartCode/assets/img/icono-oscuro-512.png")));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/StartCode/assets/icons/app-512.png")));
 
     /* Estilo sin aspecto propio: todos los controles los dibuja el sistema de diseño. */
     QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -95,6 +95,13 @@ int main(int argc, char *argv[])
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+#ifndef QT_NO_DEBUG
+    /* Solo en depuración: STARTCODE_QML=<archivo.qml> carga ese archivo en vez
+       de la app, para probar componentes sueltos (p. ej. todos los iconos). */
+    if (const QString file = qEnvironmentVariable("STARTCODE_QML"); !file.isEmpty())
+        engine.load(QUrl::fromLocalFile(file));
+    else
+#endif
     engine.loadFromModule("StartCode", "Main");
     bridge.setWindow(qobject_cast<QWindow *>(engine.rootObjects().value(0)));
 

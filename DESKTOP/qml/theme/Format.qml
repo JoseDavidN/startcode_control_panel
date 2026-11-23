@@ -4,6 +4,58 @@ import QtQuick
 
 /* Formato de cifras y tiempos, igual en toda la app. */
 QtObject {
+    readonly property var svgPathCache: ({})
+    /**
+     * Trazo SVG reescrito para `PathSvg`: cada orden con su letra y los números
+     * separados. Los trazos de iconos vienen compactados (`a2 2 0 01-2-2`,
+     * indicadores de arco pegados) y Qt anterior a 6.11 no los lee bien.
+     */
+    function svgPath(d) {
+        if (!d) return ""
+        const cached = svgPathCache[d]
+        if (cached !== undefined) return cached
+        const counts = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 }
+        const number = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y
+        const out = []
+        let i = 0, command = "", group = []
+        const flush = () => {
+            if (!command) return
+            out.push(command + (group.length ? " " + group.join(" ") : ""))
+            /* Los pares que siguen a un «M» son líneas. */
+            if (command === "M") command = "L"
+            else if (command === "m") command = "l"
+            group = []
+        }
+        while (i < d.length) {
+            const ch = d[i]
+            if (/[\s,]/.test(ch)) { i++; continue }
+            if (/[a-zA-Z]/.test(ch) && counts[ch.toLowerCase()] !== undefined) {
+                command = ch
+                group = []
+                i++
+                if (ch === "z" || ch === "Z") { out.push(ch); command = "" }
+                continue
+            }
+            if (!command) break
+            const lower = command.toLowerCase()
+            /* Indicadores de arco (4.º y 5.º valor): un solo dígito, 0 o 1. */
+            if (lower === "a" && (group.length === 3 || group.length === 4) && (ch === "0" || ch === "1")) {
+                group.push(ch)
+                i++
+            } else {
+                number.lastIndex = i
+                const match = number.exec(d)
+                if (!match) break
+                group.push(match[0])
+                i = number.lastIndex
+            }
+            if (group.length === counts[lower]) flush()
+        }
+        const result = out.join(" ")
+        svgPathCache[d] = result
+        return result
+    }
+
     function bytes(b) {
         if (b >= 1073741824) return (b / 1073741824).toFixed(1) + " GB"
         if (b >= 1048576) return (b / 1048576).toFixed(0) + " MB"

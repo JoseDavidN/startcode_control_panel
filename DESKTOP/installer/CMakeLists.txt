@@ -47,25 +47,11 @@ FetchContent_MakeAvailable(miniz)
 add_library(miniz STATIC ${miniz_SOURCE_DIR}/miniz.c)
 target_include_directories(miniz PUBLIC ${miniz_SOURCE_DIR})
 
-# Icono (.ico): el repositorio solo trae el PNG, así que se genera aquí con
-# packaging/windows/generar-icono.ps1. Con -DSTARTCODE_ICONO=ruta se usa otro
-set(STARTCODE_ICONO "" CACHE FILEPATH "Icono .ico del instalador (vacío: se genera del PNG)")
+# Icono (.ico): el de la app (assets/icons/app.ico). Con -DSTARTCODE_ICONO=ruta
+# se usa otro
+set(STARTCODE_ICONO "" CACHE FILEPATH "Icono .ico del instalador (vacío: el de la app)")
 if(NOT STARTCODE_ICONO)
-    set(_icono_generado "${CMAKE_CURRENT_BINARY_DIR}/startcode-panel.ico")
-    set(_icono_origen "${CMAKE_CURRENT_SOURCE_DIR}/../assets/img/icono-oscuro-512.png")
-    if(NOT EXISTS "${_icono_generado}" OR "${_icono_origen}" IS_NEWER_THAN "${_icono_generado}")
-        find_program(STARTCODE_POWERSHELL NAMES pwsh powershell REQUIRED)
-        execute_process(
-            COMMAND "${STARTCODE_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
-                -File "${CMAKE_CURRENT_SOURCE_DIR}/../packaging/windows/generar-icono.ps1"
-                -Origen "${_icono_origen}" -Salida "${_icono_generado}"
-            RESULT_VARIABLE _icono_resultado
-        )
-        if(NOT _icono_resultado EQUAL 0 OR NOT EXISTS "${_icono_generado}")
-            message(FATAL_ERROR "No se pudo generar el icono (packaging/windows/generar-icono.ps1)")
-        endif()
-    endif()
-    set(STARTCODE_ICONO_USADO "${_icono_generado}")
+    set(STARTCODE_ICONO_USADO "${CMAKE_CURRENT_SOURCE_DIR}/../assets/icons/app.ico")
 else()
     set(STARTCODE_ICONO_USADO "${STARTCODE_ICONO}")
 endif()

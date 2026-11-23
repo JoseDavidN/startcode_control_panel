@@ -59,7 +59,7 @@ pwsh installer/empaquetar.ps1 -Panel build-paquete/startcode-panel.exe -Instalad
 
 Sale `StartCode-Panel-<versión>-Instalador.exe` en la carpeta actual (`-Salida` para otro sitio). `empaquetar.ps1` ejecuta `windeployqt --release --qmldir qml` (bibliotecas de Qt, módulos QML y plugins), añade el runtime de Visual C++ y, si libvterm se enlazó dinámica, su DLL (`-Vterm ruta\vterm.dll` si no está junto al ejecutable), y comprueba que no falte lo imprescindible.
 
-**Icono**: el repositorio solo trae PNG. `installer/CMakeLists.txt` genera el `.ico` al configurar con `packaging/windows/generar-icono.ps1` (necesita PowerShell; `-DSTARTCODE_ICONO=ruta.ico` para usar otro).
+**Icono**: el de la app, `assets/icons/app.ico` (`-DSTARTCODE_ICONO=ruta.ico` para usar otro).
 
 ### Qué hace el instalador
 
@@ -87,7 +87,7 @@ packaging/linux/appimage.sh build-paquete
 
 Sale `StartCode-Panel-<versión>-x86_64.AppImage` en `DESKTOP/` (segundo argumento: otra carpeta). Descarga `linuxdeploy` y su plugin de Qt (versiones y hashes fijados) a `build-paquete/appimage/herramientas`, mete Qt, los módulos QML, el plugin de Wayland, el tema del portal y libvterm, y comprueba el resultado antes de empaquetar. Rechaza una compilación de depuración y avisa si el API es el de desarrollo. El AppImage pide la glibc del sistema donde se compila o una posterior.
 
-Usa `packaging/linux/com.startcode.panel.desktop` y `assets/img/icono-oscuro-512.png`.
+Usa `packaging/linux/com.startcode.panel.desktop` y `assets/icons/app-512.png`.
 
 ## Arch Linux: PKGBUILD
 
@@ -122,41 +122,9 @@ Salen `StartCode-Panel-<versión>-macOS.dmg` (se abre y se arrastra a Aplicacion
 
 Desinstalar: arrastrar la app a la Papelera.
 
-## Cambios en el CMakeLists.txt de la app
+## Iconos
 
-Nada de lo anterior los exige (los scripts suplen lo que falta), pero dejan la app mejor terminada. Van en `DESKTOP/CMakeLists.txt`, tras el `set_target_properties(startcode-panel PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDLE TRUE)` que ya existe:
-
-```cmake
-# macOS: datos del paquete (packaging/macos/Info.plist.in)
-set_target_properties(startcode-panel PROPERTIES
-    MACOSX_BUNDLE_BUNDLE_NAME "StartCode Panel"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.startcode.panel"
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
-    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"
-)
-
-# Windows: icono del ejecutable y datos de la versión (el nombre «StartCode
-# Panel» en el Administrador de tareas y las notificaciones). El .ico se
-# genera del PNG al configurar
-if(WIN32)
-    set(STARTCODE_ICONO "${CMAKE_CURRENT_BINARY_DIR}/startcode-panel.ico")
-    if(NOT EXISTS "${STARTCODE_ICONO}")
-        find_program(STARTCODE_POWERSHELL NAMES pwsh powershell REQUIRED)
-        execute_process(
-            COMMAND "${STARTCODE_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
-                -File "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/generar-icono.ps1"
-                -Origen "${CMAKE_CURRENT_SOURCE_DIR}/assets/img/icono-oscuro-512.png"
-                -Salida "${STARTCODE_ICONO}"
-            COMMAND_ERROR_IS_FATAL ANY
-        )
-    endif()
-    configure_file(packaging/windows/startcode-panel.rc.in startcode-panel.rc @ONLY)
-    target_sources(startcode-panel PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/startcode-panel.rc")
-endif()
-```
-
-El instalador **no** se añade con `add_subdirectory`: es un proyecto aparte (CRT estático, sin Qt) que se configura con `cmake -S installer`.
+El icono de la app está en `assets/icons/`: `app-512.png` (ventana, notificaciones, Linux), `app.ico` (ejecutable e instalador de Windows) y `app.icns` (paquete de macOS). `DESKTOP/CMakeLists.txt` ya los usa en cada plataforma. El instalador **no** se añade con `add_subdirectory`: es un proyecto aparte (CRT estático, sin Qt) que se configura con `cmake -S installer`.
 
 ## Archivos
 
@@ -171,7 +139,6 @@ installer/
 packaging/
 ├── LEEME.md
 ├── libvterm/CMakeLists.txt       libvterm estática con vterm.pc (Windows y macOS)
-├── windows/generar-icono.ps1     .ico a partir del PNG
 ├── windows/startcode-panel.rc.in icono y versión de startcode-panel.exe (opcional, ver arriba)
 ├── linux/appimage.sh             AppImage
 ├── linux/PKGBUILD                paquete de Arch

@@ -44,7 +44,7 @@ Item {
             fillRule: ShapePath.WindingFill
             fillColor: !root.isVector ? "transparent"
                      : ServiceLogos.isDark(root.type) ? Theme.ink(0.9) : root.logo.color
-            PathSvg { path: root.isVector ? ServiceLogos.path(root.type) : "" }
+            PathSvg { path: root.isVector ? Format.svgPath(ServiceLogos.path(root.type)) : "" }
         }
     }
 }

@@ -116,7 +116,7 @@ Item {
             fillColor: root.fill
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
-            PathSvg { path: root.path }
+            PathSvg { path: Format.svgPath(root.path) }
         }
     }
 }

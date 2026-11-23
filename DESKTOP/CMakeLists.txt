@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(StartCodePanel VERSION 1.0.0 LANGUAGES CXX)
+project(StartCodePanel VERSION 1.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -211,6 +211,7 @@ qt_add_qml_module(startcode-panel
         assets/fonts/SymbolsNerdFontMono-Regular.ttf
         assets/img/icono-oscuro-180.png
         assets/img/icono-oscuro-512.png
+        assets/icons/app-512.png
         assets/img/logo-fondo-oscuro-1200.png
         assets/img/logo-fondo-claro-1200.png
         assets/release/versions.json
@@ -254,23 +255,17 @@ set_target_properties(startcode-panel PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"
+    MACOSX_BUNDLE_ICON_FILE "app.icns"
 )
+if(APPLE)
+    target_sources(startcode-panel PRIVATE assets/icons/app.icns)
+    set_source_files_properties(assets/icons/app.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+endif()
 
 # Windows: icono del ejecutable y datos de la versión (el nombre «StartCode
-# Panel» en el Administrador de tareas y las notificaciones). El .ico se
-# genera del PNG al configurar
+# Panel» en el Administrador de tareas y las notificaciones).
 if(WIN32)
-    set(STARTCODE_ICONO "${CMAKE_CURRENT_BINARY_DIR}/startcode-panel.ico")
-    if(NOT EXISTS "${STARTCODE_ICONO}")
-        find_program(STARTCODE_POWERSHELL NAMES pwsh powershell REQUIRED)
-        execute_process(
-            COMMAND "${STARTCODE_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
-                -File "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/generar-icono.ps1"
-                -Origen "${CMAKE_CURRENT_SOURCE_DIR}/assets/img/icono-oscuro-512.png"
-                -Salida "${STARTCODE_ICONO}"
-            COMMAND_ERROR_IS_FATAL ANY
-        )
-    endif()
+    set(STARTCODE_ICONO "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/app.ico")
     configure_file(packaging/windows/startcode-panel.rc.in startcode-panel.rc @ONLY)
     target_sources(startcode-panel PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/startcode-panel.rc")
 endif()
@@ -284,7 +279,7 @@ if(UNIX AND NOT APPLE)
     install(TARGETS startcode-panel RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES packaging/linux/com.startcode.panel.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-    install(FILES assets/img/icono-oscuro-512.png
+    install(FILES assets/icons/app-512.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps
         RENAME com.startcode.panel.png)
 endif()
